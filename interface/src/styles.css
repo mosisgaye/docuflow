@@ -122,6 +122,11 @@ button {
   font-weight: 550;
 }
 
+.bandeau--information {
+  background: var(--bleu-pale);
+  color: var(--bleu-fonce);
+}
+
 .bandeau button,
 .lien {
   border: 0;

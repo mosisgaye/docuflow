@@ -41,6 +41,7 @@ export function Application() {
   const [tours, setTours] = useState<Tour[]>([])
   const [recherche, setRecherche] = useState('')
   const [erreur, setErreur] = useState<string | null>(null)
+  const [information, setInformation] = useState<string | null>(null)
   const [enService, setEnService] = useState<boolean | null>(null)
   const [occupe, setOccupe] = useState(false)
   const [decision, setDecision] = useState(false)
@@ -204,14 +205,19 @@ export function Application() {
       setOccupe(true)
       setPage('tableau')
       let derniere: FactureDetail | null = null
+      const dejaRecus: string[] = []
+      setInformation(null)
       for (const fichier of pdfs) {
         setDepotEnCours(fichier.name)
         try {
-          derniere = await api.deposer(fichier)
+          const facture = await api.deposer(fichier)
+          if (facture.deja_vue) dejaRecus.push(fichier.name)
+          derniere = facture
         } catch (probleme) {
           setErreur(`« ${fichier.name} » : ${(probleme as Error).message}`)
         }
       }
+      if (dejaRecus.length) setInformation(`${dejaRecus.map((nom) => `« ${nom} »`).join(', ')} : déjà reçu, rien n’a été refait.`)
       await recharger()
       setDepotEnCours(null)
       setOccupe(false)
@@ -344,6 +350,12 @@ export function Application() {
           <p className="bandeau" role="alert">
             {erreur}
             <button onClick={() => setErreur(null)}>Fermer</button>
+          </p>
+        )}
+        {information && (
+          <p className="bandeau bandeau--information" role="status">
+            {information}
+            <button onClick={() => setInformation(null)}>Fermer</button>
           </p>
         )}
 
