@@ -32,22 +32,25 @@ L'IA n'est jamais seule juge. Exemple réel rencontré pendant le développement
 ```mermaid
 flowchart LR
     U[Interface web<br/>React] -->|API REST| A[API<br/>FastAPI]
-    A --> W[Workflow<br/>états et journal]
-    W --> L[Lecture PDF<br/>et Factur-X]
-    W --> X[Extraction<br/>LLM]
-    W --> C[Contrôles<br/>métier]
-    W --> E[Export<br/>comptable]
+    A -->|dépôt : facture<br/>et tâche| B[(PostgreSQL<br/>factures, journal,<br/>tâches, consignes)]
+    T[Travailleurs<br/>un ou plusieurs] -->|prennent les tâches| B
+    T --> L[Lecture PDF<br/>et Factur-X]
+    T --> X[Extraction<br/>LLM]
+    T --> C[Contrôles<br/>métier]
+    A --> E[Export<br/>comptable]
     A --> G[Assistant<br/>à outils]
     G --> V[Registre des entreprises<br/>et BODACC]
-    W --> B[(PostgreSQL)]
     E --> F[Fichier CSV<br/>ou logiciel tiers]
 ```
 
+Le dépôt d'une facture répond tout de suite : la facture et sa tâche de lecture sont enregistrées ensemble. Un processus séparé, le **travailleur**, prend les tâches une à une et fait la lecture. On peut en lancer plusieurs.
+
 | Dossier | Contenu |
 |---|---|
-| `moteur/` | Le moteur en Python : lecture, extraction, contrôles, workflow, export, assistant, API |
+| `moteur/` | Le moteur en Python : lecture, extraction, contrôles, workflow, export, assistant, API, travailleur |
+| `migrations/` | Les migrations du schéma de la base (Alembic) |
 | `interface/` | L'interface web : React, TypeScript, Vite |
-| `tests/` | 154 tests automatisés |
+| `tests/` | 199 tests automatisés |
 | `factures/` | Factures fictives et réponses attendues |
 | `outils/` | Générateur de factures et outils de mesure |
 
@@ -79,7 +82,9 @@ Mesures faites le 14 novembre 2026 sur les factures du dossier `factures/`, avec
 | Lecture d'une facture Factur-X | 2,6 ms |
 | Extraction par le LLM (`gpt-5.4-mini`) | 1,1 à 3,2 s, le plus souvent 1,2 à 1,6 s |
 | Contrôles métier | moins de 1 ms |
-| Traitement complet d'une facture par l'API | 1,2 à 2,3 s |
+| Réponse au dépôt d'une facture | 23 ms (la lecture se fait ensuite, à part) |
+| Lecture complète par le travailleur | 1,5 à 3,8 s |
+| 30 factures déposées d'un coup, 2 travailleurs | dépôts en 0,6 s, toutes lues en 16 s, aucune lue deux fois |
 
 | Exactitude de l'extraction | Résultat |
 |---|---|
@@ -100,10 +105,17 @@ Prérequis : Python 3.12 ou plus, [uv](https://docs.astral.sh/uv/), Node.js 22, 
 cp .env.example .env              # puis remplir le mot de passe de la base et la clé OpenAI
 docker compose up -d base         # PostgreSQL sur le port 5434
 uv sync                           # dépendances Python
+uv run alembic upgrade head       # crée ou met à jour les tables
 uv run uvicorn moteur.api:creer_application --factory --port 8010
 ```
 
-Dans un second terminal :
+Dans un second terminal, le travailleur, qui lit les factures déposées :
+
+```bash
+uv run python -m moteur.travailleur
+```
+
+Dans un troisième terminal :
 
 ```bash
 cd interface
@@ -127,7 +139,7 @@ uv run pytest
 
 Les tests du workflow et de l'API tournent sur une vraie base PostgreSQL (base séparée `factures_test`). Les appels au LLM et aux services de l'État sont remplacés par des doublures : les tests ne coûtent rien et ne dépendent pas d'Internet.
 
-Points couverts, entre autres : chaque contrôle métier, chaque transition interdite, la panne du LLM, la panne des services de l'État, deux dépôts simultanés du même fichier, deux dépôts simultanés de la même facture, un XML Factur-X piégé, l'agent qui tente de proposer une décision sans avoir lu la facture.
+Points couverts, entre autres : chaque contrôle métier, chaque transition interdite, la panne du LLM, la panne des services de l'État, deux dépôts simultanés du même fichier, deux dépôts simultanés de la même facture, un travailleur qui plante en pleine lecture, deux travailleurs en parallèle, une panne passagère puis définitive de l'IA, les migrations, un XML Factur-X piégé, l'agent qui tente de proposer une décision sans avoir lu la facture.
 
 ## Cahier de recette
 
@@ -156,8 +168,13 @@ Points couverts, entre autres : chaque contrôle métier, chaque transition inte
 
 | Situation | Que faire |
 |---|---|
-| Vérifier que le service tourne | `GET /sante` répond `{"etat":"ok"}` si l'API et la base répondent |
-| Le LLM est en panne ou hors quota | La facture passe « Lecture impossible ». Redéposer le même fichier relance la lecture |
+| Vérifier que le service tourne | `GET /sante` : l'API et la base répondent, nombre de tâches en attente et abandonnées, âge de la plus ancienne tâche en attente |
+| Des factures restent « Lecture en cours » | Vérifier qu'un travailleur tourne. Si la plus ancienne tâche en attente vieillit, en lancer un de plus |
+| Le LLM est en panne passagère (réseau, 429, 503) | Rien à faire : 3 essais sur place, puis la tâche est reprogrammée (30 s, 2 min, 10 min, 30 min, 2 h). Le journal de la facture le montre |
+| La lecture échoue définitivement (clé refusée, scan, 5 pannes de suite) | La facture passe « Lecture impossible » et la tâche est abandonnée. Corriger la cause, puis redéposer le même fichier : il est remis en file |
+| Arrêter ou redémarrer un travailleur | SIGTERM ou Ctrl+C : il finit la facture en cours, puis s'arrête. S'il est tué brutalement, la facture en cours est reprise par un autre travailleur, sans être lue deux fois |
+| Mettre à jour le schéma de la base | `uv run alembic upgrade head` avant de redémarrer. Le moteur refuse de démarrer sur une base pas à jour |
+| Expliquer une lecture passée | Le journal de la facture donne le modèle et l'empreinte de la consigne ; son texte exact est dans la table `consignes` |
 | Le registre des entreprises ne répond pas | L'assistant indique « vérification impossible » ; rien n'est bloqué |
 | Le logiciel de comptabilité refuse un envoi | La facture reste « Validée », l'échec est au journal. Relancer l'envoi |
 | Retrouver ce qui est arrivé à une facture | Son journal, dans l'interface ou par `GET /factures/{id}` |
@@ -178,7 +195,10 @@ Toutes les valeurs se règlent dans `.env` (voir `.env.example`).
 ## Choix techniques
 
 - **Python** pour le moteur : la vitesse dépend de l'architecture, pas du langage. L'appel au LLM représente presque tout le temps de traitement.
-- **Pas de file d'attente pour une facture seule** : c'est ce qui coûtait 9 secondes à Unstract.
+- **File de tâches dans PostgreSQL**, sans Redis ni Celery : une tâche est prise par `SELECT … FOR UPDATE SKIP LOCKED` et traitée dans la même transaction. Si le travailleur plante, PostgreSQL annule et libère la tâche. Vérifié par un `kill -9` en pleine lecture.
+- **Nouveaux essais seulement pour les pannes passagères** : une clé refusée ou une réponse hors format ne sont jamais retentées.
+- **Migrations Alembic**, appliquées par une étape explicite, jamais au démarrage du moteur. Un test vérifie que les modèles et les migrations décrivent le même schéma.
+- **Consignes de l'IA versionnées par empreinte** de leur contenu : impossible d'oublier de changer de version.
 - **Montants en décimal**, jamais en nombre à virgule flottante.
 - **Format de réponse imposé au LLM** : il ne peut renvoyer que les champs attendus, et toute réponse hors format est rejetée.
 - **Enregistrement en base avant la réponse HTTP** : sinon l'interface peut relire une donnée pas encore enregistrée.
@@ -190,11 +210,11 @@ Ce qui manque, par ordre de priorité :
 
 1. **Données personnelles** : les factures sont envoyées à OpenAI, hors d'Europe. Pour un client français, passer à un fournisseur hébergé en Europe (Mistral par exemple) ou à un modèle hébergé chez le client, après analyse RGPD.
 2. **Connexion et rôles** : aujourd'hui, n'importe qui peut appeler l'API et signer du nom de son choix.
-3. **Traitement asynchrone** : file de tâches, nouveaux essais automatiques, supervision des traitements bloqués.
-4. **Lecture des scans et des photos** (reconnaissance de caractères).
-5. **Correction d'une valeur par une personne**, avec nouveau passage des contrôles.
-6. **Factures à plusieurs taux de TVA**, et format Factur-X UBL en plus du CII.
-7. **Comptes comptables par fournisseur**, paramétrés avec le comptable du client.
-8. **Exploitation** : migrations de base, sauvegardes, journaux structurés, métriques.
-9. **Plusieurs entreprises clientes** sur la même plateforme, avec isolation stricte de leurs données.
-10. **Mesure de l'exactitude** sur un échantillon de vraies factures du client.
+3. **Lecture des scans et des photos** (reconnaissance de caractères).
+4. **Correction d'une valeur par une personne**, avec nouveau passage des contrôles.
+5. **Factures à plusieurs taux de TVA**, et format Factur-X UBL en plus du CII.
+6. **Comptes comptables par fournisseur**, paramétrés avec le comptable du client.
+7. **Exploitation** : sauvegardes, journaux structurés, métriques et alertes (aujourd'hui, seul `/sante` donne l'état de la file).
+8. **Plusieurs entreprises clientes** sur la même plateforme, avec isolation stricte de leurs données.
+9. **Mesure de l'exactitude** sur un échantillon de vraies factures du client.
+10. **Une facture qui ferait planter le travailleur lui-même** serait reprise indéfiniment : il faudrait compter les reprises après plantage et l'écarter automatiquement.
