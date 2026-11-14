@@ -1,0 +1,46 @@
+"""Forme des données d'une facture, une fois extraites.
+
+Les montants sont des Decimal et non des float : en comptabilité,
+0.1 + 0.2 doit faire exactement 0.3.
+"""
+
+from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Annotated
+
+from pydantic import AfterValidator, BaseModel, ConfigDict
+
+
+def _au_centime(montant: Decimal) -> Decimal:
+    return montant.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+# Un montant en euros, toujours à deux décimales : 1600 devient 1600.00.
+# Le prix unitaire n'est pas arrondi, il peut porter plus de deux décimales.
+Montant = Annotated[Decimal, AfterValidator(_au_centime)]
+
+
+class Ligne(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    designation: str
+    quantite: Decimal
+    prix_unitaire_ht: Decimal
+    montant_ht: Montant
+
+
+class Facture(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    numero_facture: str | None
+    date_facture: date | None
+    date_echeance: date | None
+    fournisseur_nom: str | None
+    fournisseur_siret: str | None
+    fournisseur_tva: str | None
+    client_nom: str | None
+    lignes: list[Ligne]
+    total_ht: Montant | None
+    taux_tva: Decimal | None
+    total_tva: Montant | None
+    total_ttc: Montant | None
