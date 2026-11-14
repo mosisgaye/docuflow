@@ -60,9 +60,12 @@ function Ecriture({ facture }: { facture: FactureDetail }) {
 function Tampon({ facture }: { facture: FactureDetail }) {
   const decision = [...facture.evenements].reverse().find((evenement) => evenement.type === 'VALIDATION' || evenement.type === 'REJET')
   if (!decision) return null
+  // Le tampon montre la décision de la personne et son heure, pas l'état actuel :
+  // une facture validée puis exportée garde « Validée » avec l'heure de la validation.
+  const etat = decision.type === 'VALIDATION' ? 'validee' : 'rejetee'
   return (
-    <p className={`tampon tampon--${facture.etat}`}>
-      <strong>{LIBELLE_ETAT[facture.etat]}</strong>
+    <p className={`tampon tampon--${etat}`}>
+      <strong>{LIBELLE_ETAT[etat]}</strong>
       <span>
         par {decision.auteur}, le {jourEtHeure(decision.cree_le)}
       </span>
@@ -111,7 +114,7 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
           <dl className="champs">
             <div className={marque('numero_facture')}>
               <dt>Numéro</dt>
-              <dd>{donnees.numero_facture ?? 'Non lu'}</dd>
+              <dd>{donnees.numero_facture ?? 'Absent'}</dd>
             </div>
             <div className={marque('date_facture')}>
               <dt>Date de facture</dt>
@@ -127,11 +130,11 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
             </div>
             <div className={marque('fournisseur_tva')}>
               <dt>N° de TVA</dt>
-              <dd>{donnees.fournisseur_tva ?? 'Non lu'}</dd>
+              <dd>{donnees.fournisseur_tva ?? 'Absent'}</dd>
             </div>
             <div>
               <dt>Client</dt>
-              <dd>{donnees.client_nom ?? 'Non lu'}</dd>
+              <dd>{donnees.client_nom ?? 'Absent'}</dd>
             </div>
           </dl>
 

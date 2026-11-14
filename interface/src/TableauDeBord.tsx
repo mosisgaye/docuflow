@@ -1,6 +1,6 @@
 import type { FactureDetail, Statistiques } from './api'
 import * as api from './api'
-import { ETAPES, LIBELLE_ETAT, avancement, duree, euros, heureCourte, ilYA, jour, raconter } from './format'
+import { ETAPES, LIBELLE_ETAT, avancement, duree, euros, heureCourte, ilYA, jour, manquant, raconter } from './format'
 import { Icone } from './Icones'
 
 interface Props {
@@ -202,15 +202,15 @@ export function TableauDeBord({ statistiques, vedette, depotEnCours, surOuvertur
                 <dl>
                   <div>
                     <dt>Fournisseur</dt>
-                    <dd>{vedette.fournisseur_nom ?? 'Non lu'}</dd>
+                    <dd>{vedette.fournisseur_nom ?? manquant(vedette.etat)}</dd>
                   </div>
                   <div>
                     <dt>Montant TTC</dt>
-                    <dd>{euros(vedette.total_ttc)}</dd>
+                    <dd>{euros(vedette.total_ttc, manquant(vedette.etat))}</dd>
                   </div>
                   <div>
                     <dt>Échéance</dt>
-                    <dd>{jour(vedette.donnees?.date_echeance ?? null)}</dd>
+                    <dd>{jour(vedette.donnees?.date_echeance ?? null, manquant(vedette.etat))}</dd>
                   </div>
                 </dl>
                 {vedette.anomalies[0] && <p className="workflow__anomalie">{vedette.anomalies[0].message}</p>}

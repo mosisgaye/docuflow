@@ -5,16 +5,22 @@ const NOMBRE = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 4 })
 const JOUR = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 const HEURE = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
-export const euros = (montant: string | null) => (montant === null ? 'Non lu' : EUROS.format(Number(montant)))
-export const nombre = (valeur: string | null) => (valeur === null ? 'Non lu' : NOMBRE.format(Number(valeur)))
-export const jour = (iso: string | null) => (iso === null ? 'Non lue' : JOUR.format(new Date(iso)))
+export const euros = (montant: string | null, absent = 'Absent') => (montant === null ? absent : EUROS.format(Number(montant)))
+export const nombre = (valeur: string | null, absent = 'Absent') => (valeur === null ? absent : NOMBRE.format(Number(valeur)))
+export const jour = (iso: string | null, absent = 'Absente') => (iso === null ? absent : JOUR.format(new Date(iso)))
 export const heure = (iso: string) => HEURE.format(new Date(iso))
 export const jourEtHeure = (iso: string) => `${JOUR.format(new Date(iso))} à ${HEURE.format(new Date(iso))}`
 
 export function siret(valeur: string | null) {
-  if (valeur === null) return 'Non lu'
+  if (valeur === null) return 'Absent'
   return valeur.length === 14 ? `${valeur.slice(0, 3)} ${valeur.slice(3, 6)} ${valeur.slice(6, 9)} ${valeur.slice(9)}` : valeur
 }
+
+/**
+ * Ce qu'on affiche quand une information manque. Une facture lue dont un champ est vide :
+ * l'information est absente du document. Une facture pas encore lue, ou illisible : on ne sait pas.
+ */
+export const manquant = (etat: Etat) => (etat === 'recue' ? 'Lecture en cours' : etat === 'echec' ? 'Non lu' : 'Absent')
 
 export const LIBELLE_ETAT: Record<Etat, string> = {
   recue: 'Lecture en cours',
