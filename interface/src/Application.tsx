@@ -170,19 +170,25 @@ export function Application() {
         setTours((actuels) => [...actuels, depot, reponse])
         const debut = performance.now()
         try {
-          const facture = await api.deposer(fichier)
+          const depose = await api.deposer(fichier)
+          // Le dépôt répond tout de suite ; on attend que le travailleur ait lu la facture.
+          const facture = depose.deja_vue ? depose : await api.attendreLecture(depose.id)
           const journal = facture.evenements
             .filter((evenement) => evenement.type !== 'RECEPTION')
             .map((evenement) => ({ id: `journal-${evenement.rang}`, libelle: raconter(evenement), fini: true, echec: evenement.etat === 'echec' }))
           modifierTour(reponse.id, (tour) => ({
             ...tour,
             etapes: [
-              { id: 'depot', libelle: facture.deja_vue ? `${fichier.name} avait déjà été reçu : rien n’a été refait` : `${fichier.name} reçu et lu`, fini: true, duree: (performance.now() - debut) / 1000 },
-              ...(facture.deja_vue ? [] : journal),
+              { id: 'depot', libelle: depose.deja_vue ? `${fichier.name} avait déjà été reçu : rien n’a été refait` : `${fichier.name} reçu et lu`, fini: true, duree: (performance.now() - debut) / 1000 },
+              ...(depose.deja_vue ? [] : journal),
             ],
           }))
           await recharger()
           setDetail(facture)
+          if (facture.etat === 'echec') {
+            modifierTour(reponse.id, (tour) => ({ ...tour, enCours: false, erreur: 'La facture n’a pas pu être lue. Voir son journal.' }))
+            continue
+          }
           const consigne = `Je viens de déposer le fichier « ${fichier.name} ». Son identifiant est ${facture.id}. Résume cette facture en deux phrases, vérifie son fournisseur auprès de l’État, puis dis-moi ce que tu recommandes.`
           modifierTour(depot.id, (tour) => ({ ...tour, envoye: consigne }))
           await interroger(historique({ role: 'user', content: consigne }), reponse.id, facture.id)
@@ -207,15 +213,29 @@ export function Application() {
       let derniere: FactureDetail | null = null
       const dejaRecus: string[] = []
       setInformation(null)
+      // Tous les fichiers sont déposés d'abord (chaque dépôt répond tout de suite),
+      // puis on suit leur lecture par le travailleur, une à une.
+      const deposes: { nom: string; id: string }[] = []
       for (const fichier of pdfs) {
-        setDepotEnCours(fichier.name)
         try {
           const facture = await api.deposer(fichier)
           if (facture.deja_vue) dejaRecus.push(fichier.name)
+          else deposes.push({ nom: fichier.name, id: facture.id })
           derniere = facture
         } catch (probleme) {
           setErreur(`« ${fichier.name} » : ${(probleme as Error).message}`)
         }
+      }
+      await recharger()
+      for (const { nom, id } of deposes) {
+        setDepotEnCours(nom)
+        try {
+          derniere = await api.attendreLecture(id)
+        } catch (probleme) {
+          setErreur((probleme as Error).message)
+          break
+        }
+        await recharger()
       }
       if (dejaRecus.length) setInformation(`${dejaRecus.map((nom) => `« ${nom} »`).join(', ')} : déjà reçu, rien n’a été refait.`)
       await recharger()

@@ -116,6 +116,24 @@ export const exporter = (id: string, auteur: string) => appeler<FactureDetail>(`
 export const adresseExport = (id: string) => `/api/factures/${id}/export`
 export const adresseFichier = (id: string) => `/api/factures/${id}/fichier#toolbar=0&navpanes=0&view=FitH`
 
+export class LectureTropLongue extends Error {}
+
+/**
+ * Attend que le travailleur ait lu la facture (elle quitte l'état « reçue »).
+ * Le dépôt répond tout de suite ; la lecture se fait à part, en une ou deux secondes en général.
+ */
+export async function attendreLecture(id: string, delaiMaxS = 60): Promise<FactureDetail> {
+  const limite = Date.now() + delaiMaxS * 1000
+  for (;;) {
+    const facture = await detailler(id)
+    if (facture.etat !== 'recue') return facture
+    if (Date.now() > limite) {
+      throw new LectureTropLongue('La lecture est toujours en attente. Le travailleur est-il démarré ? (uv run python -m moteur.travailleur)')
+    }
+    await new Promise((resoudre) => setTimeout(resoudre, 1000))
+  }
+}
+
 export function deposer(fichier: File) {
   const formulaire = new FormData()
   formulaire.append('fichier', fichier)

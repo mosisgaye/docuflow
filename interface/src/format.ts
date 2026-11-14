@@ -17,7 +17,7 @@ export function siret(valeur: string | null) {
 }
 
 export const LIBELLE_ETAT: Record<Etat, string> = {
-  recue: 'Reçue',
+  recue: 'Lecture en cours',
   extraite: 'Extraite',
   a_valider: 'À valider',
   en_anomalie: 'En anomalie',
@@ -49,6 +49,8 @@ export function raconter(evenement: Evenement): string {
       return 'Même fichier renvoyé : reconnu, rien n’a été refait'
     case 'NOUVEL_ESSAI':
       return 'Nouvel essai de lecture'
+    case 'NOUVEL_ESSAI_PROGRAMME':
+      return `IA momentanément indisponible : nouvel essai dans ${duree(Number(detail.dans_s))}`
     case 'EXTRACTION_ECHOUEE':
     case 'LECTURE_IMPOSSIBLE':
       return String(detail.raison ?? 'Lecture impossible')
@@ -78,6 +80,8 @@ export const heureCourte = (iso: string) => new Intl.DateTimeFormat('fr-FR', { h
 
 /** Durée lisible : 1,3 s au-dessus d'une seconde, 20 ms en dessous. */
 export function duree(secondes: number) {
+  if (secondes >= 3600) return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(secondes / 3600)} h`
+  if (secondes >= 60) return `${Math.round(secondes / 60)} min`
   if (secondes >= 1) return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(secondes)} s`
   return secondes < 0.01 ? 'moins de 10 ms' : `${Math.round(secondes * 1000)} ms`
 }
