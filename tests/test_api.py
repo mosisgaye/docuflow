@@ -235,6 +235,7 @@ def test_les_statistiques_comptent_les_factures_reelles(client):
     assert corps["conformes"] == 1
     assert corps["anomalies_detectees"] == 1
     assert corps["duree_moyenne_s"] == 0.1
+    assert (corps["lues_par_ia"], corps["lues_sans_ia"]) == (2, 0)
     assert corps["durees_recentes_s"] == [0.1, 0.1]
     assert len(corps["recentes"]) == 2
     assert corps["activite"][0]["type"] == "REJET"

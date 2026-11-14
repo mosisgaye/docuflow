@@ -277,7 +277,8 @@ def creer_application(
         conformes = sum(1 for facture in factures if not facture.anomalies and facture.etat != Etat.ECHEC.value)
         extractions = session.scalars(select(Evenement).where(Evenement.type == "EXTRACTION").order_by(Evenement.cree_le)).all()
         durees = [float(evenement.detail["duree_s"]) for evenement in extractions if "modele" in evenement.detail]
-        lues_sans_ia = sum(1 for evenement in extractions if evenement.detail.get("source") == "factur-x")
+        lues_sans_ia = len({evenement.facture_id for evenement in extractions if evenement.detail.get("source") == "factur-x"})
+        lues_par_ia = len({evenement.facture_id for evenement in extractions if "modele" in evenement.detail})
         derniers = session.scalars(select(Evenement).order_by(Evenement.cree_le.desc(), Evenement.rang.desc()).limit(8)).all()
         return {
             "total": len(factures),
@@ -286,6 +287,7 @@ def creer_application(
             "anomalies_detectees": sum(len(facture.anomalies) for facture in factures),
             "duree_moyenne_s": round(sum(durees) / len(durees), 2) if durees else None,
             "lues_sans_ia": lues_sans_ia,
+            "lues_par_ia": lues_par_ia,
             "durees_recentes_s": durees[-12:],
             "recentes": [_resume(facture) for facture in factures[:6]],
             "activite": [

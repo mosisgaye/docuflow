@@ -75,6 +75,7 @@ export interface Statistiques {
   anomalies_detectees: number
   duree_moyenne_s: number | null
   lues_sans_ia: number
+  lues_par_ia: number
   durees_recentes_s: number[]
   recentes: FactureResume[]
   activite: Activite[]

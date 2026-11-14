@@ -139,3 +139,24 @@ def test_un_facturx_abime_se_rabat_sur_l_ia(session):
     assert [evenement.type for evenement in facture.evenements] == ["RECEPTION", "FACTURX_ILLISIBLE", "EXTRACTION", "CONTROLE"]
     assert facture.evenements[2].detail["source"] == "ia"
     assert facture.donnees["total_ttc"] == str(Decimal("478.08"))
+
+
+def test_les_statistiques_separent_les_lectures_avec_et_sans_ia(connexion, tmp_path):
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import Session
+
+    from moteur.api import creer_application
+
+    application = creer_application(
+        fabrique_session=lambda: Session(bind=connexion, join_transaction_mode="create_savepoint"),
+        extracteur=LLMEspion(),
+        dossier_fichiers=tmp_path,
+        traiter_tout_de_suite=True,
+    )
+    client = TestClient(application)
+    for nom in [FACTURX, "facture-F26-1193.pdf"]:
+        client.post("/factures", files={"fichier": (nom, (FACTURES / nom).read_bytes(), "application/pdf")})
+
+    corps = client.get("/statistiques").json()
+
+    assert (corps["total"], corps["lues_par_ia"], corps["lues_sans_ia"]) == (2, 1, 1)

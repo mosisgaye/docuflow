@@ -1,5 +1,5 @@
 import type { FactureResume, Statistiques } from './api'
-import { LIBELLE_ETAT, euros, ilYA, siret } from './format'
+import { LIBELLE_ETAT, euros, ilYA, manquant, siret } from './format'
 import { Icone } from './Icones'
 
 interface PropsDocuments {
@@ -47,9 +47,9 @@ export function Documents({ titre, sousTitre, factures, recherche, ouverte, surO
                       {facture.fournisseur_nom ?? facture.nom_fichier}
                     </button>
                   </td>
-                  <td>{facture.numero_facture ?? 'Non lu'}</td>
+                  <td>{facture.numero_facture ?? manquant(facture.etat)}</td>
                   <td>{siret(facture.fournisseur_siret)}</td>
-                  <td className="liste__droite">{facture.total_ttc ? euros(facture.total_ttc) : 'Non lu'}</td>
+                  <td className="liste__droite">{euros(facture.total_ttc, manquant(facture.etat))}</td>
                   <td>
                     <span className={`pastille pastille--${facture.etat}`}>{LIBELLE_ETAT[facture.etat]}</span>
                     {facture.nb_anomalies > 0 && <small className="liste__anomalies">{facture.nb_anomalies} anomalie{facture.nb_anomalies > 1 ? 's' : ''}</small>}
@@ -64,6 +64,8 @@ export function Documents({ titre, sousTitre, factures, recherche, ouverte, surO
     </div>
   )
 }
+
+const pluriel = (nombre: number, singulier: string, plurielle: string) => `${nombre} ${nombre > 1 ? plurielle : singulier}`
 
 const INTEGRATIONS = [
   {
@@ -123,7 +125,12 @@ export function Integrations({ statistiques }: { statistiques: Statistiques | nu
           </li>
         ))}
       </ul>
-      {statistiques && <p className="page__note">{statistiques.total} facture{statistiques.total > 1 ? 's ont' : ' a'} été analysée{statistiques.total > 1 ? 's' : ''} par l’IA d’extraction jusqu’ici.</p>}
+      {statistiques && (
+        <p className="page__note">
+          {pluriel(statistiques.lues_par_ia, 'facture lue', 'factures lues')} par l’IA d’extraction,{' '}
+          {pluriel(statistiques.lues_sans_ia, 'facture électronique Factur-X lue', 'factures électroniques Factur-X lues')} sans IA.
+        </p>
+      )}
     </div>
   )
 }
