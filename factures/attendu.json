@@ -1,0 +1,204 @@
+{
+  "facture-FA-2026-0412.pdf": {
+    "facture": {
+      "numero_facture": "FA-2026-0412",
+      "date_facture": "2026-11-03",
+      "date_echeance": "2026-12-03",
+      "fournisseur_nom": "Atelier Numérique du Midi SARL",
+      "fournisseur_siret": "81234567600017",
+      "fournisseur_tva": "FR19812345676",
+      "client_nom": "Transports Lemaire SAS",
+      "lignes": [
+        {
+          "designation": "Maintenance applicative (jours)",
+          "quantite": "5",
+          "prix_unitaire_ht": "450.00",
+          "montant_ht": "2250.00"
+        },
+        {
+          "designation": "Hébergement serveur, novembre 2026",
+          "quantite": "1",
+          "prix_unitaire_ht": "120.00",
+          "montant_ht": "120.00"
+        },
+        {
+          "designation": "Licence logiciel de suivi",
+          "quantite": "3",
+          "prix_unitaire_ht": "89.50",
+          "montant_ht": "268.50"
+        }
+      ],
+      "total_ht": "2638.50",
+      "taux_tva": "20",
+      "total_tva": "527.70",
+      "total_ttc": "3166.20"
+    },
+    "anomalies": []
+  },
+  "facture-2026-11-087.pdf": {
+    "facture": {
+      "numero_facture": "2026-11-087",
+      "date_facture": "2026-11-07",
+      "date_echeance": "2026-11-22",
+      "fournisseur_nom": "Papeterie Durand & Fils",
+      "fournisseur_siret": "40322198900045",
+      "fournisseur_tva": "FR28403221989",
+      "client_nom": "Cabinet Morel Expertise",
+      "lignes": [
+        {
+          "designation": "Ramettes papier A4 80 g",
+          "quantite": "40",
+          "prix_unitaire_ht": "4.90",
+          "montant_ht": "196.00"
+        },
+        {
+          "designation": "Cartouches toner noir",
+          "quantite": "6",
+          "prix_unitaire_ht": "62.00",
+          "montant_ht": "372.00"
+        },
+        {
+          "designation": "Classeurs à levier",
+          "quantite": "25",
+          "prix_unitaire_ht": "3.20",
+          "montant_ht": "80.00"
+        }
+      ],
+      "total_ht": "648.00",
+      "taux_tva": "20",
+      "total_tva": "129.60",
+      "total_ttc": "777.60"
+    },
+    "anomalies": []
+  },
+  "facture-F26-1193.pdf": {
+    "facture": {
+      "numero_facture": "F26-1193",
+      "date_facture": "2026-11-10",
+      "date_echeance": "2026-12-10",
+      "fournisseur_nom": "Garage Central Bertin",
+      "fournisseur_siret": "52987431500029",
+      "fournisseur_tva": "FR52529874315",
+      "client_nom": "Boulangerie Petit Jean",
+      "lignes": [
+        {
+          "designation": "Vidange et filtre à huile",
+          "quantite": "1",
+          "prix_unitaire_ht": "145.00",
+          "montant_ht": "145.00"
+        },
+        {
+          "designation": "Plaquettes de frein avant",
+          "quantite": "1",
+          "prix_unitaire_ht": "98.40",
+          "montant_ht": "98.40"
+        },
+        {
+          "designation": "Main-d'œuvre (heures)",
+          "quantite": "2.5",
+          "prix_unitaire_ht": "62.00",
+          "montant_ht": "155.00"
+        }
+      ],
+      "total_ht": "398.40",
+      "taux_tva": "20",
+      "total_tva": "79.68",
+      "total_ttc": "478.08"
+    },
+    "anomalies": []
+  },
+  "facture-erreur-total.pdf": {
+    "facture": {
+      "numero_facture": "FA-2026-0431",
+      "date_facture": "2026-11-12",
+      "date_echeance": "2026-12-12",
+      "fournisseur_nom": "Atelier Numérique du Midi SARL",
+      "fournisseur_siret": "81234567600017",
+      "fournisseur_tva": "FR19812345676",
+      "client_nom": "Transports Lemaire SAS",
+      "lignes": [
+        {
+          "designation": "Développement d'un module d'export",
+          "quantite": "2",
+          "prix_unitaire_ht": "500.00",
+          "montant_ht": "1000.00"
+        },
+        {
+          "designation": "Formation des utilisateurs (demi-journée)",
+          "quantite": "1",
+          "prix_unitaire_ht": "250.00",
+          "montant_ht": "250.00"
+        }
+      ],
+      "total_ht": "1250.00",
+      "taux_tva": "20",
+      "total_tva": "250.00",
+      "total_ttc": "1600.00"
+    },
+    "anomalies": [
+      "TOTAL_TTC_INCOHERENT"
+    ]
+  },
+  "facture-erreur-siret.pdf": {
+    "facture": {
+      "numero_facture": "2026-11-093",
+      "date_facture": "2026-11-13",
+      "date_echeance": "2026-11-28",
+      "fournisseur_nom": "Papeterie Durand & Fils",
+      "fournisseur_siret": "40322198900054",
+      "fournisseur_tva": "FR28403221989",
+      "client_nom": "Cabinet Morel Expertise",
+      "lignes": [
+        {
+          "designation": "Enveloppes C4 (boîte de 250)",
+          "quantite": "4",
+          "prix_unitaire_ht": "18.50",
+          "montant_ht": "74.00"
+        },
+        {
+          "designation": "Stylos bille bleus (lot de 50)",
+          "quantite": "3",
+          "prix_unitaire_ht": "12.00",
+          "montant_ht": "36.00"
+        }
+      ],
+      "total_ht": "110.00",
+      "taux_tva": "20",
+      "total_tva": "22.00",
+      "total_ttc": "132.00"
+    },
+    "anomalies": [
+      "SIRET_INVALIDE"
+    ]
+  },
+  "facture-facturx-FX-2026-0057.pdf": {
+    "facture": {
+      "numero_facture": "FX-2026-0057",
+      "date_facture": "2026-11-12",
+      "date_echeance": "2026-12-12",
+      "fournisseur_nom": "Imprimerie Lumière SAS",
+      "fournisseur_siret": "73815042400039",
+      "fournisseur_tva": "FR66738150424",
+      "client_nom": "Transports Lemaire SAS",
+      "lignes": [
+        {
+          "designation": "Flyers A5 quadri (lot de 1000)",
+          "quantite": "3",
+          "prix_unitaire_ht": "86.00",
+          "montant_ht": "258.00"
+        },
+        {
+          "designation": "Cartes de visite (boîte de 500)",
+          "quantite": "4",
+          "prix_unitaire_ht": "24.50",
+          "montant_ht": "98.00"
+        }
+      ],
+      "total_ht": "356.00",
+      "taux_tva": "20",
+      "total_tva": "71.20",
+      "total_ttc": "427.20"
+    },
+    "anomalies": []
+  }
+}
