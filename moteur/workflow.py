@@ -141,6 +141,8 @@ def _extraire_et_controler(
         detail = {"source": "ia", "fournisseur_llm": resultat.fournisseur, "modele": resultat.modele, "duree_s": round(resultat.duree_s, 2)}
         if resultat.consigne is not None:
             detail["consigne"] = enregistrer_consigne(session, resultat.consigne)
+        if resultat.tentatives > 1:
+            detail["tentatives"] = resultat.tentatives
 
     facture.donnees = donnees.model_dump(mode="json")
     facture.fournisseur_siret = donnees.fournisseur_siret

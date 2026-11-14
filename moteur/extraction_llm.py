@@ -6,16 +6,22 @@ par le modèle Facture, puis par les contrôles métier.
 Le fournisseur de LLM est interchangeable : chaque fournisseur est une petite
 classe qui sait construire sa requête et lire sa réponse. Le reste du moteur
 ne connaît que la fonction extraire().
+
+Une panne passagère (réseau, 429, 503…) est retentée sur place, au plus
+3 appels en tout, avec une attente croissante. Si elle persiste, l'erreur
+est marquée « passagère » : la file de tâches reprogrammera la lecture plus tard.
 """
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import httpx
 
 from moteur import config
 from moteur.consignes import VersionConsigne
+from moteur.nouvel_essai import ATTENTE_MAX_SUR_PLACE_S, TENTATIVES, delai_avant_essai, delai_demande, est_passager
 from moteur.modeles import Facture
 
 CONSIGNE = """Tu extrais les données d'une facture française à partir de son texte.
@@ -50,7 +56,16 @@ CHAMPS_LIGNE_NOMBRE = ["quantite", "prix_unitaire_ht", "montant_ht"]
 
 
 class ErreurExtraction(Exception):
-    """Le LLM n'a pas répondu, ou sa réponse n'est pas une facture valide."""
+    """Le LLM n'a pas répondu, ou sa réponse n'est pas une facture valide.
+
+    passagere      : vrai si retenter plus tard peut réussir (panne, quota momentané) ;
+    attendre_avant : délai minimal demandé par le service avant de retenter, en secondes.
+    """
+
+    def __init__(self, message: str, passagere: bool = False, attendre_avant: float | None = None):
+        super().__init__(message)
+        self.passagere = passagere
+        self.attendre_avant = attendre_avant
 
 
 @dataclass(frozen=True)
@@ -60,6 +75,7 @@ class ResultatExtraction:
     fournisseur: str
     modele: str
     consigne: VersionConsigne | None = None  # la consigne exacte qui a produit ces données
+    tentatives: int = 1  # nombre d'appels qu'il a fallu
 
 
 def valider(texte_json: str) -> Facture:
@@ -160,7 +176,29 @@ def version_consigne(fournisseur) -> VersionConsigne:
     return VersionConsigne(usage="extraction", texte=CONSIGNE, schema=fournisseur.schema())
 
 
-def extraire(texte: str, client: httpx.Client | None = None) -> ResultatExtraction:
+def _appeler(client: httpx.Client, url: str, charge: dict, entetes: dict, attendre: Callable[[float], None]) -> tuple[httpx.Response, int]:
+    """Appelle le LLM et retente les pannes passagères. Renvoie (réponse 200, nombre d'appels)."""
+    for numero in range(1, TENTATIVES + 1):
+        try:
+            reponse = client.post(url, json=charge, headers=entetes)
+        except httpx.TransportError as erreur:  # réseau coupé, délai dépassé…
+            probleme, demande = f"Le LLM est injoignable : {type(erreur).__name__}", None
+        else:
+            if reponse.status_code == 200:
+                return reponse, numero
+            if not est_passager(reponse.status_code):
+                # Clé refusée, demande mal formée… : retenter échouerait pareil.
+                raise ErreurExtraction(f"Le LLM a répondu {reponse.status_code}")
+            probleme, demande = f"Le LLM a répondu {reponse.status_code}", delai_demande(reponse)
+
+        if numero == TENTATIVES or (demande is not None and demande > ATTENTE_MAX_SUR_PLACE_S):
+            # Rien ne sert d'attendre ici : la file de tâches reprogrammera la lecture.
+            raise ErreurExtraction(f"{probleme} (après {numero} appel{'s' if numero > 1 else ''})", passagere=True, attendre_avant=demande)
+        attendre(max(demande or 0.0, delai_avant_essai(numero + 1)))
+    raise AssertionError("inatteignable")
+
+
+def extraire(texte: str, client: httpx.Client | None = None, attendre: Callable[[float], None] = time.sleep) -> ResultatExtraction:
     """Envoie le texte de la facture au LLM configuré et renvoie la facture extraite."""
     nom = config.lire("LLM_FOURNISSEUR", "openai")
     if nom not in FOURNISSEURS:
@@ -171,15 +209,12 @@ def extraire(texte: str, client: httpx.Client | None = None) -> ResultatExtracti
 
     client = client or httpx.Client(timeout=60)
     debut = time.monotonic()
-    try:
-        reponse = client.post(url, json=charge, headers=entetes)
-    except httpx.HTTPError as erreur:
-        raise ErreurExtraction(f"Le LLM est injoignable : {type(erreur).__name__}") from erreur
+    reponse, appels = _appeler(client, url, charge, entetes, attendre)
     duree = time.monotonic() - debut
-    if reponse.status_code != 200:
-        raise ErreurExtraction(f"Le LLM a répondu {reponse.status_code}")
     try:
         texte_json = fournisseur.texte_reponse(reponse.json())
     except (KeyError, IndexError, TypeError, ValueError) as erreur:
         raise ErreurExtraction(f"Réponse du LLM inexploitable : {erreur!r}") from erreur
-    return ResultatExtraction(facture=valider(texte_json), duree_s=duree, fournisseur=nom, modele=modele, consigne=version_consigne(fournisseur))
+    return ResultatExtraction(
+        facture=valider(texte_json), duree_s=duree, fournisseur=nom, modele=modele, consigne=version_consigne(fournisseur), tentatives=appels
+    )

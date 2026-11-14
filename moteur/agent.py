@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from moteur import config
 from moteur.consignes import VersionConsigne
+from moteur.nouvel_essai import ATTENTE_MAX_SUR_PLACE_S, TENTATIVES, delai_avant_essai, delai_demande, est_passager
 from moteur.base import Etat, FactureEnBase
 from moteur.verification import verifier_fournisseur
 
@@ -194,15 +195,51 @@ def libelle_outil(session: Session, nom: str, arguments: dict) -> str:
     return nom
 
 
-def flux_openai(messages: list[dict], outils: list[dict]) -> Iterator[dict]:
+class ErreurAssistant(Exception):
+    """L'IA de l'assistant n'a pas pu répondre."""
+
+    def __init__(self, message: str, passagere: bool = False):
+        super().__init__(message)
+        self.passagere = passagere
+
+
+ADRESSE_OPENAI = "https://api.openai.com/v1/chat/completions"
+
+
+def _ouvrir_flux(client: httpx.Client, charge: dict, entetes: dict, attendre: Callable[[float], None]) -> httpx.Response:
+    """Ouvre la réponse en continu, en retentant les pannes passagères.
+
+    On ne retente qu'avant le premier mot : une réponse déjà en cours d'affichage n'est jamais rejouée.
+    """
+    for numero in range(1, TENTATIVES + 1):
+        try:
+            reponse = client.send(client.build_request("POST", ADRESSE_OPENAI, json=charge, headers=entetes), stream=True)
+        except httpx.TransportError as erreur:
+            probleme, demande = f"injoignable ({type(erreur).__name__})", None
+        else:
+            if reponse.status_code == 200:
+                return reponse
+            reponse.read()
+            reponse.close()
+            if not est_passager(reponse.status_code):
+                raise ErreurAssistant(f"le LLM a répondu {reponse.status_code}")
+            probleme, demande = f"le LLM a répondu {reponse.status_code}", delai_demande(reponse)
+        if numero == TENTATIVES or (demande is not None and demande > ATTENTE_MAX_SUR_PLACE_S):
+            raise ErreurAssistant(f"{probleme}, après {numero} appel{'s' if numero > 1 else ''}", passagere=True)
+        attendre(max(demande or 0.0, delai_avant_essai(numero + 1)))
+    raise AssertionError("inatteignable")
+
+
+def flux_openai(
+    messages: list[dict], outils: list[dict], client: httpx.Client | None = None, attendre: Callable[[float], None] = time.sleep
+) -> Iterator[dict]:
     """Appelle OpenAI en continu. Produit {"texte": ...} puis, s'il y en a, {"appels": [...]}."""
     charge = {"model": config.lire("AGENT_MODELE", MODELE_PAR_DEFAUT), "messages": messages, "tools": outils, "stream": True}
     entetes = {"Authorization": f"Bearer {config.lire('OPENAI_API_KEY')}"}
     appels: dict[int, dict] = {}
-    with httpx.stream("POST", "https://api.openai.com/v1/chat/completions", json=charge, headers=entetes, timeout=90) as reponse:
-        if reponse.status_code != 200:
-            reponse.read()
-            raise RuntimeError(f"Le LLM a répondu {reponse.status_code}")
+    client = client or httpx.Client(timeout=90)
+    reponse = _ouvrir_flux(client, charge, entetes, attendre)
+    try:
         for ligne in reponse.iter_lines():
             if not ligne.startswith("data: ") or ligne == "data: [DONE]":
                 continue
@@ -216,6 +253,8 @@ def flux_openai(messages: list[dict], outils: list[dict]) -> Iterator[dict]:
                 fonction = morceau.get("function") or {}
                 appel["nom"] += fonction.get("name") or ""
                 appel["arguments"] += fonction.get("arguments") or ""
+    finally:
+        reponse.close()
     if appels:
         yield {"appels": [appels[rang] for rang in sorted(appels)]}
 

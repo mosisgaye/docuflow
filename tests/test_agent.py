@@ -1,4 +1,6 @@
 import json
+
+import httpx
 import pathlib
 from datetime import date
 
@@ -184,3 +186,69 @@ def test_dans_une_conversation_l_agent_doit_lire_avant_de_proposer(session):
     assert [proposition["motif"] for proposition in propositions] == ["SIRET invalide d'après les contrôles"]
     premier_resultat = json.loads(llm.recus[1][-1]["content"])
     assert "Consulte d'abord la facture" in premier_resultat["erreur"]
+
+
+# ───────── Nouveaux essais de l'assistant ─────────
+
+
+def flux_sse(*morceaux: str) -> bytes:
+    lignes = [f"data: {json.dumps({'choices': [{'delta': {'content': morceau}}]})}" for morceau in morceaux]
+    return ("\n\n".join([*lignes, "data: [DONE]"]) + "\n\n").encode()
+
+
+def service(*reponses):
+    appels = []
+
+    def repondre(requete):
+        appels.append(requete)
+        reponse = reponses[len(appels) - 1]
+        if isinstance(reponse, Exception):
+            raise reponse
+        return reponse
+
+    return httpx.Client(transport=httpx.MockTransport(repondre)), appels
+
+
+@pytest.fixture
+def cle(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "cle-de-test")
+
+
+def test_l_assistant_retente_une_panne_passagere_avant_de_repondre(cle):
+    client, appels = service(httpx.Response(503), httpx.ConnectError("coupure"), httpx.Response(200, content=flux_sse("Bon", "jour")))
+    attentes = []
+
+    morceaux = list(agent.flux_openai([], [], client=client, attendre=attentes.append))
+
+    assert morceaux == [{"texte": "Bon"}, {"texte": "jour"}]
+    assert len(appels) == 3
+    assert len(attentes) == 2
+
+
+def test_l_assistant_ne_retente_pas_une_cle_refusee(cle):
+    client, appels = service(httpx.Response(401), httpx.Response(200, content=flux_sse("x")))
+
+    with pytest.raises(agent.ErreurAssistant) as erreur:
+        list(agent.flux_openai([], [], client=client, attendre=lambda secondes: None))
+
+    assert len(appels) == 1
+    assert erreur.value.passagere is False
+
+
+def test_l_assistant_abandonne_apres_trois_pannes(cle):
+    client, appels = service(httpx.Response(503), httpx.Response(503), httpx.Response(503))
+
+    with pytest.raises(agent.ErreurAssistant, match="après 3 appels") as erreur:
+        list(agent.flux_openai([], [], client=client, attendre=lambda secondes: None))
+
+    assert erreur.value.passagere is True
+
+
+def test_la_panne_de_l_assistant_s_affiche_proprement(session, cle):
+    client, _ = service(httpx.Response(503), httpx.Response(503), httpx.Response(503))
+    llm = lambda messages, outils: agent.flux_openai(messages, outils, client=client, attendre=lambda secondes: None)  # noqa: E731
+
+    evenements = list(converser(session, [{"role": "user", "content": "Bonjour"}], llm=llm))
+
+    assert [evenement["type"] for evenement in evenements] == ["erreur", "fin"]
+    assert "après 3 appels" in evenements[0]["message"]

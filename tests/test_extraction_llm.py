@@ -142,7 +142,7 @@ def test_une_erreur_du_llm_est_signalee(configuration, statut):
     configuration.setenv("LLM_FOURNISSEUR", "openai")
 
     with pytest.raises(ErreurExtraction, match=str(statut)):
-        extraire("texte", client=client_qui_repond(httpx.Response(statut)))
+        extraire("texte", client=client_qui_repond(httpx.Response(statut)), attendre=lambda secondes: None)
 
 
 @pytest.mark.parametrize("corps", [{}, {"choices": []}, {"choices": [{"message": {}}]}])
@@ -151,3 +151,124 @@ def test_une_reponse_sans_contenu_est_refusee(configuration, corps):
 
     with pytest.raises(ErreurExtraction):
         extraire("texte", client=client_qui_repond(httpx.Response(200, json=corps)))
+
+
+# ───────── Nouveaux essais ─────────
+
+
+class ServiceSimule:
+    """Répond dans l'ordre les réponses prévues ; une exception simule une coupure réseau."""
+
+    def __init__(self, *reponses):
+        self.reponses = list(reponses)
+        self.appels = 0
+
+    def client(self) -> httpx.Client:
+        def repondre(requete: httpx.Request) -> httpx.Response:
+            self.appels += 1
+            reponse = self.reponses.pop(0)
+            if isinstance(reponse, Exception):
+                raise reponse
+            return reponse
+
+        return httpx.Client(transport=httpx.MockTransport(repondre))
+
+
+def bonne_reponse() -> httpx.Response:
+    return httpx.Response(200, json=corps_openai(FACTURE_JSON))
+
+
+@pytest.fixture
+def openai(configuration):
+    configuration.setenv("LLM_FOURNISSEUR", "openai")
+
+
+@pytest.fixture
+def attentes():
+    """Remplace l'attente réelle : on note les durées au lieu de dormir."""
+    return []
+
+
+def test_une_panne_passagere_est_retentee_jusqu_au_succes(openai, attentes):
+    service = ServiceSimule(httpx.Response(503), httpx.Response(503), bonne_reponse())
+
+    resultat = extraire("texte", client=service.client(), attendre=attentes.append)
+
+    assert resultat.facture.numero_facture == "F26-1193"
+    assert resultat.tentatives == 3
+    assert service.appels == 3
+    assert len(attentes) == 2
+    assert 0.8 <= attentes[0] <= 1.2 and 1.6 <= attentes[1] <= 2.4  # attente croissante
+
+
+def test_une_coupure_reseau_est_retentee(openai, attentes):
+    service = ServiceSimule(httpx.ConnectError("coupure"), bonne_reponse())
+
+    resultat = extraire("texte", client=service.client(), attendre=attentes.append)
+
+    assert resultat.tentatives == 2
+
+
+def test_le_delai_demande_par_le_service_est_respecte(openai, attentes):
+    service = ServiceSimule(httpx.Response(429, headers={"Retry-After": "7"}), bonne_reponse())
+
+    extraire("texte", client=service.client(), attendre=attentes.append)
+
+    assert attentes == [7.0]
+
+
+def test_un_delai_trop_long_n_est_pas_attendu_sur_place(openai, attentes):
+    service = ServiceSimule(httpx.Response(429, headers={"Retry-After": "3600"}), bonne_reponse())
+
+    with pytest.raises(ErreurExtraction) as erreur:
+        extraire("texte", client=service.client(), attendre=attentes.append)
+
+    assert service.appels == 1
+    assert attentes == []
+    assert erreur.value.passagere is True
+    assert erreur.value.attendre_avant == 3600.0
+
+
+def test_apres_trois_echecs_l_erreur_est_passagere(openai, attentes):
+    service = ServiceSimule(httpx.Response(503), httpx.Response(502), httpx.Response(503))
+
+    with pytest.raises(ErreurExtraction, match="après 3 appels") as erreur:
+        extraire("texte", client=service.client(), attendre=attentes.append)
+
+    assert erreur.value.passagere is True
+    assert service.appels == 3
+
+
+@pytest.mark.parametrize("statut", [400, 401, 403, 404, 422])
+def test_une_erreur_definitive_n_est_jamais_retentee(openai, attentes, statut):
+    service = ServiceSimule(httpx.Response(statut), bonne_reponse())
+
+    with pytest.raises(ErreurExtraction) as erreur:
+        extraire("texte", client=service.client(), attendre=attentes.append)
+
+    assert service.appels == 1
+    assert attentes == []
+    assert erreur.value.passagere is False
+
+
+def test_une_reponse_hors_format_n_est_pas_retentee(openai, attentes):
+    service = ServiceSimule(httpx.Response(200, json={"choices": [{"message": {"content": "pas du JSON"}}]}), bonne_reponse())
+
+    with pytest.raises(ErreurExtraction) as erreur:
+        extraire("texte", client=service.client(), attendre=attentes.append)
+
+    assert service.appels == 1
+    assert erreur.value.passagere is False
+
+
+def test_un_delai_donne_sous_forme_de_date_est_compris():
+    from datetime import datetime, timezone
+
+    from moteur.nouvel_essai import delai_demande
+
+    maintenant = datetime(2026, 11, 14, 10, 0, 0, tzinfo=timezone.utc)
+    reponse = httpx.Response(503, headers={"Retry-After": "Sat, 14 Nov 2026 10:00:30 GMT"})
+
+    assert delai_demande(reponse, maintenant) == 30.0
+    assert delai_demande(httpx.Response(503, headers={"Retry-After": "n'importe quoi"})) is None
+    assert delai_demande(httpx.Response(503)) is None
