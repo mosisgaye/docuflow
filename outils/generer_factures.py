@@ -77,6 +77,19 @@ MODELES = [
         "anomalies": [],
         "facturx": True,
     },
+    {
+        # Fournisseur RÉEL, utilisé avec l'accord de son dirigeant, pour montrer une vérification
+        # réussie auprès des registres de l'État. Facture de démonstration, marquée « Spécimen ».
+        # Entrepreneur en franchise de TVA : pas de TVA, mention de l'article 293 B du CGI.
+        "fichier": "facture-md-plomberie-2026-118.pdf", "style": "classique", "numero": "2026-118",
+        "date": "2026-11-13", "echeance": "2026-11-28",
+        "fournisseur": ("DIOP Mouhamadou (MD Plomberie)", "5 rue Maurice Berteaux, 75020 Paris", "90856344800012", None),
+        "client": ("Cabinet Morel Expertise", "27 quai Saint-Antoine, 69002 Lyon"),
+        "lignes": [("Remplacement chauffe-eau électrique 200 L", "1", "890.00"), ("Main-d'œuvre (heures)", "3", "55.00"), ("Déplacement", "1", "35.00")],
+        "anomalies": [],
+        "franchise_tva": True,
+        "specimen": True,
+    },
 ]
 
 
@@ -105,7 +118,8 @@ def calculer(modele: dict) -> dict:
         montant = arrondi(Decimal(quantite) * Decimal(prix))
         lignes.append({"designation": designation, "quantite": quantite, "prix_unitaire_ht": prix, "montant_ht": str(montant)})
     total_ht = sum((Decimal(ligne["montant_ht"]) for ligne in lignes), Decimal("0"))
-    total_tva = arrondi(total_ht * TAUX / 100)
+    taux = Decimal("0") if modele.get("franchise_tva") else TAUX
+    total_tva = arrondi(total_ht * taux / 100)
     nom, _, siret, tva = modele["fournisseur"]
     return {
         "numero_facture": modele["numero"],
@@ -117,7 +131,7 @@ def calculer(modele: dict) -> dict:
         "client_nom": modele["client"][0],
         "lignes": lignes,
         "total_ht": str(total_ht),
-        "taux_tva": str(TAUX),
+        "taux_tva": str(taux),
         "total_tva": str(total_tva),
         "total_ttc": modele.get("ttc_imprime", str(total_ht + total_tva)),
     }
@@ -126,6 +140,22 @@ def calculer(modele: dict) -> dict:
 def html(modele: dict, donnees: dict) -> str:
     _, adresse, siret, tva = modele["fournisseur"]
     siret_affiche = f"{siret[:3]} {siret[3:6]} {siret[6:9]} {siret[9:]}"
+    ligne_tva = f"<br>TVA {tva[:4]} {tva[4:]}" if tva else ""
+    if modele.get("franchise_tva"):
+        totaux = (f"<tr><td>Total HT</td><td class=r>{euros(Decimal(donnees['total_ht']))}</td></tr>"
+                  "<tr><td colspan=2><i>TVA non applicable, art. 293 B du CGI</i></td></tr>"
+                  f"<tr><td>Net à payer</td><td class=r>{euros(Decimal(donnees['total_ttc']))}</td></tr>")
+    else:
+        totaux = (f"<tr><td>Total HT</td><td class=r>{euros(Decimal(donnees['total_ht']))}</td></tr>"
+                  f"<tr><td>TVA {TAUX} %</td><td class=r>{euros(Decimal(donnees['total_tva']))}</td></tr>"
+                  f"<tr><td>Total TTC</td><td class=r>{euros(Decimal(donnees['total_ttc']))}</td></tr>")
+    if modele.get("specimen"):
+        pied = "SPÉCIMEN : facture de démonstration, aucune prestation réelle. Fournisseur réel cité avec son accord."
+        filigrane = ("<div style='position:fixed;top:38%;left:0;right:0;text-align:center;transform:rotate(-24deg);"
+                     "font:700 110px Helvetica,Arial,sans-serif;color:rgba(179,38,30,.13);letter-spacing:8px'>SPÉCIMEN</div>")
+    else:
+        pied = "Paiement par virement à 30 jours. Document d'exemple, données fictives."
+        filigrane = ""
     rangees = "".join(
         f"<tr><td>{ligne['designation']}</td><td class=r>{ligne['quantite'].replace('.', ',')}</td>"
         f"<td class=r>{euros(Decimal(ligne['prix_unitaire_ht']))}</td><td class=r>{euros(Decimal(ligne['montant_ht']))}</td></tr>"
@@ -137,11 +167,12 @@ table{{width:100%;border-collapse:collapse;margin-top:24px}} td,th{{padding:7px 
 .foot{{margin-top:40px;font-size:11px;color:#666}}</style>
 <h1>FACTURE</h1>
 <p><b>Facture n° {donnees['numero_facture']}</b><br>Date de facture : {date_fr(donnees['date_facture'])}<br>Date d'échéance : {date_fr(donnees['date_echeance'])}</p>
-<div class=cols><div><b>{donnees['fournisseur_nom']}</b><br>{adresse}<br>SIRET {siret_affiche}<br>TVA {tva[:4]} {tva[4:]}</div>
+{filigrane}
+<div class=cols><div><b>{donnees['fournisseur_nom']}</b><br>{adresse}<br>SIRET {siret_affiche}{ligne_tva}</div>
 <div><i>Facturé à</i><br><b>{modele['client'][0]}</b><br>{modele['client'][1]}</div></div>
 <table><tr><th>Désignation</th><th class=r>Quantité</th><th class=r>Prix unitaire HT</th><th class=r>Montant HT</th></tr>{rangees}</table>
-<table class=tot><tr><td>Total HT</td><td class=r>{euros(Decimal(donnees['total_ht']))}</td></tr><tr><td>TVA {TAUX} %</td><td class=r>{euros(Decimal(donnees['total_tva']))}</td></tr><tr><td>Total TTC</td><td class=r>{euros(Decimal(donnees['total_ttc']))}</td></tr></table>
-<p class=foot>Paiement par virement à 30 jours. Document d'exemple, données fictives.</p></html>"""
+<table class=tot>{totaux}</table>
+<p class=foot>{pied}</p></html>"""
 
 
 def cii_xml(modele: dict, donnees: dict) -> bytes:

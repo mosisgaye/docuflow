@@ -200,5 +200,41 @@
       "total_ttc": "427.20"
     },
     "anomalies": []
+  },
+  "facture-md-plomberie-2026-118.pdf": {
+    "facture": {
+      "numero_facture": "2026-118",
+      "date_facture": "2026-11-13",
+      "date_echeance": "2026-11-28",
+      "fournisseur_nom": "DIOP Mouhamadou (MD Plomberie)",
+      "fournisseur_siret": "90856344800012",
+      "fournisseur_tva": null,
+      "client_nom": "Cabinet Morel Expertise",
+      "lignes": [
+        {
+          "designation": "Remplacement chauffe-eau électrique 200 L",
+          "quantite": "1",
+          "prix_unitaire_ht": "890.00",
+          "montant_ht": "890.00"
+        },
+        {
+          "designation": "Main-d'œuvre (heures)",
+          "quantite": "3",
+          "prix_unitaire_ht": "55.00",
+          "montant_ht": "165.00"
+        },
+        {
+          "designation": "Déplacement",
+          "quantite": "1",
+          "prix_unitaire_ht": "35.00",
+          "montant_ht": "35.00"
+        }
+      ],
+      "total_ht": "1090.00",
+      "taux_tva": "0",
+      "total_tva": "0.00",
+      "total_ttc": "1090.00"
+    },
+    "anomalies": []
   }
 }

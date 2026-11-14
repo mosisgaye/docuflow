@@ -26,6 +26,7 @@ Règles :
 - Les montants sont des nombres avec un point décimal, sans symbole de monnaie ni espace.
 - fournisseur_siret : 14 chiffres, sans espace. fournisseur_tva : sans espace.
 - taux_tva : en pourcentage (20 pour 20 %).
+- Si la facture indique que la TVA n'est pas applicable (franchise en base, article 293 B du CGI), mets taux_tva à 0 et total_tva à 0, et total_ttc égal au total HT.
 - Le fournisseur est l'entreprise qui émet la facture, le client celle qui la reçoit.
 
 Texte de la facture :
