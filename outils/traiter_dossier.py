@@ -10,7 +10,7 @@ import time
 
 from sqlalchemy.orm import Session
 
-from moteur.base import creer_moteur, creer_tables
+from moteur.base import creer_moteur, verifier_schema
 from moteur.workflow import traiter
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent
@@ -19,7 +19,7 @@ RACINE = pathlib.Path(__file__).resolve().parent.parent
 def main() -> None:
     dossier = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else RACINE / "factures"
     moteur = creer_moteur()
-    creer_tables(moteur)
+    verifier_schema(moteur)
     for chemin in sorted(dossier.glob("*.pdf")):
         with Session(moteur) as session:
             debut = time.monotonic()

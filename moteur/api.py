@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from moteur import config
 from moteur.agent import converser, flux_openai
-from moteur.base import Etat, Evenement, FactureEnBase, creer_moteur, creer_tables
+from moteur.base import Etat, Evenement, FactureEnBase, creer_moteur, verifier_schema
 from moteur.extraction_llm import ResultatExtraction, extraire
 from moteur.export import ErreurEnvoi, ErreurExport
 from moteur.workflow import FactureIntrouvable, TransitionInterdite, exporter, rejeter, traiter, valider
@@ -127,7 +127,7 @@ def creer_application(
     """Construit l'application. Les paramètres servent aux tests ; en service, tout vient de .env."""
     if fabrique_session is None:
         moteur_base = creer_moteur()
-        creer_tables(moteur_base)
+        verifier_schema(moteur_base)
         fabrique_session = sessionmaker(moteur_base)
     dossier = dossier_fichiers or pathlib.Path(config.lire("FICHIERS_DOSSIER", str(config.RACINE / "donnees" / "fichiers")))
     dossier.mkdir(parents=True, exist_ok=True)

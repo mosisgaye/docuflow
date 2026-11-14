@@ -72,5 +72,34 @@ def creer_moteur(url: str | None = None) -> Engine:
     return create_engine(url or config.lire("DATABASE_URL"), pool_pre_ping=True)
 
 
-def creer_tables(moteur: Engine) -> None:
-    Base.metadata.create_all(moteur)
+class SchemaPasAJour(RuntimeError):
+    """La base n'est pas à la dernière migration : le moteur refuse de démarrer."""
+
+
+def configuration_alembic(url: str | None = None):
+    """Configuration Alembic du projet, éventuellement pointée sur une autre base."""
+    from alembic.config import Config
+
+    reglages = Config(str(config.RACINE / "alembic.ini"))
+    if url:
+        reglages.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
+    return reglages
+
+
+def verifier_schema(moteur: Engine) -> None:
+    """Vérifie que la base est à la dernière migration.
+
+    On ne migre jamais au démarrage : appliquer une migration est une étape
+    de déploiement explicite (uv run alembic upgrade head), pas un effet de bord.
+    """
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+
+    attendue = ScriptDirectory.from_config(configuration_alembic()).get_current_head()
+    with moteur.connect() as connexion:
+        actuelle = MigrationContext.configure(connexion).get_current_revision()
+    if actuelle != attendue:
+        raise SchemaPasAJour(
+            f"La base est à la migration {actuelle or 'aucune'}, le moteur attend {attendue}. "
+            "Lancez : uv run alembic upgrade head"
+        )

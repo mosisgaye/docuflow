@@ -1,30 +1,47 @@
 """Préparation commune des tests.
 
 Les tests du workflow et de l'API tournent sur une vraie base PostgreSQL, dans
-une base séparée (« factures_test »). Chaque test s'exécute dans une transaction
-annulée à la fin : aucun test ne laisse de trace pour le suivant.
+une base séparée (« factures_test »). Elle est construite par les migrations,
+exactement comme une base de production : les migrations sont testées à chaque
+lancement. Chaque test s'exécute dans une transaction annulée à la fin : aucun
+test ne laisse de trace pour le suivant.
 """
 
 import pytest
 from sqlalchemy import create_engine, make_url, text
 from sqlalchemy.orm import Session
 
+from alembic import command
+
 from moteur import config
-from moteur.base import Base
+from moteur.base import configuration_alembic
 
 BASE_DE_TEST = "factures_test"
 
 
+def base_vierge(nom: str):
+    """Crée la base si besoin, la vide entièrement, et renvoie son adresse."""
+    url = make_url(config.lire("DATABASE_URL"))
+    serveur = create_engine(url, isolation_level="AUTOCOMMIT")
+    with serveur.connect() as connexion:
+        existe = connexion.scalar(text("select 1 from pg_database where datname = :nom"), {"nom": nom})
+        if not existe:
+            connexion.execute(text(f'create database "{nom}"'))
+    serveur.dispose()
+    cible = url.set(database=nom)
+    moteur = create_engine(cible, isolation_level="AUTOCOMMIT")
+    with moteur.connect() as connexion:
+        connexion.execute(text("drop schema public cascade"))
+        connexion.execute(text("create schema public"))
+    moteur.dispose()
+    return cible
+
+
 @pytest.fixture(scope="session")
 def moteur_base():
-    url = make_url(config.lire("DATABASE_URL"))
-    with create_engine(url, isolation_level="AUTOCOMMIT").connect() as connexion:
-        existe = connexion.scalar(text("select 1 from pg_database where datname = :nom"), {"nom": BASE_DE_TEST})
-        if not existe:
-            connexion.execute(text(f'create database "{BASE_DE_TEST}"'))
-    moteur = create_engine(url.set(database=BASE_DE_TEST))
-    Base.metadata.drop_all(moteur)
-    Base.metadata.create_all(moteur)
+    url = base_vierge(BASE_DE_TEST)
+    command.upgrade(configuration_alembic(url.render_as_string(hide_password=False)), "head")
+    moteur = create_engine(url)
     yield moteur
     moteur.dispose()
 
