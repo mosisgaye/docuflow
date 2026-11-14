@@ -252,3 +252,16 @@ def test_la_panne_de_l_assistant_s_affiche_proprement(session, cle):
 
     assert [evenement["type"] for evenement in evenements] == ["erreur", "fin"]
     assert "après 3 appels" in evenements[0]["message"]
+
+
+def test_la_liste_donne_le_texte_exact_des_anomalies(session):
+    """Sans ce texte, l'assistant expliquait les anomalies d'après le nom des fichiers."""
+    recevoir(session, "facture-erreur-total.pdf")
+
+    resultat, _ = executer_outil(session, "lister_factures", {"etat": "en_anomalie"})
+
+    assert resultat["factures"][0]["anomalies"] == ["HT + TVA font 1500,00 €, le total TTC indique 1600,00 €."]
+
+
+def test_la_consigne_interdit_de_deduire_du_nom_de_fichier():
+    assert "nom de son fichier" in agent.CONSIGNE
