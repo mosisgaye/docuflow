@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import httpx
 
 from moteur import config
+from moteur.consignes import VersionConsigne
 from moteur.modeles import Facture
 
 CONSIGNE = """Tu extrais les données d'une facture française à partir de son texte.
@@ -58,6 +59,7 @@ class ResultatExtraction:
     duree_s: float
     fournisseur: str
     modele: str
+    consigne: VersionConsigne | None = None  # la consigne exacte qui a produit ces données
 
 
 def valider(texte_json: str) -> Facture:
@@ -153,6 +155,11 @@ class OpenAI:
 FOURNISSEURS = {fournisseur.nom: fournisseur for fournisseur in (Gemini, OpenAI)}
 
 
+def version_consigne(fournisseur) -> VersionConsigne:
+    """La consigne d'extraction telle qu'envoyée à ce fournisseur : texte et format de réponse."""
+    return VersionConsigne(usage="extraction", texte=CONSIGNE, schema=fournisseur.schema())
+
+
 def extraire(texte: str, client: httpx.Client | None = None) -> ResultatExtraction:
     """Envoie le texte de la facture au LLM configuré et renvoie la facture extraite."""
     nom = config.lire("LLM_FOURNISSEUR", "openai")
@@ -175,4 +182,4 @@ def extraire(texte: str, client: httpx.Client | None = None) -> ResultatExtracti
         texte_json = fournisseur.texte_reponse(reponse.json())
     except (KeyError, IndexError, TypeError, ValueError) as erreur:
         raise ErreurExtraction(f"Réponse du LLM inexploitable : {erreur!r}") from erreur
-    return ResultatExtraction(facture=valider(texte_json), duree_s=duree, fournisseur=nom, modele=modele)
+    return ResultatExtraction(facture=valider(texte_json), duree_s=duree, fournisseur=nom, modele=modele, consigne=version_consigne(fournisseur))

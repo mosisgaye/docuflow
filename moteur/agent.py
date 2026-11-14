@@ -23,6 +23,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from moteur import config
+from moteur.consignes import VersionConsigne
 from moteur.base import Etat, FactureEnBase
 from moteur.verification import verifier_fournisseur
 
@@ -98,6 +99,11 @@ OUTILS = [
 ]
 
 
+def version_consigne() -> VersionConsigne:
+    """La consigne de l'assistant et la description de ses outils, qui font partie de ce qu'on lui dit."""
+    return VersionConsigne(usage="assistant", texte=CONSIGNE, schema=OUTILS)
+
+
 def _resume(facture: FactureEnBase) -> dict:
     donnees = facture.donnees or {}
     return {
@@ -161,6 +167,7 @@ def executer_outil(session: Session, nom: str, arguments: dict, consultees: set[
             return {"erreur": "Consulte d'abord la facture avec consulter_facture, puis appuie ta proposition sur ce qu'elle contient."}, []
         proposition = {
             "type": "proposition",
+            "consigne": version_consigne().empreinte,
             "facture_id": str(facture.id),
             "numero": facture.numero_facture,
             "decision": decision,

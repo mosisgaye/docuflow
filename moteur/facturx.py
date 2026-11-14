@@ -20,6 +20,10 @@ from pypdf.errors import PyPdfError
 
 from moteur.modeles import Facture, Ligne
 
+# Version du lecteur, notée au journal à chaque lecture. À changer si la correspondance
+# entre le XML et les champs de la facture change.
+LECTEUR = "facturx-cii-1"
+
 # Noms usuels du XML joint : Factur-X (France), ZUGFeRD (Allemagne), XRechnung.
 NOMS_XML = {"factur-x.xml", "zugferd-invoice.xml", "xrechnung.xml"}
 

@@ -66,7 +66,14 @@ def test_une_proposition_ne_change_pas_l_etat_de_la_facture(session):
     evenements = list(converser(session, [{"role": "user", "content": "On peut valider ?"}], llm=llm))
 
     proposition = next(evenement for evenement in evenements if evenement["type"] == "proposition")
-    assert proposition == {"type": "proposition", "facture_id": str(facture.id), "numero": "F26-1193", "decision": "valider", "motif": "Tout est conforme."}
+    assert proposition == {
+        "type": "proposition",
+        "consigne": agent.version_consigne().empreinte,
+        "facture_id": str(facture.id),
+        "numero": "F26-1193",
+        "decision": "valider",
+        "motif": "Tout est conforme.",
+    }
     assert facture.etat == Etat.A_VALIDER
 
 

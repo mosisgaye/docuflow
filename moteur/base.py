@@ -1,15 +1,18 @@
 """Base de données : les factures et le journal de ce qui leur arrive.
 
-Deux tables :
+Les tables :
 - factures   : une ligne par document reçu, avec son état et ses données ;
-- evenements : la piste d'audit. Chaque étape y ajoute une ligne, jamais modifiée ensuite.
+- evenements : la piste d'audit. Chaque étape y ajoute une ligne, jamais modifiée ensuite ;
+- consignes  : le texte exact de chaque version des consignes données à l'IA.
+
+Toute modification de ces modèles demande une migration (dossier migrations/).
 """
 
 import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, create_engine, func
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, create_engine, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -66,6 +69,16 @@ class Evenement(Base):
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     facture: Mapped[FactureEnBase] = relationship(back_populates="evenements")
+
+
+class Consigne(Base):
+    __tablename__ = "consignes"
+
+    id: Mapped[str] = mapped_column(String(12), primary_key=True)  # empreinte du contenu
+    usage: Mapped[str] = mapped_column(String(20))
+    texte: Mapped[str] = mapped_column(Text)
+    schema: Mapped[dict | list] = mapped_column(JSONB)  # format de réponse imposé à l'IA
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 def creer_moteur(url: str | None = None) -> Engine:

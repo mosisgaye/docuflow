@@ -30,6 +30,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from moteur import config
 from moteur.agent import converser, flux_openai
+from moteur.agent import version_consigne as consigne_assistant
+from moteur.consignes import enregistrer as enregistrer_consigne
 from moteur.base import Etat, Evenement, FactureEnBase, creer_moteur, verifier_schema
 from moteur.extraction_llm import ResultatExtraction, extraire
 from moteur.export import ErreurEnvoi, ErreurExport
@@ -132,6 +134,12 @@ def creer_application(
     dossier = dossier_fichiers or pathlib.Path(config.lire("FICHIERS_DOSSIER", str(config.RACINE / "donnees" / "fichiers")))
     dossier.mkdir(parents=True, exist_ok=True)
     exports = dossier_exports or pathlib.Path(config.lire("EXPORTS_DOSSIER", str(config.RACINE / "donnees" / "exports")))
+
+    # L'assistant ne garde pas ses conversations : on enregistre sa consigne une fois, au démarrage,
+    # pour que l'empreinte jointe à ses propositions renvoie toujours à un texte connu.
+    with fabrique_session() as session:
+        enregistrer_consigne(session, consigne_assistant())
+        session.commit()
 
     application = FastAPI(title="Moteur de factures", version="0.1.0")
 

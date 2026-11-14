@@ -24,6 +24,8 @@ from moteur.base import Etat, Evenement, FactureEnBase
 from moteur.controles import Anomalie, Gravite, controler, est_validable
 from moteur.export import ErreurExport, ecriture, en_csv, en_json, envoyer_au_logiciel, nom_fichier
 from moteur.extraction_llm import ErreurExtraction, ResultatExtraction, extraire
+from moteur.consignes import enregistrer as enregistrer_consigne
+from moteur.facturx import LECTEUR as LECTEUR_FACTURX
 from moteur.facturx import FacturXInvalide, lire_facturx
 from moteur.lecture_pdf import lire_pdf
 from moteur.modeles import Facture
@@ -122,7 +124,7 @@ def _extraire_et_controler(
         # XML présent mais mauvais : on le signale, et on se rabat sur la lecture par l'IA.
         _journaliser(session, facture, "FACTURX_ILLISIBLE", MOTEUR, {"raison": str(erreur)})
     if donnees is not None:
-        detail = {"source": "factur-x", "duree_s": round(time.monotonic() - debut, 4)}
+        detail = {"source": "factur-x", "lecteur": LECTEUR_FACTURX, "duree_s": round(time.monotonic() - debut, 4)}
 
     # 2. Sinon, PDF ordinaire : on lit son texte et on le confie à l'IA.
     if donnees is None:
@@ -137,6 +139,8 @@ def _extraire_et_controler(
             return
         donnees = resultat.facture
         detail = {"source": "ia", "fournisseur_llm": resultat.fournisseur, "modele": resultat.modele, "duree_s": round(resultat.duree_s, 2)}
+        if resultat.consigne is not None:
+            detail["consigne"] = enregistrer_consigne(session, resultat.consigne)
 
     facture.donnees = donnees.model_dump(mode="json")
     facture.fournisseur_siret = donnees.fournisseur_siret
