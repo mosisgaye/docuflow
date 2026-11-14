@@ -15,7 +15,8 @@ from tests.conftest import base_vierge
 def test_les_migrations_correspondent_aux_modeles(moteur_base):
     """Échoue si un modèle a été modifié sans écrire la migration qui va avec."""
     with moteur_base.connect() as connexion:
-        ecarts = compare_metadata(MigrationContext.configure(connexion, opts={"compare_type": True}), Base.metadata)
+        contexte = MigrationContext.configure(connexion, opts={"compare_type": True, "compare_server_default": True})
+        ecarts = compare_metadata(contexte, Base.metadata)
 
     assert ecarts == []
 

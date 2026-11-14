@@ -1,4 +1,5 @@
 import io
+import time
 import json
 import pathlib
 from datetime import date
@@ -184,3 +185,20 @@ def test_une_facture_inconnue_est_signalee(session):
 
     with pytest.raises(FactureIntrouvable):
         valider(session, uuid.uuid4(), "Awa")
+
+
+def test_chaque_evenement_porte_son_heure_reelle(session):
+    """Une lecture lente doit se voir au journal : l'extraction est datée après la réception."""
+    lent = FauxExtracteur("facture-F26-1193.pdf")
+    original = lent.__call__
+
+    def lire_lentement(texte):
+        time.sleep(0.3)
+        return original(texte)
+
+    facture = traiter(session, pdf("facture-F26-1193.pdf"), "f.pdf", lire_lentement, AUJOURD_HUI).facture
+
+    reception, extraction = facture.evenements[0], facture.evenements[1]
+    session.refresh(reception)
+    session.refresh(extraction)
+    assert (extraction.cree_le - reception.cree_le).total_seconds() >= 0.3

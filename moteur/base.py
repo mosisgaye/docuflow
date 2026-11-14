@@ -73,7 +73,9 @@ class Evenement(Base):
     etat: Mapped[str] = mapped_column(String(20))  # état de la facture après l'événement
     auteur: Mapped[str] = mapped_column(String(100))  # "moteur" ou le nom de la personne
     detail: Mapped[dict] = mapped_column(JSONB, default=dict)
-    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # clock_timestamp() et non now() : now() donne l'heure de DÉBUT de la transaction.
+    # Une lecture de 11 secondes datait alors tous ses événements de la même seconde.
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.clock_timestamp())
 
     facture: Mapped[FactureEnBase] = relationship(back_populates="evenements")
 
