@@ -1,6 +1,6 @@
 """API web du moteur : ce que l'interface appelle.
 
-    POST /factures                    déposer un PDF
+    POST /factures                    déposer un PDF : enregistré tout de suite (202), lu par le travailleur
     GET  /factures                    lister (filtre possible sur l'état)
     GET  /factures/{id}               détail, anomalies et journal
     GET  /factures/{id}/fichier       le PDF d'origine
@@ -10,9 +10,10 @@
     GET  /factures/{id}/export        le fichier CSV de l'écriture comptable
     POST /agent                       parler à l'assistant (réponse envoyée au fil de l'eau)
     GET  /statistiques                les chiffres du tableau de bord
-    GET  /sante                       l'API et la base répondent-elles ?
+    GET  /sante                       l'API et la base répondent-elles ? où en est la file de tâches ?
 
 Lancement : uv run uvicorn moteur.api:creer_application --factory --port 8010
+La lecture des factures est faite par un processus à part : uv run python -m moteur.travailleur
 """
 
 import json
@@ -25,17 +26,18 @@ from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile,
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from pypdf.errors import PyPdfError
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from moteur import config
 from moteur.agent import converser, flux_openai
 from moteur.agent import version_consigne as consigne_assistant
 from moteur.consignes import enregistrer as enregistrer_consigne
-from moteur.base import Etat, Evenement, FactureEnBase, creer_moteur, verifier_schema
+from moteur.base import Etat, EtatTache, Evenement, FactureEnBase, Tache, creer_moteur, verifier_schema
 from moteur.extraction_llm import ResultatExtraction, extraire
 from moteur.export import ErreurEnvoi, ErreurExport
-from moteur.workflow import FactureIntrouvable, TransitionInterdite, exporter, rejeter, traiter, valider
+from moteur.lecture_pdf import lire_pdf
+from moteur.workflow import FactureIntrouvable, TransitionInterdite, exporter, recevoir, rejeter, traiter, valider
 
 TAILLE_MAX_OCTETS = 10 * 1024 * 1024
 
@@ -125,13 +127,18 @@ def creer_application(
     llm_agent: Callable = flux_openai,
     dossier_exports: pathlib.Path | None = None,
     client_export=None,
+    traiter_tout_de_suite: bool = False,
 ) -> FastAPI:
-    """Construit l'application. Les paramètres servent aux tests ; en service, tout vient de .env."""
+    """Construit l'application. Les paramètres servent aux tests ; en service, tout vient de .env.
+
+    traiter_tout_de_suite : lire la facture pendant la requête au lieu de la confier au travailleur.
+    Utile aux tests et aux démonstrations sans travailleur ; jamais en service.
+    """
     if fabrique_session is None:
         moteur_base = creer_moteur()
         verifier_schema(moteur_base)
         fabrique_session = sessionmaker(moteur_base)
-    dossier = dossier_fichiers or pathlib.Path(config.lire("FICHIERS_DOSSIER", str(config.RACINE / "donnees" / "fichiers")))
+    dossier = dossier_fichiers or config.dossier_fichiers()
     dossier.mkdir(parents=True, exist_ok=True)
     exports = dossier_exports or pathlib.Path(config.lire("EXPORTS_DOSSIER", str(config.RACINE / "donnees" / "exports")))
 
@@ -165,10 +172,22 @@ def creer_application(
 
     @application.get("/sante")
     def sante(session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        """État du service et de la file : c'est le point de supervision."""
         session.execute(text("select 1"))
-        return {"etat": "ok"}
+        compte = dict(session.execute(select(Tache.etat, func.count()).group_by(Tache.etat)).all())
+        plus_ancienne = session.scalar(
+            select(func.extract("epoch", func.now() - func.min(Tache.cree_le))).where(Tache.etat == EtatTache.EN_ATTENTE.value)
+        )
+        return {
+            "etat": "ok",
+            "file": {
+                "en_attente": compte.get(EtatTache.EN_ATTENTE.value, 0),
+                "abandonnees": compte.get(EtatTache.ABANDONNEE.value, 0),
+                "plus_ancienne_attente_s": round(float(plus_ancienne)) if plus_ancienne is not None else None,
+            },
+        }
 
-    @application.post("/factures", response_model=FactureDeposee, status_code=status.HTTP_201_CREATED)
+    @application.post("/factures", response_model=FactureDeposee, status_code=status.HTTP_202_ACCEPTED)
     def deposer(reponse: Response, fichier: UploadFile = File(...), session: Session = Depends(session_de_requete, scope="function")) -> dict:
         contenu = fichier.file.read(TAILLE_MAX_OCTETS + 1)
         if len(contenu) > TAILLE_MAX_OCTETS:
@@ -176,12 +195,21 @@ def creer_application(
         if not contenu.startswith(b"%PDF-"):
             raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Seuls les fichiers PDF sont acceptés.")
         try:
-            resultat = traiter(session, contenu, pathlib.Path(fichier.filename or "facture.pdf").name, extracteur)
+            empreinte = lire_pdf(contenu).empreinte  # vérifie aussi que le PDF s'ouvre
         except PyPdfError as erreur:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ce fichier PDF est illisible.") from erreur
-        chemin = dossier / f"{resultat.facture.empreinte}.pdf"
+        # Le fichier est écrit AVANT la tâche : le travailleur ne peut jamais chercher un fichier absent.
+        chemin = dossier / f"{empreinte}.pdf"
         if not chemin.exists():
-            chemin.write_bytes(contenu)
+            provisoire = chemin.with_suffix(".tmp")
+            provisoire.write_bytes(contenu)
+            provisoire.replace(chemin)
+        nom = pathlib.Path(fichier.filename or "facture.pdf").name
+        if traiter_tout_de_suite:
+            resultat = traiter(session, contenu, nom, extracteur)
+            reponse.status_code = status.HTTP_201_CREATED
+        else:
+            resultat = recevoir(session, contenu, nom)
         if resultat.deja_vue:
             reponse.status_code = status.HTTP_200_OK
         return {**_detail(resultat.facture), "deja_vue": resultat.deja_vue}

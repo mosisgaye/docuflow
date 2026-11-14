@@ -24,3 +24,8 @@ def lire(nom: str, defaut: str | None = None) -> str:
     if valeur is None:
         raise RuntimeError(f"Configuration manquante : {nom} (à définir dans .env)")
     return valeur
+
+
+def dossier_fichiers() -> pathlib.Path:
+    """Où sont gardés les PDF reçus : l'API les y écrit, le travailleur les y relit."""
+    return pathlib.Path(lire("FICHIERS_DOSSIER", str(RACINE / "donnees" / "fichiers")))

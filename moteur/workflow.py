@@ -7,8 +7,14 @@
 
 Chaque changement d'état passe par _passer(), qui refuse les transitions
 interdites et écrit une ligne dans le journal.
+
+Deux temps :
+- recevoir()          enregistre la facture et sa tâche de lecture, tout de suite ;
+- lire_et_controler()  fait la lecture et les contrôles, appelée par le travailleur.
+traiter() enchaîne les deux d'un coup, pour les outils et les tests.
 """
 
+import hashlib
 import pathlib
 import time
 import uuid
@@ -20,7 +26,7 @@ from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from moteur.base import Etat, Evenement, FactureEnBase
+from moteur.base import Etat, EtatTache, Evenement, FactureEnBase, Tache
 from moteur.controles import Anomalie, Gravite, controler, est_validable
 from moteur.export import ErreurExport, ecriture, en_csv, en_json, envoyer_au_logiciel, nom_fichier
 from moteur.extraction_llm import ErreurExtraction, ResultatExtraction, extraire
@@ -56,6 +62,7 @@ class FactureIntrouvable(Exception):
 class ResultatTraitement:
     facture: FactureEnBase
     deja_vue: bool  # vrai si ce fichier avait déjà été reçu : rien n'a été refait
+    tache: Tache | None = None  # la tâche de lecture créée, s'il y en a une
 
 
 def _journaliser(session: Session, facture: FactureEnBase, type_evenement: str, auteur: str, detail: dict | None = None) -> None:
@@ -108,13 +115,20 @@ def _doublon_metier(session: Session, facture: FactureEnBase) -> list[Anomalie]:
     ]
 
 
-def _extraire_et_controler(
+def lire_et_controler(
     session: Session,
     facture: FactureEnBase,
     contenu: bytes,
-    extracteur: Callable[[str], ResultatExtraction],
-    aujourd_hui: date | None,
+    extracteur: Callable[[str], ResultatExtraction] = extraire,
+    aujourd_hui: date | None = None,
+    echec_si_passagere: bool = True,
 ) -> None:
+    """Lit la facture (Factur-X ou IA) puis la contrôle.
+
+    Avec echec_si_passagere=False, une panne passagère de l'IA n'est pas traitée ici :
+    ErreurExtraction est relancée, la facture reste « reçue », et c'est la file de tâches
+    qui décide de retenter plus tard (voir moteur/travailleur.py).
+    """
     # 1. Facture électronique Factur-X : les données sont dans le XML joint, pas besoin d'IA.
     donnees, detail = None, {}
     debut = time.monotonic()
@@ -135,6 +149,8 @@ def _extraire_et_controler(
         try:
             resultat = extracteur(lu.texte)
         except ErreurExtraction as erreur:
+            if erreur.passagere and not echec_si_passagere:
+                raise
             _passer(session, facture, Etat.ECHEC, "EXTRACTION_ECHOUEE", MOTEUR, {"raison": str(erreur)})
             return
         donnees = resultat.facture
@@ -155,19 +171,27 @@ def _extraire_et_controler(
     _passer(session, facture, etat, "CONTROLE", MOTEUR, {"anomalies": [anomalie.code for anomalie in anomalies]})
 
 
-def traiter(
-    session: Session,
-    contenu: bytes,
-    nom_fichier: str,
-    extracteur: Callable[[str], ResultatExtraction] = extraire,
-    aujourd_hui: date | None = None,
-) -> ResultatTraitement:
-    """Reçoit un PDF et le mène jusqu'à « à valider » ou « en anomalie ».
+def _mettre_en_file(session: Session, facture: FactureEnBase) -> Tache | None:
+    """Crée la tâche de lecture de la facture, sauf s'il y en a déjà une en attente."""
+    tache_id = session.execute(
+        insert(Tache)
+        .values(id=uuid.uuid4(), facture_id=facture.id, etat=EtatTache.EN_ATTENTE.value)
+        # La condition est écrite en toutes lettres, comme dans la définition de l'index partiel :
+        # passée en paramètre, PostgreSQL ne retrouve plus l'index une fois la requête préparée.
+        .on_conflict_do_nothing(index_elements=[Tache.facture_id], index_where=text("etat = 'en_attente'"))
+        .returning(Tache.id)
+    ).scalar_one_or_none()
+    return session.get(Tache, tache_id) if tache_id else None
 
-    Idempotent : le même fichier envoyé deux fois ne crée qu'une facture
-    et n'appelle le LLM qu'une fois. Seule une facture en échec est retentée.
+
+def recevoir(session: Session, contenu: bytes, nom_fichier: str) -> ResultatTraitement:
+    """Enregistre le PDF reçu et sa tâche de lecture. Ne lit rien : c'est le travail du travailleur.
+
+    La facture et sa tâche sont créées dans la même transaction : l'une n'existe jamais sans l'autre.
+    Idempotent : le même fichier envoyé deux fois ne crée qu'une facture. Seule une facture
+    en échec est remise en file.
     """
-    empreinte = lire_pdf(contenu).empreinte
+    empreinte = hashlib.sha256(contenu).hexdigest()
     # On réserve l'empreinte d'abord. Si le même fichier arrive deux fois en même temps,
     # la base fait attendre le second dépôt jusqu'à ce que le premier soit enregistré,
     # au lieu de laisser les deux insérer et l'un des deux échouer.
@@ -180,19 +204,37 @@ def traiter(
 
     if nouvel_id is None:
         # Fichier déjà connu. Le verrou de ligne évite que deux renvois simultanés
-        # d'une facture en échec relancent chacun l'extraction.
+        # d'une facture en échec la remettent chacun en file.
         existante = session.scalars(select(FactureEnBase).where(FactureEnBase.empreinte == empreinte).with_for_update()).one()
         if existante.etat == Etat.ECHEC.value:
             _journaliser(session, existante, "NOUVEL_ESSAI", MOTEUR, {"nom_fichier": nom_fichier})
-            _extraire_et_controler(session, existante, contenu, extracteur, aujourd_hui)
-            return ResultatTraitement(existante, deja_vue=False)
+            return ResultatTraitement(existante, deja_vue=False, tache=_mettre_en_file(session, existante))
         _journaliser(session, existante, "DOUBLON_FICHIER", MOTEUR, {"nom_fichier": nom_fichier})
         return ResultatTraitement(existante, deja_vue=True)
 
     facture = session.get(FactureEnBase, nouvel_id)
     _journaliser(session, facture, "RECEPTION", MOTEUR, {"nom_fichier": nom_fichier, "taille_octets": len(contenu)})
-    _extraire_et_controler(session, facture, contenu, extracteur, aujourd_hui)
-    return ResultatTraitement(facture, deja_vue=False)
+    return ResultatTraitement(facture, deja_vue=False, tache=_mettre_en_file(session, facture))
+
+
+def traiter(
+    session: Session,
+    contenu: bytes,
+    nom_fichier: str,
+    extracteur: Callable[[str], ResultatExtraction] = extraire,
+    aujourd_hui: date | None = None,
+) -> ResultatTraitement:
+    """Reçoit un PDF et le lit tout de suite : utilisé par les outils et les tests.
+
+    En service, l'API appelle recevoir() et le travailleur fait la lecture.
+    """
+    resultat = recevoir(session, contenu, nom_fichier)
+    if resultat.tache is not None:
+        resultat.tache.tentatives += 1
+        lire_et_controler(session, resultat.facture, contenu, extracteur, aujourd_hui)
+        resultat.tache.etat = (EtatTache.ABANDONNEE if resultat.facture.etat == Etat.ECHEC.value else EtatTache.TERMINEE).value
+        session.flush()
+    return resultat
 
 
 def _charger(session: Session, facture_id: uuid.UUID) -> FactureEnBase:

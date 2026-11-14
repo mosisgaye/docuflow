@@ -44,6 +44,7 @@ def client(connexion, llm, tmp_path):
         fabrique_session=lambda: Session(bind=connexion, join_transaction_mode="create_savepoint"),
         extracteur=llm,
         dossier_fichiers=tmp_path,
+        traiter_tout_de_suite=True,
     )
     return TestClient(application)
 
@@ -53,7 +54,7 @@ def deposer(client: TestClient, nom: str, contenu: bytes | None = None):
 
 
 def test_la_sante_repond(client):
-    assert client.get("/sante").json() == {"etat": "ok"}
+    assert client.get("/sante").json() == {"etat": "ok", "file": {"en_attente": 0, "abandonnees": 0, "plus_ancienne_attente_s": None}}
 
 
 def test_deposer_une_facture_juste(client):

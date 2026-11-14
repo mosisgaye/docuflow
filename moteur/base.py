@@ -3,7 +3,8 @@
 Les tables :
 - factures   : une ligne par document reçu, avec son état et ses données ;
 - evenements : la piste d'audit. Chaque étape y ajoute une ligne, jamais modifiée ensuite ;
-- consignes  : le texte exact de chaque version des consignes données à l'IA.
+- consignes  : le texte exact de chaque version des consignes données à l'IA ;
+- taches     : la file des lectures à faire, prises par le travailleur (moteur/travailleur.py).
 
 Toute modification de ces modèles demande une migration (dossier migrations/).
 """
@@ -12,7 +13,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, create_engine, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, create_engine, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -29,6 +30,12 @@ class Etat(StrEnum):
     REJETEE = "rejetee"  # une personne a rejeté
     EXPORTEE = "exportee"  # envoyée au logiciel tiers
     ECHEC = "echec"  # lecture ou extraction impossible ; un nouvel essai est permis
+
+
+class EtatTache(StrEnum):
+    EN_ATTENTE = "en_attente"  # à faire, dès que prochain_essai_le est passé
+    TERMINEE = "terminee"  # la lecture a abouti
+    ABANDONNEE = "abandonnee"  # erreur définitive, ou trop de pannes : la facture est en échec
 
 
 class Base(DeclarativeBase):
@@ -79,6 +86,27 @@ class Consigne(Base):
     texte: Mapped[str] = mapped_column(Text)
     schema: Mapped[dict | list] = mapped_column(JSONB)  # format de réponse imposé à l'IA
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Tache(Base):
+    __tablename__ = "taches"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    facture_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("factures.id"), index=True)
+    type: Mapped[str] = mapped_column(String(20), server_default="lecture")
+    etat: Mapped[str] = mapped_column(String(20), server_default=EtatTache.EN_ATTENTE.value)
+    tentatives: Mapped[int] = mapped_column(Integer, server_default="0")
+    prochain_essai_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    derniere_erreur: Mapped[str | None] = mapped_column(Text)
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    modifie_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        # Le travailleur cherche les tâches en attente dont l'heure est venue : cet index ne contient qu'elles.
+        Index("ix_taches_a_faire", "prochain_essai_le", postgresql_where=text("etat = 'en_attente'")),
+        # Jamais deux tâches en attente pour la même facture.
+        Index("uq_taches_une_en_attente", "facture_id", unique=True, postgresql_where=text("etat = 'en_attente'")),
+    )
 
 
 def creer_moteur(url: str | None = None) -> Engine:

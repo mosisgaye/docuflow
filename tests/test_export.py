@@ -183,6 +183,7 @@ def api(connexion, tmp_path, monkeypatch):
         dossier_fichiers=tmp_path / "fichiers",
         dossier_exports=tmp_path / "exports",
         client_export=httpx.Client(transport=httpx.MockTransport(lambda requete: httpx.Response(etat["statut"]))),
+        traiter_tout_de_suite=True,
     )
     client = TestClient(application)
     client.etat_logiciel = etat
