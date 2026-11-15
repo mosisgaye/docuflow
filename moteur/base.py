@@ -4,7 +4,8 @@ Les tables :
 - factures   : une ligne par document reçu, avec son état et ses données ;
 - evenements : la piste d'audit. Chaque étape y ajoute une ligne, jamais modifiée ensuite ;
 - consignes  : le texte exact de chaque version des consignes données à l'IA ;
-- taches     : la file des lectures à faire, prises par le travailleur (moteur/travailleur.py).
+- taches     : la file des lectures à faire, prises par le travailleur (moteur/travailleur.py) ;
+- mails_recus : chaque mail reçu à l'adresse de dépôt, et ce qu'on a fait de ses pièces jointes.
 
 Toute modification de ces modèles demande une migration (dossier migrations/).
 """
@@ -109,6 +110,19 @@ class Tache(Base):
         # Jamais deux tâches en attente pour la même facture.
         Index("uq_taches_une_en_attente", "facture_id", unique=True, postgresql_where=text("etat = 'en_attente'")),
     )
+
+
+class MailRecu(Base):
+    __tablename__ = "mails_recus"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    # L'identifiant donné par la messagerie (en-tête Message-ID) : un mail renvoyé n'est traité qu'une fois.
+    message_id: Mapped[str] = mapped_column(String(998), unique=True)
+    expediteur: Mapped[str] = mapped_column(String(320))
+    objet: Mapped[str] = mapped_column(Text, server_default="")
+    statut: Mapped[str] = mapped_column(String(20))  # "traite" (au moins une facture) ou "sans_facture"
+    pieces: Mapped[list] = mapped_column(JSONB, default=list)  # ce qu'on a fait de chaque pièce jointe
+    recu_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 def creer_moteur(url: str | None = None) -> Engine:

@@ -8,7 +8,7 @@ Une entreprise reçoit des factures en PDF. Aujourd'hui, une personne les lit et
 
 ## Ce que fait le système
 
-1. **Reçoit** une facture PDF, et reconnaît un fichier déjà reçu sans le retraiter.
+1. **Reçoit** une facture PDF, déposée à l'écran ou envoyée par mail à l'adresse de dépôt, et reconnaît un fichier ou un mail déjà reçu sans le retraiter.
 2. **Lit** les données :
    - facture électronique **Factur-X** : lecture directe du XML joint, sans IA ;
    - PDF ordinaire : lecture du texte sur place, puis extraction des champs par un LLM.
@@ -131,6 +131,16 @@ Pour charger les factures d'exemple :
 uv run python -m outils.traiter_dossier
 ```
 
+Pour simuler un mail reçu à l'adresse de dépôt (il faut `RECEPTION_MAIL_SECRET` dans `.env`) :
+
+```bash
+uv run python -m outils.envoyer_mail_test factures/facture-F26-1193.pdf --de compta@fournisseur.fr --objet "Facture novembre"
+```
+
+### Réception par mail
+
+Un adaptateur de messagerie (un Worker Cloudflare branché sur l'adresse de dépôt) ramène chaque mail à une forme unique (identifiant, expéditeur, objet, pièces jointes), le signe avec `RECEPTION_MAIL_SECRET` et l'envoie à `POST /reception/mail`. Chaque PDF devient une facture, avec le même circuit qu'un dépôt à l'écran. Le même mail reçu deux fois n'est traité qu'une fois ; une pièce qui n'est pas un PDF lisible est notée et ignorée. Pour brancher la boîte d'un client (transfert automatique, Microsoft 365, Gmail, IMAP), il suffit d'un autre adaptateur : le moteur ne change pas.
+
 ## Tests
 
 ```bash
@@ -191,6 +201,7 @@ Toutes les valeurs se règlent dans `.env` (voir `.env.example`).
 | `LLM_MODELE`, `AGENT_MODELE` | Modèles pour l'extraction et pour l'assistant |
 | `EXPORT_COMPTE_CHARGE` | Compte de charge par défaut (606000) |
 | `EXPORT_WEBHOOK_URL` | Adresse du logiciel de comptabilité, pour l'envoi direct |
+| `RECEPTION_MAIL_SECRET` | Secret partagé avec l'adaptateur de messagerie. Sans lui, la réception par mail est fermée |
 
 ## Choix techniques
 

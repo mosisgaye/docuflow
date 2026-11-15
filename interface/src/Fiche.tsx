@@ -90,6 +90,12 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
         {facture.evenements.some((evenement) => evenement.type === 'EXTRACTION' && evenement.detail.source === 'factur-x') && (
           <p className="facturx">Facture électronique Factur-X : données lues directement dans le fichier, sans IA</p>
         )}
+        {facture.evenements[0]?.detail.source === 'mail' && (
+          <p className="origine">
+            Reçue par mail de <strong>{String(facture.evenements[0].detail.expediteur)}</strong>
+            {facture.evenements[0].detail.objet ? <>, objet « {String(facture.evenements[0].detail.objet)} »</> : null}
+          </p>
+        )}
         <Tampon facture={facture} />
       </header>
 

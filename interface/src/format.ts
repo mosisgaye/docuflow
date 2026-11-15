@@ -40,6 +40,7 @@ export function raconter(evenement: Evenement): string {
   const detail = evenement.detail
   switch (evenement.type) {
     case 'RECEPTION':
+      if (detail.source === 'mail') return `Reçue par mail de ${String(detail.expediteur)}${detail.objet ? `, objet « ${String(detail.objet)} »` : ''}`
       return 'Fichier reçu'
     case 'EXTRACTION':
       if (detail.source === 'factur-x') return 'Facture électronique Factur-X : données lues directement, sans IA'
@@ -52,6 +53,7 @@ export function raconter(evenement: Evenement): string {
       return anomalies.length === 1 ? 'Contrôles : 1 anomalie trouvée' : `Contrôles : ${anomalies.length} anomalies trouvées`
     }
     case 'DOUBLON_FICHIER':
+      if (detail.source === 'mail') return `Même fichier renvoyé par mail (${String(detail.expediteur)}) : reconnu, rien n’a été refait`
       return 'Même fichier renvoyé : reconnu, rien n’a été refait'
     case 'NOUVEL_ESSAI':
       return 'Nouvel essai de lecture'

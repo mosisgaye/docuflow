@@ -184,13 +184,27 @@ def _mettre_en_file(session: Session, facture: FactureEnBase) -> Tache | None:
     return session.get(Tache, tache_id) if tache_id else None
 
 
-def recevoir(session: Session, contenu: bytes, nom_fichier: str) -> ResultatTraitement:
+def ranger_fichier(dossier: pathlib.Path, contenu: bytes) -> pathlib.Path:
+    """Écrit le PDF dans le dossier des fichiers reçus, sous son empreinte. À faire AVANT recevoir() :
+    le travailleur ne doit jamais trouver une tâche dont le fichier n'existe pas encore."""
+    chemin = dossier / f"{hashlib.sha256(contenu).hexdigest()}.pdf"
+    if not chemin.exists():
+        provisoire = chemin.with_suffix(f".{uuid.uuid4().hex}.tmp")
+        provisoire.write_bytes(contenu)
+        provisoire.replace(chemin)  # le fichier apparaît d'un coup, jamais à moitié écrit
+    return chemin
+
+
+def recevoir(session: Session, contenu: bytes, nom_fichier: str, origine: dict | None = None) -> ResultatTraitement:
     """Enregistre le PDF reçu et sa tâche de lecture. Ne lit rien : c'est le travail du travailleur.
 
     La facture et sa tâche sont créées dans la même transaction : l'une n'existe jamais sans l'autre.
     Idempotent : le même fichier envoyé deux fois ne crée qu'une facture. Seule une facture
     en échec est remise en file.
+    origine : d'où vient le fichier quand ce n'est pas un dépôt à l'écran (par exemple un mail),
+    recopiée dans le journal.
     """
+    origine = origine or {}
     empreinte = hashlib.sha256(contenu).hexdigest()
     # On réserve l'empreinte d'abord. Si le même fichier arrive deux fois en même temps,
     # la base fait attendre le second dépôt jusqu'à ce que le premier soit enregistré,
@@ -207,13 +221,13 @@ def recevoir(session: Session, contenu: bytes, nom_fichier: str) -> ResultatTrai
         # d'une facture en échec la remettent chacun en file.
         existante = session.scalars(select(FactureEnBase).where(FactureEnBase.empreinte == empreinte).with_for_update()).one()
         if existante.etat == Etat.ECHEC.value:
-            _journaliser(session, existante, "NOUVEL_ESSAI", MOTEUR, {"nom_fichier": nom_fichier})
+            _journaliser(session, existante, "NOUVEL_ESSAI", MOTEUR, {"nom_fichier": nom_fichier, **origine})
             return ResultatTraitement(existante, deja_vue=False, tache=_mettre_en_file(session, existante))
-        _journaliser(session, existante, "DOUBLON_FICHIER", MOTEUR, {"nom_fichier": nom_fichier})
+        _journaliser(session, existante, "DOUBLON_FICHIER", MOTEUR, {"nom_fichier": nom_fichier, **origine})
         return ResultatTraitement(existante, deja_vue=True)
 
     facture = session.get(FactureEnBase, nouvel_id)
-    _journaliser(session, facture, "RECEPTION", MOTEUR, {"nom_fichier": nom_fichier, "taille_octets": len(contenu)})
+    _journaliser(session, facture, "RECEPTION", MOTEUR, {"nom_fichier": nom_fichier, "taille_octets": len(contenu), **origine})
     return ResultatTraitement(facture, deja_vue=False, tache=_mettre_en_file(session, facture))
 
 

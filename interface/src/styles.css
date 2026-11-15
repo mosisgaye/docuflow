@@ -1317,6 +1317,12 @@ button {
   font-weight: 600;
 }
 
+.origine {
+  margin-top: 8px;
+  color: var(--encre-douce);
+  font-size: 14px;
+}
+
 .tampon {
   display: flex;
   flex-direction: column;
