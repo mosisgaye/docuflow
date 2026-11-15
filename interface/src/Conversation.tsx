@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { duree } from './format'
 import { Icone } from './Icones'
 
@@ -32,6 +32,7 @@ export interface Tour {
 
 interface Props {
   tours: Tour[]
+  numeros: Map<string, string> // numéro de facture → identifiant, pour rendre les numéros cliquables
   occupe: boolean
   connecteurs: string[]  // noms des connecteurs branchés, où l'assistant peut chercher
   surConnecteurs: () => void
@@ -39,6 +40,71 @@ interface Props {
   surFichiers: (fichiers: File[]) => void
   surProposition: (tourId: number, rang: number, accepter: boolean) => void
   surOuverture: (factureId: string) => void
+}
+
+const LIGNE_DE_LISTE = /^\s*(?:[-•*]|\d+[.)])\s+/
+
+/** Gras (**…**) et numéros de facture cliquables, sans jamais interpréter de HTML. */
+function enLigne(texte: string, motif: RegExp | null, numeros: Map<string, string>, surOuverture: (id: string) => void): ReactNode[] {
+  return texte.split(/(\*\*[^*]+\*\*)/g).flatMap((morceau, rang) => {
+    if (/^\*\*[^*]+\*\*$/.test(morceau)) return [<strong key={rang}>{enLigne(morceau.slice(2, -2), motif, numeros, surOuverture)}</strong>]
+    const propre = morceau.replace(/\*\*/g, '') // un gras pas encore refermé pendant l'écriture
+    if (!motif) return [propre]
+    return propre.split(motif).map((bout, sousRang) =>
+      numeros.has(bout) ? (
+        <button key={`${rang}-${sousRang}`} className="ref-facture" onClick={() => surOuverture(numeros.get(bout)!)} title="Ouvrir la facture">
+          {bout}
+        </button>
+      ) : (
+        bout
+      ),
+    )
+  })
+}
+
+/** La réponse de l'assistant : paragraphes et listes, à partir de son texte brut. */
+function TexteAssistant({ texte, numeros = new Map(), surOuverture }: { texte: string; numeros?: Map<string, string>; surOuverture: (id: string) => void }) {
+  const connus = [...numeros.keys()].sort((a, b) => b.length - a.length).map((numero) => numero.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const motif = connus.length ? new RegExp(`(?<![\\w-])(${connus.join('|')})(?![\\w-])`, 'g') : null
+  const blocs: ReactNode[] = []
+  let liste: string[] = []
+  let paragraphe: string[] = []
+  const vider = () => {
+    if (paragraphe.length)
+      blocs.push(
+        <p key={blocs.length}>
+          {paragraphe.flatMap((ligne, rang) => [...(rang ? [<br key={`br${rang}`} />] : []), ...enLigne(ligne, motif, numeros, surOuverture)])}
+        </p>,
+      )
+    if (liste.length)
+      blocs.push(
+        <ul key={blocs.length}>
+          {liste.map((ligne, rang) => (
+            <li key={rang}>{enLigne(ligne, motif, numeros, surOuverture)}</li>
+          ))}
+        </ul>,
+      )
+    paragraphe = []
+    liste = []
+  }
+  for (const ligne of texte.split('\n')) {
+    if (!ligne.trim()) vider()
+    else if (LIGNE_DE_LISTE.test(ligne)) {
+      if (paragraphe.length) {
+        const avant = liste
+        liste = []
+        vider()
+        liste = avant
+      }
+      liste.push(ligne.replace(LIGNE_DE_LISTE, ''))
+    } else if (liste.length && /^\s{2,}/.test(ligne)) liste[liste.length - 1] += ` ${ligne.trim()}`
+    else {
+      if (liste.length) vider()
+      paragraphe.push(ligne)
+    }
+  }
+  vider()
+  return <div className="tour__texte">{blocs}</div>
 }
 
 const SUGGESTIONS = [
@@ -71,10 +137,19 @@ function Etapes({ etapes, enCours }: { etapes: Etape[]; enCours: boolean }) {
   )
 }
 
-export function Conversation({ tours, occupe, connecteurs, surConnecteurs, surEnvoi, surFichiers, surProposition, surOuverture }: Props) {
+export function Conversation({ tours, numeros, occupe, connecteurs, surConnecteurs, surEnvoi, surFichiers, surProposition, surOuverture }: Props) {
   const [saisie, setSaisie] = useState('')
   const fin = useRef<HTMLDivElement>(null)
   const champFichier = useRef<HTMLInputElement>(null)
+  const zone = useRef<HTMLTextAreaElement>(null)
+
+  // La zone de saisie grandit avec le texte, jusqu'à 8 lignes environ.
+  useEffect(() => {
+    const champ = zone.current
+    if (!champ) return
+    champ.style.height = 'auto'
+    champ.style.height = `${Math.min(champ.scrollHeight, 200)}px`
+  }, [saisie])
 
   useEffect(() => {
     fin.current?.scrollIntoView({ block: 'end' })
@@ -97,7 +172,7 @@ export function Conversation({ tours, occupe, connecteurs, surConnecteurs, surEn
             </span>
             <h1>Que voulez-vous traiter ?</h1>
             <p>
-              Déposez une facture PDF : l’assistant la lit, vérifie les calculs et le fournisseur, puis vous dit quoi en faire. Vous pouvez aussi lui poser une
+              Joignez une facture, PDF ou photo : l’assistant la lit, vérifie les calculs et le fournisseur, puis vous dit quoi en faire. Vous pouvez aussi lui poser une
               question.
             </p>
             <ul>
@@ -130,7 +205,7 @@ export function Conversation({ tours, occupe, connecteurs, surConnecteurs, surEn
                   Assistant DocuFlow
                 </p>
                 <Etapes etapes={tour.etapes} enCours={tour.enCours} />
-                {tour.texte && <p className="tour__texte">{tour.texte}</p>}
+                {tour.texte && <TexteAssistant texte={tour.texte} numeros={numeros} surOuverture={surOuverture} />}
                 {tour.enCours && !tour.texte && tour.etapes.every((etape) => etape.fini) && <p className="tour__attente">L’assistant réfléchit…</p>}
                 {tour.erreur && <p className="tour__erreur">{tour.erreur}</p>}
                 {tour.propositions.map((proposition, rang) => (
@@ -175,6 +250,7 @@ export function Conversation({ tours, occupe, connecteurs, surConnecteurs, surEn
         }}
       >
         <textarea
+          ref={zone}
           value={saisie}
           onChange={(evenement) => setSaisie(evenement.target.value)}
           onKeyDown={(evenement) => {
@@ -183,7 +259,7 @@ export function Conversation({ tours, occupe, connecteurs, surConnecteurs, surEn
               envoyer()
             }
           }}
-          rows={2}
+          rows={1}
           placeholder="Posez une question, ou joignez une facture (PDF ou photo)…"
           aria-label="Votre demande"
         />

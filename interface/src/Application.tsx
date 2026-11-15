@@ -354,6 +354,8 @@ export function Application() {
     return parEtat
   }, [factures])
 
+  const numeros = useMemo(() => new Map(factures.filter((facture) => facture.numero_facture).map((facture) => [facture.numero_facture!, facture.id])), [factures])
+
   const listeAffichee = useMemo(() => {
     const base = page === 'validations' ? aTraiter : vue === 'toutes' ? factures : factures.filter((facture) => facture.etat === vue)
     const mots = recherche.trim().toLowerCase()
@@ -516,7 +518,7 @@ export function Application() {
             }}
           >
             <Icone nom={entree.icone} taille={18} />
-            {entree.nom}
+            <span className="rail__libelle">{entree.nom}</span>
             {entree.page === 'validations' && aTraiter.length > 0 && <span className="rail__compte">{aTraiter.length}</span>}
           </button>
         ))}
@@ -564,7 +566,7 @@ export function Application() {
             <div className="laterale__corps">
               <p className="laterale__section">Il cherche dans</p>
               {['Vos factures', 'Registre des entreprises', 'Annonces légales (BODACC)', ...branches].map((source) => (
-                <p key={source} className="laterale__ligne" style={{ cursor: 'default' }}>
+                <p key={source} className="laterale__ligne laterale__ligne--source">
                   <Icone nom="coche" />
                   <span>{source}</span>
                 </p>
@@ -678,6 +680,7 @@ export function Application() {
               {page === 'assistant' && (
                 <Conversation
                   tours={tours}
+                  numeros={numeros}
                   occupe={occupe}
                   connecteurs={branches}
                   surConnecteurs={() => setPage('connecteurs')}

@@ -515,7 +515,7 @@ kbd {
 
 .app {
   display: grid;
-  grid-template: 'haut haut haut' 44px 'rail laterale espace' 1fr / 72px auto 1fr;
+  grid-template: 'haut haut haut' 44px 'rail laterale espace' 1fr / 76px auto 1fr;
   height: 100vh;
   overflow: hidden;
 }
@@ -672,7 +672,7 @@ kbd {
   display: grid;
   justify-items: center;
   gap: 3px;
-  width: 64px;
+  width: 70px;
   padding: 7px 0 6px;
   border-radius: 8px;
   color: var(--texte-2);
@@ -681,6 +681,16 @@ kbd {
   transition:
     background var(--duree) var(--courbe),
     color var(--duree) var(--courbe);
+}
+
+.rail__libelle {
+  max-width: 100%;
+  padding: 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  letter-spacing: -0.01em;
 }
 
 .rail__bouton .icone {
@@ -839,6 +849,19 @@ kbd {
 
 .laterale__ligne .icone {
   color: var(--texte-3);
+}
+
+.laterale__ligne--source {
+  cursor: default;
+}
+
+.laterale__ligne--source:hover {
+  background: none;
+  color: var(--texte-2);
+}
+
+.laterale__ligne--source .icone {
+  color: var(--vert-texte);
 }
 
 .laterale__compte {
@@ -2016,6 +2039,8 @@ kbd {
   flex: 1;
   overflow-y: auto;
   padding: 24px 20px 12px;
+  /* Le texte s'efface sous la barre au lieu d'y être coupé net. */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 12px), transparent 100%);
 }
 
 .conversation__fil > * {
@@ -2107,9 +2132,53 @@ kbd {
 }
 
 .tour__texte {
-  white-space: pre-wrap;
   font-size: 14px;
   line-height: 1.6;
+}
+
+.tour__texte > * + * {
+  margin-top: 10px;
+}
+
+.tour__texte ul {
+  display: grid;
+  gap: 6px;
+}
+
+.tour__texte li {
+  padding: 7px 12px;
+  border: var(--trait) solid var(--bordure);
+  border-radius: var(--rayon);
+  background: var(--carte);
+}
+
+.tour__texte strong {
+  font-weight: 600;
+}
+
+.ref-facture {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--vert-pale);
+  color: var(--vert-texte);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  vertical-align: 1px;
+  transition:
+    background var(--duree) var(--courbe),
+    scale 0.125s var(--rebond);
+}
+
+.ref-facture:hover {
+  background: var(--vert-trait);
+}
+
+.ref-facture:active {
+  scale: 0.96;
 }
 
 .tour__attente {
@@ -2250,6 +2319,7 @@ kbd {
 .saisie textarea {
   display: block;
   width: 100%;
+  min-height: 44px;
   padding: 12px 14px 4px;
   border: 0;
   background: none;
@@ -2262,7 +2332,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px 8px;
+  padding: 2px 8px 8px;
 }
 
 .saisie__barre .bouton--plein {
