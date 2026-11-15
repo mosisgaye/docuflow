@@ -32,6 +32,7 @@ from moteur import config
 from moteur.base import Etat, EtatTache, FactureEnBase, Tache, creer_moteur, verifier_schema
 from moteur.extraction_llm import ErreurExtraction, ResultatExtraction, extraire
 from moteur.odoo import Odoo, depuis_configuration
+from moteur.notifications import envoyer_en_attente
 from moteur.workflow import MOTEUR, _journaliser, _passer, lire_et_controler
 
 # Délais avant chaque nouvel essai d'une tâche : 30 s, 2 min, 10 min, 30 min, 2 h.
@@ -121,6 +122,7 @@ def boucle(arret: threading.Event, fabrique_session: Callable[[], Session], doss
             with fabrique_session() as session:
                 compte_rendu = traiter_une_tache(session, dossier, extracteur, odoo=odoo)
                 session.commit()
+                envoyer_en_attente(session, fabrique_session)  # les mails ne partent qu'une fois la lecture enregistrée
         except Exception:  # noqa: BLE001 - le travailleur ne doit jamais mourir sur une erreur imprévue
             journal.exception("Erreur imprévue : la tâche est relâchée et sera reprise.")
             arret.wait(5)

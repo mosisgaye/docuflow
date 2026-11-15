@@ -18,6 +18,8 @@
     GET  /oauth/retour                l'éditeur y renvoie le navigateur après la connexion
     GET  /regles                      les règles d'approbation en vigueur
     POST /regles                      publier une nouvelle version des règles
+    GET  /approbation/{jeton}         la page de confirmation ouverte depuis le lien du mail
+    POST /approbation/{jeton}         approuver ou rejeter depuis cette page
     POST /agent                       parler à l'assistant (réponse envoyée au fil de l'eau)
     GET  /statistiques                les chiffres du tableau de bord
     GET  /sante                       l'API et la base répondent-elles ? où en est la file de tâches ?
@@ -28,14 +30,15 @@ La lecture des factures est faite par un processus à part : uv run python -m mo
 
 import json
 import logging
+from html import escape as html_escape
 import pathlib
 import uuid
 from collections.abc import Callable, Iterator
 from datetime import datetime
 
 import httpx
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, Response, UploadFile, status
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile, status
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pypdf.errors import PyPdfError
 from sqlalchemy import func, select, text
@@ -52,7 +55,8 @@ from moteur.lecture_pdf import lire_pdf
 from moteur.odoo import Odoo, depuis_configuration
 from moteur.base import AppelConnecteur, ConnecteurBranche
 from moteur import oauth
-from moteur.approbation import approbations_valides, niveau_attendu, publier, version_en_vigueur
+from moteur.approbation import LIBELLES, approbations_valides, empreinte, niveau_attendu, publier, version_en_vigueur
+from moteur import notifications
 from moteur.connecteurs import CATALOGUE, ErreurConnecteur, Passerelle, adresse_serveur, fiche_catalogue
 from moteur.reception_mail import SignatureInvalide, cles_publiques, lire_mail_brut, recevoir_mail, verifier_signature
 from moteur.workflow import FactureIntrouvable, TransitionInterdite, exporter, ranger_fichier, recevoir, rejeter, traiter, valider
@@ -160,6 +164,7 @@ def creer_application(
     odoo: Odoo | None | str = "configuration",
     passerelle: Passerelle | None = None,
     client_oauth: httpx.Client | None = None,
+    envoyeur_mail: Callable | None = None,
 ) -> FastAPI:
     """Construit l'application. Les paramètres servent aux tests ; en service, tout vient de .env.
 
@@ -196,6 +201,8 @@ def creer_application(
         try:
             yield session
             session.commit()
+            # Les mails d'approbation préparés pendant la requête partent maintenant, une fois tout enregistré.
+            notifications.envoyer_en_attente(session, fabrique_session, envoyeur_mail or notifications.envoyer_par_resend)
         except Exception:
             session.rollback()
             raise
@@ -387,6 +394,83 @@ def creer_application(
         except ValidationError as erreur:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Règle mal formée : {erreur.errors()[0]['msg']}") from erreur
         return {"version": version.version, "regles": version.regles, "publie_par": version.publie_par}
+
+    # ───────── Approbation depuis le lien du mail ─────────
+
+    def page(titre: str, corps: str, code: int = 200) -> HTMLResponse:
+        return HTMLResponse(
+            f"""<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{titre} | DocuFlow</title><style>
+body{{font:16px/1.55 Arial,sans-serif;background:#f4f6fb;color:#13203a;margin:0;padding:32px 16px}}
+main{{max-width:560px;margin:0 auto;background:#fff;border:1px solid #dfe5ef;border-radius:16px;padding:24px}}
+h1{{font-size:22px;margin:0 0 12px}} .doux{{color:#55627b}} .alerte{{background:#fdeed6;color:#8a4a00;padding:8px 12px;border-radius:8px}}
+.erreur{{background:#fdecea;color:#b3261e;padding:10px 14px;border-radius:8px}}
+button{{font:600 16px Arial,sans-serif;border:0;border-radius:10px;padding:12px 18px;cursor:pointer}}
+.oui{{background:#1f5bff;color:#fff}} .non{{background:#fdecea;color:#b3261e}}
+textarea{{width:100%;box-sizing:border-box;border:1px solid #dfe5ef;border-radius:8px;padding:8px;font:inherit}}
+form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-columns:auto 1fr;gap:4px 14px}} dt{{color:#55627b}}
+</style></head><body><main>{corps}</main></body></html>""",
+            status_code=code,
+        )
+
+    def facture_du_lien(session: Session, jeton: str) -> tuple[FactureEnBase, dict]:
+        """Le lien est-il encore valable pour cette facture, maintenant ? Sinon LienInvalide avec la raison."""
+        charge = notifications.lire_lien(jeton)
+        facture = session.get(FactureEnBase, uuid.UUID(charge["f"]), with_for_update=True)
+        if facture is None:
+            raise notifications.LienInvalide("Cette facture n'existe plus.")
+        if facture.etat not in (Etat.A_VALIDER.value, Etat.EN_APPROBATION.value):
+            raise notifications.LienInvalide(f"Cette facture est déjà « {facture.etat.replace('_', ' ')} » : il n'y a plus rien à décider.")
+        if empreinte(facture.donnees)[:32] != charge["h"]:
+            raise notifications.LienInvalide("La facture a changé depuis l'envoi du mail : ce lien ne vaut plus.")
+        if niveau_attendu(session, facture) != charge["n"]:
+            raise notifications.LienInvalide("Ce niveau a déjà été approuvé : ce lien a servi.")
+        return facture, charge
+
+    def resume_html(facture: FactureEnBase, charge: dict) -> str:
+        from html import escape
+
+        d = facture.donnees or {}
+        lignes = "".join(f'<p class="alerte">{escape(a["message"])}</p>' for a in facture.anomalies)
+        return (
+            f"<h1>Facture {escape(str(d.get('numero_facture') or '?'))}</h1>"
+            f"<dl><dt>Fournisseur</dt><dd>{escape(str(d.get('fournisseur_nom') or '?'))}</dd>"
+            f"<dt>Total TTC</dt><dd>{escape(str(d.get('total_ttc') or '?'))} €</dd>"
+            f"<dt>Votre rôle</dt><dd>{escape(LIBELLES[charge['n']])} ({escape(charge['p'])})</dd></dl>{lignes}"
+        )
+
+    @application.get("/approbation/{jeton}", response_class=HTMLResponse)
+    def voir_approbation(jeton: str, session: Session = Depends(session_de_requete, scope="function")) -> HTMLResponse:
+        try:
+            facture, charge = facture_du_lien(session, jeton)
+        except notifications.LienInvalide as erreur:
+            return page("Lien sans effet", f'<h1>Lien sans effet</h1><p class="erreur">{html_escape(str(erreur))}</p>', 410)
+        # Rien n'est fait à l'ouverture : il faut cliquer (les messageries ouvrent les liens toutes seules).
+        return page(
+            "Décision",
+            resume_html(facture, charge)
+            + '<form method="post"><input type="hidden" name="decision" value="approuver"><button class="oui">Approuver la facture</button></form>'
+            + '<form method="post"><input type="hidden" name="decision" value="rejeter">'
+            + '<label for="motif" class="doux">Ou rejeter, avec le motif :</label><textarea id="motif" name="motif" rows="2" maxlength="500" required></textarea>'
+            + '<button class="non">Rejeter la facture</button></form>',
+        )
+
+    @application.post("/approbation/{jeton}", response_class=HTMLResponse)
+    def decider_approbation(
+        jeton: str, decision: str = Form(...), motif: str = Form(""), session: Session = Depends(session_de_requete, scope="function")
+    ) -> HTMLResponse:
+        try:
+            facture, charge = facture_du_lien(session, jeton)
+            if decision == "rejeter":
+                if not motif.strip():
+                    raise notifications.LienInvalide("Un rejet demande un motif.")
+                rejeter(session, facture.id, charge["p"], motif.strip()[:500])
+                return page("Facture rejetée", f"<h1>Facture rejetée</h1><p>Motif enregistré au journal, à votre nom ({html_escape(charge['p'])}).</p>")
+            valider(session, facture.id, charge["p"])
+        except (notifications.LienInvalide, TransitionInterdite) as erreur:
+            return page("Décision impossible", f'<h1>Décision impossible</h1><p class="erreur">{html_escape(str(erreur))}</p>', 409)
+        suite = "La facture est validée : tous les niveaux ont approuvé." if facture.etat == Etat.VALIDEE.value else "Le niveau suivant vient d'être prévenu par mail."
+        return page("Facture approuvée", f"<h1>Merci, c'est approuvé</h1><p>{suite}</p>")
 
     # ───────── Connecteurs ─────────
 

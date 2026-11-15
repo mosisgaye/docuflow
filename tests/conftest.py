@@ -63,8 +63,11 @@ def session(connexion):
 
 @pytest.fixture(autouse=True)
 def sans_odoo(monkeypatch, tmp_path_factory):
-    """Aucun test ne parle au vrai Odoo de la machine : la clé pointe vers un fichier absent.
+    """Aucun test ne parle au vrai Odoo, à Resend ni à HubSpot : les réglages réels sont coupés.
 
     Les tests du connecteur fournissent leur propre faux Odoo (tests/test_odoo.py).
     """
     monkeypatch.setenv("ODOO_CLE_FICHIER", str(tmp_path_factory.getbasetemp() / "pas-de-cle-odoo"))
+    # Aucun test n'envoie de vrai mail ni ne se connecte à un vrai compte, même si .env contient les réglages.
+    for nom in ("RESEND_API_KEY", "APPROBATION_SECRET", "APPROBATION_DESTINATAIRE", "HUBSPOT_CLIENT_ID", "HUBSPOT_CLIENT_SECRET", "CONNECTEURS_CLE_CHIFFREMENT"):
+        monkeypatch.setenv(nom, "")

@@ -37,7 +37,8 @@ from moteur.facturx import FacturXInvalide, lire_facturx
 from moteur.lecture_pdf import lire_pdf
 from moteur.modeles import Facture
 from moteur.odoo import ErreurOdoo, Odoo
-from moteur.approbation import LIBELLES, ApprobationRefusee, approuver, circuit, version_en_vigueur
+from moteur.approbation import LIBELLES, ApprobationRefusee, approuver, circuit, niveau_attendu, version_en_vigueur
+from moteur import notifications
 
 MOTEUR = "moteur"
 
@@ -184,6 +185,8 @@ def lire_et_controler(
         if facture.circuit["bloque"]:
             detail["bloque"] = facture.circuit["bloque"]
     _passer(session, facture, etat, "CONTROLE", MOTEUR, detail)
+    if etat == Etat.A_VALIDER and facture.circuit["version"] is not None and not facture.circuit["bloque"]:
+        notifications.demander(session, facture, facture.circuit["niveaux"][0]["niveau"])
 
 
 def _fournisseur_dans_odoo(session: Session, facture: FactureEnBase, donnees: Facture, odoo: Odoo | None) -> list[Anomalie]:
@@ -344,6 +347,8 @@ def valider(session: Session, facture_id: uuid.UUID, auteur: str) -> FactureEnBa
         _passer(session, facture, Etat.EN_APPROBATION, "APPROBATION", auteur, detail)
     else:
         _journaliser(session, facture, "APPROBATION", auteur, detail)
+    if not termine:
+        notifications.demander(session, facture, niveau_attendu(session, facture))
     return facture
 
 
