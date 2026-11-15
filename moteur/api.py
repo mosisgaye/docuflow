@@ -57,7 +57,8 @@ from moteur.base import AppelConnecteur, ConnecteurBranche
 from moteur import oauth
 from moteur.approbation import LIBELLES, approbations_valides, empreinte, niveau_attendu, publier, version_en_vigueur
 from moteur import acces, cles_api, evenements_sortants, notifications
-from moteur.base import Abonnement, CleApi, Livraison
+from moteur.base import Abonnement, CleApi, Livraison, MailRecu, MembreEquipe
+from moteur.approbation import NIVEAUX
 from moteur.connecteurs import CATALOGUE, ErreurConnecteur, Passerelle, adresse_serveur, fiche_catalogue
 from moteur.reception_mail import SignatureInvalide, cles_publiques, lire_mail_brut, recevoir_mail, verifier_signature
 from moteur.workflow import FactureIntrouvable, TransitionInterdite, exporter, ranger_fichier, recevoir, rejeter, traiter, valider
@@ -126,6 +127,13 @@ class DemandeAgent(BaseModel):
 
 class CodeAcces(BaseModel):
     code: str = Field(min_length=1, max_length=200)
+
+
+class NouveauMembre(BaseModel):
+    nom: str = Field(min_length=1, max_length=100)
+    email: str = Field(min_length=3, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    niveau: str
+    auteur: str = Field(min_length=1, max_length=100)
 
 
 class NouvelleCle(BaseModel):
@@ -767,6 +775,53 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
         if resultat.deja_vue:
             reponse.status_code = status.HTTP_200_OK
         return {**_publique(resultat.facture), "deja_vue": resultat.deja_vue}
+
+    # ───────── Réglages : l'équipe qui approuve, et la réception des factures ─────────
+
+    def vue_membre(membre: MembreEquipe) -> dict:
+        return {"id": str(membre.id), "nom": membre.nom, "email": membre.email, "niveau": membre.niveau, "cree_par": membre.cree_par, "cree_le": membre.cree_le.isoformat()}
+
+    @application.get("/reglages/equipe")
+    def lire_equipe(session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        membres = session.scalars(select(MembreEquipe).order_by(MembreEquipe.cree_le))
+        return {"niveaux": {niveau: LIBELLES[niveau] for niveau in NIVEAUX}, "membres": [vue_membre(m) for m in membres]}
+
+    @application.post("/reglages/equipe", status_code=status.HTTP_201_CREATED)
+    def ajouter_membre(demande: NouveauMembre, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        if demande.niveau not in NIVEAUX:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Rôle inconnu.")
+        email = demande.email.strip().lower()
+        if session.scalar(select(MembreEquipe).where(MembreEquipe.email == email, MembreEquipe.niveau == demande.niveau)):
+            raise HTTPException(status.HTTP_409_CONFLICT, f"{email} a déjà ce rôle.")
+        membre = MembreEquipe(nom=demande.nom.strip(), email=email, niveau=demande.niveau, cree_par=demande.auteur.strip())
+        session.add(membre)
+        session.flush()
+        session.refresh(membre)
+        return vue_membre(membre)
+
+    @application.delete("/reglages/equipe/{membre_id}")
+    def retirer_membre(membre_id: uuid.UUID, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        membre = session.get(MembreEquipe, membre_id)
+        if membre is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Personne introuvable.")
+        session.delete(membre)
+        return {"id": str(membre_id)}
+
+    @application.get("/reglages/reception")
+    def lire_reception(session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        """L'adresse où envoyer les factures, et les derniers mails reçus (avec le texte de ceux sans facture)."""
+        mails = session.scalars(select(MailRecu).order_by(MailRecu.recu_le.desc()).limit(15))
+        return {
+            "adresse": config.lire("RECEPTION_ADRESSE", "depot@factures.moussagaye.com"),
+            "active": bool(cles_mail),
+            "mails": [
+                {
+                    "id": str(m.id), "expediteur": m.expediteur, "objet": m.objet, "statut": m.statut, "recu_le": m.recu_le.isoformat(),
+                    "factures": sum(1 for piece in m.pieces if piece.get("resultat") in ("facture", "deja_recue")), "texte": m.texte,
+                }
+                for m in mails
+            ],
+        }
 
     # ───────── Gestion des clés et des abonnements (écran « Accès développeurs ») ─────────
 

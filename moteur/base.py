@@ -130,6 +130,9 @@ class MailRecu(Base):
     statut: Mapped[str] = mapped_column(String(20))  # "traite" (au moins une facture) ou "sans_facture"
     pieces: Mapped[list] = mapped_column(JSONB, default=list)  # ce qu'on a fait de chaque pièce jointe
     recu_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Le texte d'un mail SANS facture (4 000 caractères au plus). Utile surtout pour le code de
+    # confirmation qu'envoie Gmail ou Outlook quand on met en place la règle de transfert.
+    texte: Mapped[str | None] = mapped_column(Text)
 
 
 class ConnecteurBranche(Base):
@@ -296,3 +299,18 @@ def verifier_schema(moteur: Engine) -> None:
             f"La base est à la migration {actuelle or 'aucune'}, le moteur attend {attendue}. "
             "Lancez : uv run alembic upgrade head"
         )
+
+
+class MembreEquipe(Base):
+    """Une personne de l'entreprise qui approuve les factures à un niveau (comptable, directeur financier, gérant)."""
+
+    __tablename__ = "membres_equipe"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    nom: Mapped[str] = mapped_column(String(100))
+    email: Mapped[str] = mapped_column(String(320))
+    niveau: Mapped[str] = mapped_column(String(40))
+    cree_par: Mapped[str] = mapped_column(String(100))
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("email", "niveau", name="uq_membres_equipe_email_niveau"),)

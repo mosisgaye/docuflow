@@ -20,6 +20,8 @@ l'expéditeur et l'objet du mail.
 import base64
 import binascii
 import hashlib
+import html
+import re
 import pathlib
 import time
 import uuid
@@ -63,6 +65,7 @@ class MailEntrant:
     expediteur: str
     objet: str
     pieces: list[PieceJointe]
+    texte: str = ""  # le corps du mail en texte simple, tronqué
 
 
 @dataclass(frozen=True)
@@ -141,7 +144,27 @@ def lire_mail_brut(brut: bytes) -> MailEntrant:
         except (binascii.Error, ValueError):
             contenu = b""
         pieces.append(PieceJointe(nom or "piece-jointe", partie.get_content_type(), contenu, partie.get_content_disposition() == "attachment"))
-    return MailEntrant(message_id[:998], _expediteur(mail), str(mail.get("Subject", "")).strip()[:2000], pieces)
+    return MailEntrant(message_id[:998], _expediteur(mail), str(mail.get("Subject", "")).strip()[:2000], pieces, _texte(mail))
+
+
+TEXTE_MAX = 4000
+
+
+def _texte(mail) -> str:
+    """Le corps du mail en texte simple. Le HTML est réduit à son texte, sans jamais être interprété."""
+    try:
+        corps = mail.get_body(preferencelist=("plain", "html"))
+        if corps is None:
+            return ""
+        contenu = corps.get_content()
+    except (KeyError, LookupError, UnicodeError, ValueError):
+        return ""
+    if corps.get_content_type() == "text/html":
+        contenu = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", contenu)
+        contenu = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</tr>", "\n", contenu)
+        contenu = html.unescape(re.sub(r"<[^>]+>", " ", contenu))
+    contenu = re.sub(r"[ \t]+", " ", contenu)
+    return re.sub(r"\n\s*\n+", "\n\n", contenu).strip()[:TEXTE_MAX]
 
 
 TAILLE_MIN_PHOTO_OCTETS = 30 * 1024  # en dessous, une image de mail est un logo ou une icône, pas une facture
@@ -207,5 +230,8 @@ def recevoir_mail(session: Session, mail: MailEntrant, dossier: pathlib.Path) ->
 
     enregistrement.pieces = pieces
     enregistrement.statut = "traite" if any(piece["resultat"] != "ignoree" for piece in pieces) else "sans_facture"
+    if enregistrement.statut == "sans_facture":
+        # Gardé pour qu'on puisse le lire dans les réglages (par exemple le code de confirmation de Gmail).
+        enregistrement.texte = mail.texte or None
     session.flush()
     return CompteRenduMail(enregistrement, deja_vu=False)

@@ -9,10 +9,11 @@ import { Icone, type NomIcone } from './Icones'
 import { Connecteurs, type OngletConnecteurs } from './Connecteurs'
 import { Documents } from './Pages'
 import { EcranAcces } from './EcranAcces'
+import { type OngletReglages, Reglages } from './Reglages'
 import { TableauDeBord } from './TableauDeBord'
 import { type Theme, retenirTheme } from './theme'
 
-type Page = 'tableau' | 'documents' | 'validations' | 'assistant' | 'connecteurs'
+type Page = 'tableau' | 'documents' | 'validations' | 'assistant' | 'connecteurs' | 'reglages'
 type Vue = Etat | 'toutes'
 
 const CLE_AUTEUR = 'factures.auteur'
@@ -22,6 +23,7 @@ const MENU: { page: Page; nom: string; icone: NomIcone }[] = [
   { page: 'validations', nom: 'À traiter', icone: 'validation' },
   { page: 'assistant', nom: 'Assistant', icone: 'assistant' },
   { page: 'connecteurs', nom: 'Connecteurs', icone: 'integration' },
+  { page: 'reglages', nom: 'Réglages', icone: 'reglages' },
 ]
 const ONGLETS_CONNECTEURS: { onglet: OngletConnecteurs; nom: string; icone: NomIcone }[] = [
   { onglet: 'mes', nom: 'Mes connecteurs', icone: 'integration' },
@@ -77,6 +79,7 @@ export function Application() {
   const [onglet, setOnglet] = useState<'donnees' | 'document' | 'journal'>('donnees')
   const [vue, setVue] = useState<Vue>('toutes')
   const [ongletConnecteurs, setOngletConnecteurs] = useState<OngletConnecteurs | null>(null)
+  const [ongletReglages, setOngletReglages] = useState<OngletReglages>('equipe')
   const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'))
   const [laterale, setLaterale] = useState(() => lire('docuflow.laterale') !== 'repliee')
   // null : on ne sait pas encore ; vrai : le code d'accès de la démonstration est demandé.
@@ -448,10 +451,12 @@ export function Application() {
           ? ['Factures', 'À traiter']
           : page === 'assistant'
             ? ['Assistant']
-            : ['Connecteurs', ONGLETS_CONNECTEURS.find((o) => o.onglet === ongletConnecteursEffectif)!.nom]
+            : page === 'reglages'
+              ? ['Réglages', ongletReglages === 'equipe' ? 'Mon équipe' : 'Réception des factures']
+              : ['Connecteurs', ONGLETS_CONNECTEURS.find((o) => o.onglet === ongletConnecteursEffectif)!.nom]
 
   // La fiche s'ouvre à côté des listes et de l'assistant ; l'accueil et les connecteurs gardent toute la largeur.
-  const panneauFacture = detail && page !== 'connecteurs' && page !== 'tableau'
+  const panneauFacture = detail && page !== 'connecteurs' && page !== 'tableau' && page !== 'reglages'
 
   if (verrouille === null) return null
   if (verrouille) return <EcranAcces surOuverture={() => setVerrouille(false)} />
@@ -550,7 +555,24 @@ export function Application() {
       </nav>
 
       <aside className="laterale" aria-label="Navigation de la section" aria-hidden={!laterale || undefined}>
-        {page === 'connecteurs' ? (
+        {page === 'reglages' ? (
+          <>
+            <div className="laterale__tete">
+              <h2>Réglages</h2>
+            </div>
+            <div className="laterale__corps">
+              <button className="laterale__ligne" aria-current={ongletReglages === 'equipe' || undefined} onClick={() => setOngletReglages('equipe')} tabIndex={laterale ? 0 : -1}>
+                <Icone nom="equipe" />
+                <span>Mon équipe</span>
+              </button>
+              <button className="laterale__ligne" aria-current={ongletReglages === 'reception' || undefined} onClick={() => setOngletReglages('reception')} tabIndex={laterale ? 0 : -1}>
+                <Icone nom="mail" />
+                <span>Réception des factures</span>
+              </button>
+            </div>
+            <p className="laterale__pied">Ce que vous réglez ici s’applique à toute l’entreprise.</p>
+          </>
+        ) : page === 'connecteurs' ? (
           <>
             <div className="laterale__tete">
               <h2>Connecteurs</h2>
@@ -654,7 +676,9 @@ export function Application() {
         </div>
 
         <div className="espace__corps">
-          {page === 'connecteurs' ? (
+          {page === 'reglages' ? (
+            <Reglages onglet={ongletReglages} auteur={auteur} surSansAuteur={() => champAuteur.current?.focus()} />
+          ) : page === 'connecteurs' ? (
             <Connecteurs
               auteur={auteur}
               onglet={ongletConnecteursEffectif}

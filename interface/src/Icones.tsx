@@ -33,6 +33,8 @@ import {
   Search,
   Send,
   SendHorizontal,
+  Settings,
+  Users,
   ShieldCheck,
   Sparkles,
   Sun,
@@ -88,6 +90,8 @@ const ICONES = {
   anomalie: CircleAlert,
   refus: Ban,
   sortie: Send,
+  reglages: Settings,
+  equipe: Users,
 } satisfies Record<string, LucideIcon>
 
 export type NomIcone = keyof typeof ICONES

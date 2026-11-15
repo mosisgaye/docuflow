@@ -3078,3 +3078,189 @@ kbd {
 .acces-ecran__bouton {
   height: 2.125rem;
 }
+
+/* ───────── Réglages ───────── */
+
+.reglages {
+  display: grid;
+  gap: 1rem;
+  max-width: 55rem;
+}
+
+.reglages h2 {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.reglages__ajout {
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.reglages__champs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 0.9fr) auto;
+  gap: 0.625rem;
+  align-items: end;
+}
+
+.reglages__champs label {
+  display: grid;
+  gap: 0.3125rem;
+  font-weight: 500;
+}
+
+.reglages__role {
+  padding: 0.875rem 1rem;
+  display: grid;
+  gap: 0.625rem;
+}
+
+.reglages__role header p,
+.reglages__adresse p,
+.reglages__etapes > p {
+  margin-top: 0.125rem;
+  color: var(--texte-2);
+}
+
+.reglages__role ul,
+.reglages__mails ul {
+  display: grid;
+}
+
+.reglages__role li {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0;
+  border-top: var(--trait) solid var(--bordure);
+}
+
+.reglages__personne {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.reglages__personne strong {
+  font-weight: 500;
+}
+
+.reglages__personne small,
+.reglages__mail small {
+  color: var(--texte-3);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.reglages__vide {
+  color: var(--texte-3);
+}
+
+.reglages__adresse,
+.reglages__etapes,
+.reglages__mails {
+  padding: 1rem;
+  display: grid;
+  gap: 0.625rem;
+}
+
+.reglages__adresse .etat {
+  justify-self: start;
+}
+
+.reglages__copie {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.reglages__copie code {
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--rayon);
+  background: var(--vert-pale);
+  color: var(--vert-texte);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+.reglages__deux {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.reglages__deux h3 {
+  margin-bottom: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.reglages__deux ol {
+  display: grid;
+  gap: 0.375rem;
+  padding-left: 1.125rem;
+  list-style: decimal;
+  color: var(--texte-2);
+}
+
+.reglages__mails header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.reglages__mails li {
+  padding: 0.5rem 0;
+  border-top: var(--trait) solid var(--bordure);
+}
+
+.reglages__mail {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.reglages__mail > span:first-child {
+  display: grid;
+  min-width: 0;
+}
+
+.reglages__mail strong {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.reglages__texte {
+  margin-top: 0.375rem;
+}
+
+.reglages__texte summary {
+  color: var(--vert-texte);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.reglages__texte p {
+  margin-top: 0.375rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.375rem;
+  background: var(--creux);
+  color: var(--texte-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}
+
+@container page (max-width: 700px) {
+  .page .reglages__champs,
+  .page .reglages__deux {
+    grid-template-columns: 1fr;
+  }
+}

@@ -14,6 +14,7 @@ Le travailleur appelle relancer() régulièrement. Un verrou PostgreSQL garantit
 travailleur s'en occupe à la fois : deux travailleurs ne relancent jamais deux fois.
 """
 
+from collections import Counter
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select, text
@@ -42,7 +43,9 @@ def a_relancer(facture: FactureEnBase, niveau: str, mails: list[Evenement], main
     du_niveau = [e for e in mails if e.detail.get("niveau") == niveau]
     if not any(e.type == "NOTIFICATION" for e in du_niveau):
         return None  # le premier mail n'est jamais parti : personne n'a été prévenu par mail
-    if sum(1 for e in du_niveau if e.detail.get("rappel")) >= RELANCES_MAX:
+    # Comptées par personne : deux personnes au même niveau reçoivent chacune leur relance.
+    par_personne = Counter(e.detail.get("destinataire") for e in du_niveau if e.detail.get("rappel"))
+    if max(par_personne.values(), default=0) >= RELANCES_MAX:
         return None
     attente = maintenant - max(e.cree_le for e in du_niveau)
     echeance = _date((facture.donnees or {}).get("date_echeance"))

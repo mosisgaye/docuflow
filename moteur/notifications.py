@@ -31,11 +31,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from moteur import config
 from moteur.approbation import LIBELLES, empreinte
-from moteur.base import FactureEnBase
+from moteur.base import FactureEnBase, MembreEquipe
 
 DUREE_LIEN_S = 7 * 24 * 3600
 CLE_SESSION = "notifications_en_attente"
@@ -103,7 +104,17 @@ def adresse_lien(jeton: str) -> str:
 
 
 def destinataire(niveau: str) -> str | None:
+    """L'adresse du fichier de réglages : utilisée seulement si l'équipe n'est pas renseignée dans Verifac."""
     return config.lire(f"APPROBATION_DESTINATAIRE_{niveau.upper()}", "") or config.lire("APPROBATION_DESTINATAIRE", "") or None
+
+
+def destinataires(session: Session, niveau: str) -> list[str]:
+    """Qui prévenir pour ce niveau : l'équipe saisie dans les réglages, sinon l'adresse du fichier de réglages."""
+    equipe = session.scalars(select(MembreEquipe.email).where(MembreEquipe.niveau == niveau).order_by(MembreEquipe.cree_le)).all()
+    if equipe:
+        return list(equipe)
+    secours = destinataire(niveau)
+    return [secours] if secours else []
 
 
 def _euros(valeur) -> str:
@@ -170,10 +181,12 @@ def demander(session: Session, facture: FactureEnBase, niveau: str, rappel: str 
 
     Renvoie faux si les mails ne sont pas configurés (l'approbation se fait alors dans DocuFlow).
     """
-    personne = destinataire(niveau)
-    if personne is None or not config.lire("APPROBATION_SECRET", ""):
+    personnes = destinataires(session, niveau)
+    if not personnes or not config.lire("APPROBATION_SECRET", ""):
         return False
-    session.info.setdefault(CLE_SESSION, []).append((facture.id, niveau, personne, rappel))
+    # Chaque personne du niveau reçoit son propre lien ; la première qui décide l'emporte.
+    for personne in personnes:
+        session.info.setdefault(CLE_SESSION, []).append((facture.id, niveau, personne, rappel))
     return True
 
 

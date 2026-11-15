@@ -264,3 +264,30 @@ export interface EtatAcces {
 export const etatAcces = () => appeler<EtatAcces>('/acces')
 export const entrer = (code: string) => appeler<EtatAcces>('/acces', enJson({ code }))
 export const sortir = () => appeler<EtatAcces>('/acces', { method: 'DELETE' })
+
+// ───────── Réglages : l'équipe qui approuve, et la réception des factures ─────────
+
+export interface MembreEquipe {
+  id: string
+  nom: string
+  email: string
+  niveau: Niveau
+  cree_par: string
+  cree_le: string
+}
+
+export interface MailRecu {
+  id: string
+  expediteur: string
+  objet: string
+  statut: 'traite' | 'sans_facture'
+  recu_le: string
+  factures: number
+  texte: string | null
+}
+
+export const equipe = () => appeler<{ niveaux: Record<Niveau, string>; membres: MembreEquipe[] }>('/reglages/equipe')
+export const ajouterMembre = (nom: string, email: string, niveau: Niveau, auteur: string) =>
+  appeler<MembreEquipe>('/reglages/equipe', enJson({ nom, email, niveau, auteur }))
+export const retirerMembre = (id: string) => appeler<{ id: string }>(`/reglages/equipe/${id}`, { method: 'DELETE' })
+export const reception = () => appeler<{ adresse: string; active: boolean; mails: MailRecu[] }>('/reglages/reception')
