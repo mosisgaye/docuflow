@@ -1,0 +1,108 @@
+[
+  {
+    "id": "odoo",
+    "nom": "Odoo",
+    "editeur": "DocuFlow",
+    "description": "Fournisseurs, factures fournisseurs, bons de commande et contacts de votre Odoo.",
+    "usages": [
+      "Retrouver un fournisseur et ses contacts",
+      "Consulter l'historique des achats chez un fournisseur",
+      "Comparer une facture à ses bons de commande"
+    ],
+    "statut": "disponible",
+    "connexion": "cle_api",
+    "transport": {"type": "stdio", "module": "moteur.mcp_odoo"},
+    "note": "Odoo a son propre serveur MCP, mais seulement avec son application IA. Ce connecteur s'appuie sur l'API JSON-2 d'Odoo et fonctionne aussi avec Odoo Community.",
+    "documentation": "https://www.odoo.com/documentation/master/developer/reference/external_api.html"
+  },
+  {
+    "id": "hubspot",
+    "nom": "HubSpot",
+    "editeur": "HubSpot",
+    "description": "Fiches entreprises, contacts et historique des échanges de votre CRM HubSpot.",
+    "usages": [
+      "Retrouver le contact d'un fournisseur",
+      "Voir les derniers échanges avec un fournisseur avant de le relancer"
+    ],
+    "statut": "disponible",
+    "connexion": "oauth",
+    "transport": {"type": "http", "url": "https://mcp.hubspot.com"},
+    "note": "Serveur MCP officiel de HubSpot, ouvert à tous les comptes. Connexion OAuth.",
+    "documentation": "https://developers.hubspot.com/docs/build-with-ai/remote-mcp-server"
+  },
+  {
+    "id": "gmail",
+    "nom": "Gmail",
+    "editeur": "Google",
+    "description": "Rechercher et lire les mails de la boîte de l'entreprise, préparer des brouillons.",
+    "usages": [
+      "Retrouver le mail d'origine d'une facture",
+      "Préparer un brouillon de relance à un fournisseur, sans l'envoyer"
+    ],
+    "statut": "preversion",
+    "connexion": "oauth",
+    "transport": {"type": "http", "url": "https://gmailmcp.googleapis.com/mcp/v1"},
+    "note": "Serveur MCP officiel de Google, en préversion. À activer dans un projet Google Cloud.",
+    "documentation": "https://developers.google.com/workspace/guides/configure-mcp-servers"
+  },
+  {
+    "id": "google_drive",
+    "nom": "Google Drive",
+    "editeur": "Google",
+    "description": "Rechercher et lire les documents archivés : contrats, devis, justificatifs.",
+    "usages": [
+      "Retrouver le devis ou le contrat d'un fournisseur",
+      "Vérifier qu'un justificatif est bien archivé"
+    ],
+    "statut": "preversion",
+    "connexion": "oauth",
+    "transport": {"type": "http", "url": "https://drivemcp.googleapis.com/mcp/v1"},
+    "note": "Serveur MCP officiel de Google, en préversion. À activer dans un projet Google Cloud.",
+    "documentation": "https://developers.google.com/workspace/guides/configure-mcp-servers"
+  },
+  {
+    "id": "microsoft_365",
+    "nom": "Microsoft 365",
+    "editeur": "Microsoft",
+    "description": "Mails, agenda et fichiers Outlook et OneDrive de l'entreprise.",
+    "usages": [
+      "Retrouver le mail d'origine d'une facture",
+      "Préparer une relance depuis Outlook"
+    ],
+    "statut": "bientot",
+    "connexion": "oauth",
+    "transport": null,
+    "note": "Serveur MCP officiel « Work IQ » de Microsoft, en préversion, réservé aux licences Microsoft 365 Copilot.",
+    "documentation": "https://learn.microsoft.com/en-us/microsoft-365-copilot/extensibility/work-iq/mcp/overview"
+  },
+  {
+    "id": "qonto",
+    "nom": "Qonto",
+    "editeur": "Qonto",
+    "description": "Transactions et virements du compte professionnel.",
+    "usages": [
+      "Vérifier qu'une facture a bien été payée",
+      "Retrouver l'IBAN déjà utilisé pour un fournisseur"
+    ],
+    "statut": "a_confirmer",
+    "connexion": "oauth",
+    "transport": null,
+    "note": "Un serveur MCP hébergé par Qonto est annoncé par des catalogues tiers. À confirmer auprès de Qonto avant de le brancher.",
+    "documentation": "https://api-doc.qonto.com"
+  },
+  {
+    "id": "pennylane",
+    "nom": "Pennylane",
+    "editeur": "Pennylane",
+    "description": "Comptabilité et factures fournisseurs dans Pennylane.",
+    "usages": [
+      "Envoyer une facture validée à la comptabilité",
+      "Retrouver les écritures d'un fournisseur"
+    ],
+    "statut": "bientot",
+    "connexion": "cle_api",
+    "transport": null,
+    "note": "Pas de serveur MCP officiel à ce jour : seulement des serveurs tiers. Branchement prévu par l'API publique de Pennylane.",
+    "documentation": "https://pennylane.readme.io"
+  }
+]

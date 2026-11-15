@@ -9,6 +9,11 @@
     POST /factures/{id}/export        envoyer une facture validée à la comptabilité
     GET  /factures/{id}/export        le fichier CSV de l'écriture comptable
     POST /reception/mail              un mail brut reçu à l'adresse de dépôt, transmis et signé par l'adaptateur
+    GET  /connecteurs                 le catalogue des connecteurs, et ceux qui sont branchés
+    GET  /connecteurs/{id}            un connecteur : ses outils, les derniers appels de l'assistant
+    POST /connecteurs/{id}/branchement   brancher un connecteur (son serveur MCP doit répondre)
+    DELETE /connecteurs/{id}/branchement débrancher
+    PUT  /connecteurs/{id}/outils     choisir les outils de lecture autorisés
     POST /agent                       parler à l'assistant (réponse envoyée au fil de l'eau)
     GET  /statistiques                les chiffres du tableau de bord
     GET  /sante                       l'API et la base répondent-elles ? où en est la file de tâches ?
@@ -39,6 +44,8 @@ from moteur.extraction_llm import ResultatExtraction, extraire
 from moteur.export import ErreurEnvoi, ErreurExport
 from moteur.lecture_pdf import lire_pdf
 from moteur.odoo import Odoo, depuis_configuration
+from moteur.base import AppelConnecteur, ConnecteurBranche
+from moteur.connecteurs import CATALOGUE, ErreurConnecteur, Passerelle, fiche_catalogue
 from moteur.reception_mail import SignatureInvalide, cles_publiques, lire_mail_brut, recevoir_mail, verifier_signature
 from moteur.workflow import FactureIntrouvable, TransitionInterdite, exporter, ranger_fichier, recevoir, rejeter, traiter, valider
 
@@ -134,6 +141,7 @@ def creer_application(
     traiter_tout_de_suite: bool = False,
     cles_mail: list | None = None,
     odoo: Odoo | None | str = "configuration",
+    passerelle: Passerelle | None = None,
 ) -> FastAPI:
     """Construit l'application. Les paramètres servent aux tests ; en service, tout vient de .env.
 
@@ -141,6 +149,7 @@ def creer_application(
     Utile aux tests et aux démonstrations sans travailleur ; jamais en service.
     cles_mail : clés publiques des adaptateurs de messagerie. Sans elles, la réception par mail est fermée.
     odoo : le connecteur Odoo ; par défaut, celui de la configuration (None s'il n'y a pas de clé).
+    passerelle : l'accès aux connecteurs MCP ; par défaut, celui des serveurs du catalogue.
     """
     if fabrique_session is None:
         moteur_base = creer_moteur()
@@ -150,6 +159,7 @@ def creer_application(
     dossier.mkdir(parents=True, exist_ok=True)
     cles_mail = cles_mail if cles_mail is not None else cles_publiques(config.lire("RECEPTION_MAIL_CLES_PUBLIQUES", ""))
     odoo = depuis_configuration() if odoo == "configuration" else odoo
+    passerelle = passerelle or Passerelle(fabrique_session)
     exports = dossier_exports or pathlib.Path(config.lire("EXPORTS_DOSSIER", str(config.RACINE / "donnees" / "exports")))
 
     # L'assistant ne garde pas ses conversations : on enregistre sa consigne une fois, au démarrage,
@@ -339,6 +349,106 @@ def creer_application(
             ],
         }
 
+    # ───────── Connecteurs ─────────
+
+    def connecteur_ou_404(identifiant: str) -> dict:
+        entree = fiche_catalogue(identifiant)
+        if entree is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Connecteur inconnu.")
+        return entree
+
+    def vue_connecteur(entree: dict, branche: ConnecteurBranche | None) -> dict:
+        return {
+            **{cle: valeur for cle, valeur in entree.items() if cle != "transport"},
+            "branche": bool(branche and branche.actif),
+            "outils_autorises": branche.outils_autorises if branche else None,
+            "branche_par": branche.branche_par if branche else None,
+            "branche_le": branche.branche_le if branche else None,
+        }
+
+    @application.get("/connecteurs")
+    def lister_connecteurs(session: Session = Depends(session_de_requete, scope="function")) -> list[dict]:
+        branches = {branche.id: branche for branche in session.scalars(select(ConnecteurBranche))}
+        return [vue_connecteur(entree, branches.get(entree["id"])) for entree in CATALOGUE]
+
+    @application.get("/connecteurs/{identifiant}")
+    def detailler_connecteur(identifiant: str, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        entree = connecteur_ou_404(identifiant)
+        branche = session.get(ConnecteurBranche, identifiant)
+        outils, erreur = [], None
+        if branche and branche.actif:
+            try:
+                outils = [
+                    {"nom": o.nom, "description": o.description, "lecture": o.lecture, "autorise": passerelle.autorise(o, branche)}
+                    for o in passerelle.outils_du_serveur(identifiant)
+                ]
+            except ErreurConnecteur as probleme:
+                erreur = str(probleme)
+        appels = session.scalars(
+            select(AppelConnecteur).where(AppelConnecteur.connecteur == identifiant).order_by(AppelConnecteur.cree_le.desc()).limit(20)
+        ).all()
+        return {
+            **vue_connecteur(entree, branche),
+            "outils": outils,
+            "erreur": erreur,
+            "appels": [
+                {"outil": a.outil, "arguments": a.arguments, "statut": a.statut, "detail": a.detail, "duree_ms": a.duree_ms, "cree_le": a.cree_le}
+                for a in appels
+            ],
+        }
+
+    class Branchement(BaseModel):
+        auteur: str = Field(min_length=1, max_length=100)
+
+    @application.post("/connecteurs/{identifiant}/branchement")
+    def brancher(identifiant: str, demande: Branchement, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        entree = connecteur_ou_404(identifiant)
+        if entree["statut"] not in ("disponible", "preversion"):
+            raise HTTPException(status.HTTP_409_CONFLICT, f"{entree['nom']} n'est pas encore disponible.")
+        if passerelle.cible(identifiant) is None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "La connexion OAuth n'est pas encore disponible." if entree["connexion"] == "oauth" else f"{entree['nom']} n'est pas configuré sur ce serveur.",
+            )
+        # On ne branche qu'un serveur qui répond : on lui demande ses outils.
+        passerelle.oublier(identifiant)
+        try:
+            outils = passerelle.outils_du_serveur(identifiant)
+        except ErreurConnecteur as erreur:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(erreur)) from erreur
+        branche = session.get(ConnecteurBranche, identifiant) or ConnecteurBranche(id=identifiant, branche_par=demande.auteur)
+        branche.actif, branche.branche_par, branche.branche_le = True, demande.auteur, func.now()
+        session.add(branche)
+        session.flush()
+        return {**vue_connecteur(entree, branche), "outils_lecture": [o.nom for o in outils if o.lecture], "outils_ecriture_ignores": [o.nom for o in outils if not o.lecture]}
+
+    @application.delete("/connecteurs/{identifiant}/branchement")
+    def debrancher(identifiant: str, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        entree = connecteur_ou_404(identifiant)
+        branche = session.get(ConnecteurBranche, identifiant)
+        if branche:
+            branche.actif = False  # la ligne reste : le journal des appels garde son sens
+        passerelle.oublier(identifiant)
+        return vue_connecteur(entree, branche)
+
+    class Autorisation(BaseModel):
+        autorises: list[str] | None  # None : tous les outils de lecture
+
+    @application.put("/connecteurs/{identifiant}/outils")
+    def autoriser(identifiant: str, demande: Autorisation, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        entree = connecteur_ou_404(identifiant)
+        branche = session.get(ConnecteurBranche, identifiant)
+        if branche is None or not branche.actif:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Branchez d'abord ce connecteur.")
+        if demande.autorises is not None:
+            lecture = {o.nom for o in passerelle.outils_du_serveur(identifiant) if o.lecture}
+            refuses = sorted(set(demande.autorises) - lecture)
+            if refuses:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Seuls les outils de lecture peuvent être autorisés : {', '.join(refuses)}.")
+        branche.outils_autorises = demande.autorises
+        session.flush()
+        return vue_connecteur(entree, branche)
+
     @application.post("/agent")
     def parler_a_l_agent(demande: DemandeAgent) -> StreamingResponse:
         def flux() -> Iterator[str]:
@@ -354,7 +464,7 @@ def creer_application(
                         elements.append(f"Elle regarde la facture n° {facture.numero_facture} (identifiant {facture.id}, état « {facture.etat} »).")
                 contexte = " ".join(elements) or None
                 messages = [message.model_dump() for message in demande.messages]
-                for evenement in converser(session, messages, contexte, llm_agent):
+                for evenement in converser(session, messages, contexte, llm_agent, passerelle):
                     yield f"data: {json.dumps(evenement, ensure_ascii=False)}\n\n"
             finally:
                 session.rollback()

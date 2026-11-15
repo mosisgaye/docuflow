@@ -5,7 +5,8 @@ Les tables :
 - evenements : la piste d'audit. Chaque étape y ajoute une ligne, jamais modifiée ensuite ;
 - consignes  : le texte exact de chaque version des consignes données à l'IA ;
 - taches     : la file des lectures à faire, prises par le travailleur (moteur/travailleur.py) ;
-- mails_recus : chaque mail reçu à l'adresse de dépôt, et ce qu'on a fait de ses pièces jointes.
+- mails_recus : chaque mail reçu à l'adresse de dépôt, et ce qu'on a fait de ses pièces jointes ;
+- connecteurs et appels_connecteurs : les logiciels branchés (MCP) et le journal de leurs appels.
 
 Toute modification de ces modèles demande une migration (dossier migrations/).
 """
@@ -123,6 +124,34 @@ class MailRecu(Base):
     statut: Mapped[str] = mapped_column(String(20))  # "traite" (au moins une facture) ou "sans_facture"
     pieces: Mapped[list] = mapped_column(JSONB, default=list)  # ce qu'on a fait de chaque pièce jointe
     recu_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ConnecteurBranche(Base):
+    """Un connecteur du catalogue que l'entreprise a branché, avec les outils qu'elle autorise."""
+
+    __tablename__ = "connecteurs"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)  # identifiant du catalogue : odoo, hubspot…
+    actif: Mapped[bool] = mapped_column(server_default=text("true"))
+    # Outils autorisés. None : tous les outils de LECTURE du serveur. Une écriture n'est jamais autorisée d'office.
+    outils_autorises: Mapped[list | None] = mapped_column(JSONB)
+    branche_par: Mapped[str] = mapped_column(String(100))
+    branche_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AppelConnecteur(Base):
+    """Journal de chaque appel d'outil fait par l'assistant à un connecteur. Jamais modifié ensuite."""
+
+    __tablename__ = "appels_connecteurs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    connecteur: Mapped[str] = mapped_column(String(40), index=True)
+    outil: Mapped[str] = mapped_column(String(100))
+    arguments: Mapped[dict] = mapped_column(JSONB, default=dict)
+    statut: Mapped[str] = mapped_column(String(20))  # "ok", "erreur" ou "refuse"
+    detail: Mapped[str | None] = mapped_column(Text)
+    duree_ms: Mapped[int | None] = mapped_column(Integer)
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.clock_timestamp())
 
 
 def creer_moteur(url: str | None = None) -> Engine:

@@ -213,6 +213,15 @@ Ce que fait le connecteur (`moteur/odoo.py`), actif dès que la clé existe :
 | Nouvel essai | même fournisseur et même numéro : rien n'est recréé ; un envoi interrompu avant le PDF est complété |
 | Contrôle | le total recalculé par Odoo est comparé à celui de la facture ; tout écart est signalé |
 
+## Connecteurs (MCP)
+
+DocuFlow branche les logiciels de l'entreprise par le protocole MCP, comme les connecteurs de Claude ou de ChatGPT : son assistant y cherche l'information (historique d'achats, commandes, contacts) et la croise avec les factures.
+
+- **Catalogue** : `moteur/catalogue_connecteurs.json`, 7 outils retenus pour le traitement des factures fournisseurs (Odoo, HubSpot, Gmail, Google Drive, Microsoft 365, Qonto, Pennylane), avec l'état vérifié de leur serveur MCP officiel. Ajouter un outil, c'est ajouter une entrée.
+- **Odoo** : Odoo n'a de serveur MCP qu'avec son application IA, absente de la version Community. DocuFlow expose donc son propre connecteur testé (`moteur/mcp_odoo.py`), en lecture seule. Il se lance aussi seul : `uv run python -m moteur.mcp_odoo`.
+- **Garde-fous** : l'assistant ne reçoit que les outils déclarés en lecture par leur serveur, et l'entreprise peut en restreindre la liste ; une écriture n'est jamais autorisée. Chaque appel est journalisé (outil, arguments, résultat, durée). Les réponses sont transmises comme des données, avec leur source, jamais comme des consignes. Les IBAN ne sont jamais montrés en entier.
+- **Le circuit de la facture** (créer dans Odoo, valider, payer) reste du code testé : l'assistant cherche et propose, il n'exécute rien.
+
 ## Configuration
 
 Toutes les valeurs se règlent dans `.env` (voir `.env.example`).
