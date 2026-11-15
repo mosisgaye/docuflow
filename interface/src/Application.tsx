@@ -6,10 +6,11 @@ import { Conversation, type Tour } from './Conversation'
 import { Fiche } from './Fiche'
 import { A_TRAITER, raconter } from './format'
 import { Icone } from './Icones'
-import { Documents, Integrations } from './Pages'
+import { Connecteurs } from './Connecteurs'
+import { Documents } from './Pages'
 import { TableauDeBord } from './TableauDeBord'
 
-type Page = 'tableau' | 'documents' | 'validations' | 'assistant' | 'integrations'
+type Page = 'tableau' | 'documents' | 'validations' | 'assistant' | 'connecteurs'
 
 const CLE_AUTEUR = 'factures.auteur'
 const MENU: { page: Page; nom: string; icone: 'accueil' | 'document' | 'validation' | 'assistant' | 'integration' }[] = [
@@ -17,7 +18,7 @@ const MENU: { page: Page; nom: string; icone: 'accueil' | 'document' | 'validati
   { page: 'documents', nom: 'Documents', icone: 'document' },
   { page: 'validations', nom: 'Validations', icone: 'validation' },
   { page: 'assistant', nom: 'Assistant', icone: 'assistant' },
-  { page: 'integrations', nom: 'Intégrations', icone: 'integration' },
+  { page: 'connecteurs', nom: 'Connecteurs', icone: 'integration' },
 ]
 let prochainId = 1
 
@@ -48,6 +49,16 @@ export function Application() {
   const [depotEnCours, setDepotEnCours] = useState<string | null>(null)
   const [survol, setSurvol] = useState(false)
   const [auteur, setAuteur] = useState(() => localStorage.getItem(CLE_AUTEUR) ?? '')
+  const [branches, setBranches] = useState<string[]>([])
+  const rechargerConnecteurs = useCallback(() => {
+    api.connecteurs().then(
+      (liste) => setBranches(liste.filter((connecteur) => connecteur.branche).map((connecteur) => connecteur.nom)),
+      () => setBranches([]),
+    )
+  }, [])
+  useEffect(() => {
+    rechargerConnecteurs()
+  }, [rechargerConnecteurs])
   const champAuteur = useRef<HTMLInputElement>(null)
   const champFichier = useRef<HTMLInputElement>(null)
   const toursActuels = useRef(tours)
@@ -77,7 +88,9 @@ export function Application() {
     recharger()
   }, [recharger])
 
-  useEffect(() => localStorage.setItem(CLE_AUTEUR, auteur), [auteur])
+  useEffect(() => {
+    localStorage.setItem(CLE_AUTEUR, auteur)
+  }, [auteur])
 
   // La facture mise en avant sur le tableau de bord : celle qu'on vient de déposer,
   // sinon la première à traiter, sinon la plus récente.
@@ -404,9 +417,20 @@ export function Application() {
             />
           )}
           {page === 'assistant' && (
-            <Conversation tours={tours} occupe={occupe} surEnvoi={envoyer} surFichiers={deposerAvecAssistant} surProposition={repondreProposition} surOuverture={ouvrir} />
+            <Conversation
+              tours={tours}
+              occupe={occupe}
+              connecteurs={branches}
+              surConnecteurs={() => setPage('connecteurs')}
+              surEnvoi={envoyer}
+              surFichiers={deposerAvecAssistant}
+              surProposition={repondreProposition}
+              surOuverture={ouvrir}
+            />
           )}
-          {page === 'integrations' && <Integrations statistiques={statistiques} />}
+          {page === 'connecteurs' && (
+            <Connecteurs auteur={auteur} statistiques={statistiques} surChangement={rechargerConnecteurs} surSansAuteur={() => champAuteur.current?.focus()} />
+          )}
         </div>
       </div>
 

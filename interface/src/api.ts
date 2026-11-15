@@ -140,3 +140,52 @@ export function deposer(fichier: File) {
   formulaire.append('fichier', fichier)
   return appeler<FactureDeposee>('/factures', { method: 'POST', body: formulaire })
 }
+
+// ───────── Connecteurs ─────────
+
+export type StatutConnecteur = 'disponible' | 'preversion' | 'a_confirmer' | 'bientot'
+
+export interface Connecteur {
+  id: string
+  nom: string
+  editeur: string
+  description: string
+  usages: string[]
+  statut: StatutConnecteur
+  connexion: 'oauth' | 'cle_api'
+  note: string
+  documentation: string
+  branche: boolean
+  outils_autorises: string[] | null
+  branche_par: string | null
+  branche_le: string | null
+}
+
+export interface OutilConnecteur {
+  nom: string
+  description: string
+  lecture: boolean
+  autorise: boolean
+}
+
+export interface AppelConnecteur {
+  outil: string
+  arguments: Record<string, unknown>
+  statut: 'ok' | 'erreur' | 'refuse'
+  detail: string | null
+  duree_ms: number | null
+  cree_le: string
+}
+
+export interface FicheConnecteur extends Connecteur {
+  outils: OutilConnecteur[]
+  erreur: string | null
+  appels: AppelConnecteur[]
+}
+
+export const connecteurs = () => appeler<Connecteur[]>('/connecteurs')
+export const ficheConnecteur = (id: string) => appeler<FicheConnecteur>(`/connecteurs/${id}`)
+export const brancher = (id: string, auteur: string) => appeler<Connecteur>(`/connecteurs/${id}/branchement`, enJson({ auteur }))
+export const debrancher = (id: string) => appeler<Connecteur>(`/connecteurs/${id}/branchement`, { method: 'DELETE' })
+export const autoriserOutils = (id: string, autorises: string[] | null) =>
+  appeler<Connecteur>(`/connecteurs/${id}/outils`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autorises }) })

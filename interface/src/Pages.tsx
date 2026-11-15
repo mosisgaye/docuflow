@@ -69,6 +69,12 @@ const pluriel = (nombre: number, singulier: string, plurielle: string) => `${nom
 
 const INTEGRATIONS = [
   {
+    nom: 'Réception par mail',
+    detail: 'Les factures envoyées à depot@factures.moussagaye.com arrivent toutes seules, avec l’expéditeur et l’objet du mail. Chaque envoi est signé.',
+    etat: 'actif',
+    icone: 'document',
+  },
+  {
     nom: 'IA d’extraction',
     detail: 'Lit le texte de la facture et en sort les données. Le fournisseur est interchangeable : OpenAI ou Gemini, par simple réglage.',
     etat: 'actif',
@@ -106,13 +112,10 @@ const INTEGRATIONS = [
   },
 ] as const
 
-export function Integrations({ statistiques }: { statistiques: Statistiques | null }) {
+/** Ce qui fonctionne sans rien brancher : les services intégrés à DocuFlow (onglet de la page Connecteurs). */
+export function ServicesIntegres({ statistiques }: { statistiques: Statistiques | null }) {
   return (
-    <div className="page">
-      <header className="tableau__titre">
-        <h1>Intégrations</h1>
-        <p>Les services auxquels la plateforme est reliée, et ceux qui restent à brancher.</p>
-      </header>
+    <>
       <ul className="integrations">
         {INTEGRATIONS.map((integration) => (
           <li key={integration.nom} className="carte">
@@ -131,6 +134,6 @@ export function Integrations({ statistiques }: { statistiques: Statistiques | nu
           {pluriel(statistiques.lues_sans_ia, 'facture électronique Factur-X lue', 'factures électroniques Factur-X lues')} sans IA.
         </p>
       )}
-    </div>
+    </>
   )
 }

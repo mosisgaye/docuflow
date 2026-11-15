@@ -32,6 +32,8 @@ export interface Tour {
 interface Props {
   tours: Tour[]
   occupe: boolean
+  connecteurs: string[]  // noms des connecteurs branchés, où l'assistant peut chercher
+  surConnecteurs: () => void
   surEnvoi: (texte: string) => void
   surFichiers: (fichiers: File[]) => void
   surProposition: (tourId: number, rang: number, accepter: boolean) => void
@@ -59,7 +61,7 @@ function Etapes({ etapes }: { etapes: Etape[] }) {
   )
 }
 
-export function Conversation({ tours, occupe, surEnvoi, surFichiers, surProposition, surOuverture }: Props) {
+export function Conversation({ tours, occupe, connecteurs, surConnecteurs, surEnvoi, surFichiers, surProposition, surOuverture }: Props) {
   const [saisie, setSaisie] = useState('')
   const fin = useRef<HTMLDivElement>(null)
   const champFichier = useRef<HTMLInputElement>(null)
@@ -143,6 +145,12 @@ export function Conversation({ tours, occupe, surEnvoi, surFichiers, surProposit
         <div ref={fin} />
       </div>
 
+      <p className="saisie__connecteurs">
+        {connecteurs.length > 0 ? 'L’assistant cherche aussi dans : ' : 'Aucun connecteur branché. '}
+        <button type="button" className="lien" onClick={surConnecteurs}>
+          {connecteurs.length > 0 ? connecteurs.join(', ') : 'Brancher un logiciel'}
+        </button>
+      </p>
       <form
         className="saisie"
         onSubmit={(evenement) => {
