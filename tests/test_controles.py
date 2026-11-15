@@ -50,6 +50,8 @@ def test_une_facture_juste_n_a_aucune_anomalie():
         ({"taux_tva": "19.6", "total_tva": "58.80", "total_ttc": "358.80"}, "TAUX_TVA_INCONNU"),
         ({"fournisseur_siret": "52987431500028"}, "SIRET_INVALIDE"),
         ({"fournisseur_siret": "5298743150002"}, "SIRET_INVALIDE"),
+        # Clé du SIRET juste, mais SIREN (801441722) faux : refusé aussi (trou trouvé grâce à Odoo).
+        ({"fournisseur_siret": "80144172200015"}, "SIRET_INVALIDE"),
         ({"fournisseur_tva": "FR53529874315"}, "TVA_INTRACOM_INVALIDE"),
         ({"fournisseur_tva": "FR5252987431"}, "TVA_INTRACOM_INVALIDE"),
         ({"fournisseur_tva": "FR28403221989"}, "TVA_SIRET_DIFFERENTS"),
@@ -122,3 +124,10 @@ def test_les_factures_d_exemple_donnent_les_anomalies_prevues(fichier):
     obtenus = [anomalie.code for anomalie in controler(facture, AUJOURD_HUI)]
 
     assert obtenus == ATTENDU[fichier]["anomalies"]
+
+
+def test_le_siret_de_la_poste_suit_sa_propre_regle():
+    from moteur.controles import siret_correct
+
+    assert siret_correct("35600000000010")  # somme des chiffres : 15, divisible par 5
+    assert not siret_correct("35600000000011")

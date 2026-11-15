@@ -69,6 +69,22 @@ def cle_de_luhn_valide(chiffres: str) -> bool:
     return total % 10 == 0
 
 
+SIREN_LA_POSTE = "356000000"
+
+
+def siret_correct(siret: str) -> bool:
+    """14 chiffres, clé du SIRET ET clé du SIREN (ses 9 premiers chiffres) justes.
+
+    Exception officielle : les établissements de La Poste partagent un même SIREN et leur
+    SIRET suit une autre règle (somme des chiffres divisible par 5).
+    """
+    if len(siret) != 14 or not siret.isdigit():
+        return False
+    if siret.startswith(SIREN_LA_POSTE):
+        return sum(int(chiffre) for chiffre in siret) % 5 == 0
+    return cle_de_luhn_valide(siret) and cle_de_luhn_valide(siret[:9])
+
+
 def cle_tva_attendue(siren: str) -> str:
     """Clé à deux chiffres d'un numéro de TVA français, calculée à partir du SIREN."""
     return f"{(12 + 3 * (int(siren) % 97)) % 97:02d}"
@@ -159,7 +175,7 @@ def tva(facture: Facture) -> list[Anomalie]:
 def identifiants(facture: Facture) -> list[Anomalie]:
     anomalies = []
     siret = facture.fournisseur_siret
-    siret_valide = bool(siret) and len(siret) == 14 and siret.isdigit() and cle_de_luhn_valide(siret)
+    siret_valide = bool(siret) and siret_correct(siret)
     if siret and not siret_valide:
         anomalies.append(
             Anomalie(
