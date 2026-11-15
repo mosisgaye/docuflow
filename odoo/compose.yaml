@@ -1,0 +1,46 @@
+# Odoo de démonstration : il joue « le logiciel existant du client » (CRM, achats, comptabilité).
+# Séparé de DocuFlow, avec sa propre base. Accessible seulement depuis cette machine.
+#
+#   docker compose -f odoo/compose.yaml up -d      (Compose charge odoo/.env tout seul)
+#   uv run python -m outils.odoo_installer      # crée la base « demo » (une seule fois)
+#
+# Les mots de passe sont dans odoo/.env (jamais versionné), créé par outils/odoo_installer.py.
+name: odoo-demo
+
+services:
+  base:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: ${ODOO_BASE_MOT_DE_PASSE:?à définir dans odoo/.env}
+      POSTGRES_DB: postgres
+    volumes:
+      - base_odoo:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  odoo:
+    image: odoo:20.0-20261112
+    restart: unless-stopped
+    depends_on:
+      base:
+        condition: service_healthy
+    environment:
+      HOST: base
+      USER: odoo
+      PASSWORD: ${ODOO_BASE_MOT_DE_PASSE:?à définir dans odoo/.env}
+    # Gestionnaire de bases web désactivé : la base est créée par outils/odoo_installer.py,
+    # personne ne peut en créer, copier ou supprimer depuis le navigateur.
+    command: ["--", "--proxy-mode", "--without-demo=all", "--no-database-list", "--database=demo", "--db-filter=^demo$$"]
+    ports:
+      - "127.0.0.1:8069:8069"
+    volumes:
+      - fichiers_odoo:/var/lib/odoo
+
+volumes:
+  base_odoo:
+  fichiers_odoo:
