@@ -1,25 +1,48 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type EvenementAgent, type MessageAgent, parler } from './agent'
 import * as api from './api'
-import type { FactureDetail, FactureResume, Statistiques } from './api'
+import type { Etat, FactureDetail, FactureResume, Statistiques } from './api'
 import { Conversation, type Tour } from './Conversation'
-import { Fiche } from './Fiche'
-import { A_TRAITER, raconter } from './format'
-import { Icone } from './Icones'
-import { Connecteurs } from './Connecteurs'
+import { Fiche, Journal, Tampon } from './Fiche'
+import { A_TRAITER, LIBELLE_ETAT, ORDRE_ETATS, euros, initiales, raconter, teinte } from './format'
+import { Icone, type NomIcone } from './Icones'
+import { Connecteurs, type OngletConnecteurs } from './Connecteurs'
 import { Documents } from './Pages'
 import { TableauDeBord } from './TableauDeBord'
+import { type Theme, retenirTheme } from './theme'
 
 type Page = 'tableau' | 'documents' | 'validations' | 'assistant' | 'connecteurs'
+type Vue = Etat | 'toutes'
 
 const CLE_AUTEUR = 'factures.auteur'
-const MENU: { page: Page; nom: string; icone: 'accueil' | 'document' | 'validation' | 'assistant' | 'integration' }[] = [
-  { page: 'tableau', nom: 'Tableau de bord', icone: 'accueil' },
-  { page: 'documents', nom: 'Documents', icone: 'document' },
-  { page: 'validations', nom: 'Validations', icone: 'validation' },
+const MENU: { page: Page; nom: string; icone: NomIcone }[] = [
+  { page: 'tableau', nom: 'Accueil', icone: 'accueil' },
+  { page: 'documents', nom: 'Factures', icone: 'document' },
+  { page: 'validations', nom: 'À traiter', icone: 'validation' },
   { page: 'assistant', nom: 'Assistant', icone: 'assistant' },
   { page: 'connecteurs', nom: 'Connecteurs', icone: 'integration' },
 ]
+const ONGLETS_CONNECTEURS: { onglet: OngletConnecteurs; nom: string; icone: NomIcone }[] = [
+  { onglet: 'mes', nom: 'Mes connecteurs', icone: 'integration' },
+  { onglet: 'decouvrir', nom: 'Découvrir', icone: 'grille' },
+  { onglet: 'integres', nom: 'Intégrés à DocuFlow', icone: 'bouclier' },
+  { onglet: 'developpeurs', nom: 'Accès développeurs', icone: 'code' },
+]
+const FORMATS_ACCEPTES = /\.(pdf|jpe?g|png|webp)$/i
+const lire = (cle: string) => {
+  try {
+    return localStorage.getItem(cle)
+  } catch {
+    return null
+  }
+}
+const ecrire = (cle: string, valeur: string) => {
+  try {
+    localStorage.setItem(cle, valeur)
+  } catch {
+    // Sans stockage, le réglage vaut pour cette visite.
+  }
+}
 let prochainId = 1
 
 const tourVide = (role: Tour['role'], champs: Partial<Tour> = {}): Tour => ({
@@ -50,7 +73,12 @@ export function Application() {
   const [statistiques, setStatistiques] = useState<Statistiques | null>(null)
   const [vedette, setVedette] = useState<FactureDetail | null>(null)
   const [detail, setDetail] = useState<FactureDetail | null>(null)
-  const [onglet, setOnglet] = useState<'donnees' | 'document'>('donnees')
+  const [onglet, setOnglet] = useState<'donnees' | 'document' | 'journal'>('donnees')
+  const [vue, setVue] = useState<Vue>('toutes')
+  const [ongletConnecteurs, setOngletConnecteurs] = useState<OngletConnecteurs | null>(null)
+  const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'))
+  const [laterale, setLaterale] = useState(() => lire('docuflow.laterale') !== 'repliee')
+  const champRecherche = useRef<HTMLInputElement>(null)
   const [tours, setTours] = useState<Tour[]>([])
   const [recherche, setRecherche] = useState('')
   const [erreur, setErreur] = useState<string | null>(null)
@@ -60,7 +88,7 @@ export function Application() {
   const [decision, setDecision] = useState(false)
   const [depotEnCours, setDepotEnCours] = useState<string | null>(null)
   const [survol, setSurvol] = useState(false)
-  const [auteur, setAuteur] = useState(() => localStorage.getItem(CLE_AUTEUR) ?? '')
+  const [auteur, setAuteur] = useState(() => lire(CLE_AUTEUR) ?? '')
   const [branches, setBranches] = useState<string[]>([])
   const rechargerConnecteurs = useCallback(() => {
     api.connecteurs().then(
@@ -101,7 +129,7 @@ export function Application() {
   }, [recharger])
 
   useEffect(() => {
-    localStorage.setItem(CLE_AUTEUR, auteur)
+    ecrire(CLE_AUTEUR, auteur)
   }, [auteur])
 
   // La facture mise en avant sur le tableau de bord : celle qu'on vient de déposer,
@@ -229,8 +257,8 @@ export function Application() {
   /** Dépôt depuis le haut de l'écran : la facture est lue et son parcours s'affiche sur le tableau de bord. */
   const deposer = useCallback(
     async (fichiers: File[]) => {
-      const pdfs = fichiers.filter((fichier) => fichier.name.toLowerCase().endsWith('.pdf'))
-      if (pdfs.length < fichiers.length) setErreur('Seuls les fichiers PDF sont acceptés.')
+      const pdfs = fichiers.filter((fichier) => FORMATS_ACCEPTES.test(fichier.name))
+      if (pdfs.length < fichiers.length) setErreur('Seuls les PDF et les photos (JPEG, PNG, WebP) sont acceptés.')
       if (pdfs.length === 0) return
       if (page === 'assistant') return deposerAvecAssistant(pdfs)
       setOccupe(true)
@@ -317,9 +345,102 @@ export function Application() {
     if (question && !occupe) envoyer(question)
   }
 
+  // ───────── Ce qui est affiché ─────────
+
+  const ongletConnecteursEffectif: OngletConnecteurs = ongletConnecteurs ?? (branches.length > 0 ? 'mes' : 'decouvrir')
+  const compte = useMemo(() => {
+    const parEtat = new Map<Etat, number>()
+    for (const facture of factures) parEtat.set(facture.etat, (parEtat.get(facture.etat) ?? 0) + 1)
+    return parEtat
+  }, [factures])
+
+  const listeAffichee = useMemo(() => {
+    const base = page === 'validations' ? aTraiter : vue === 'toutes' ? factures : factures.filter((facture) => facture.etat === vue)
+    const mots = recherche.trim().toLowerCase()
+    const trouvees = mots
+      ? base.filter((facture) =>
+          [facture.fournisseur_nom, facture.numero_facture, facture.nom_fichier, facture.fournisseur_siret].some((valeur) => valeur?.toLowerCase().includes(mots)),
+        )
+      : base
+    // Même ordre que les groupes affichés : « Suivante » descend la liste telle qu'on la voit.
+    return [...trouvees].sort((a, b) => ORDRE_ETATS.indexOf(a.etat) - ORDRE_ETATS.indexOf(b.etat))
+  }, [page, vue, factures, aTraiter, recherche])
+
+  // Précédente et suivante : dans la liste affichée si la facture y est, sinon dans toutes.
+  const voisines = page === 'documents' || page === 'validations' ? listeAffichee : factures
+  const rang = detail ? voisines.findIndex((facture) => facture.id === detail.id) : -1
+  const precedente = rang > 0 ? voisines[rang - 1] : null
+  const suivante = rang >= 0 && rang < voisines.length - 1 ? voisines[rang + 1] : null
+
+  const changerTheme = () => {
+    const nouveau = theme === 'dark' ? 'light' : 'dark'
+    retenirTheme(nouveau)
+    setTheme(nouveau)
+  }
+
+  const basculerLaterale = useCallback(() => {
+    setLaterale((actuelle) => {
+      ecrire('docuflow.laterale', actuelle ? 'repliee' : 'ouverte')
+      return !actuelle
+    })
+  }, [])
+
+  const allerVue = (nouvelle: Vue) => {
+    setVue(nouvelle)
+    setPage('documents')
+  }
+
+  // Raccourcis : Ctrl K pour chercher, Échap pour fermer, [ pour la barre latérale.
+  useEffect(() => {
+    const touche = (evenement: KeyboardEvent) => {
+      const cible = evenement.target as HTMLElement
+      const enSaisie = cible.matches('input, textarea, select, [contenteditable]')
+      if ((evenement.ctrlKey || evenement.metaKey) && evenement.key.toLowerCase() === 'k') {
+        evenement.preventDefault()
+        champRecherche.current?.focus()
+        champRecherche.current?.select()
+      } else if (evenement.key === 'Escape') {
+        if (enSaisie) cible.blur()
+        else if (detail && page !== 'connecteurs') ouvrir(null)
+      } else if (evenement.key === '[' && !enSaisie) {
+        basculerLaterale()
+      } else if (!enSaisie && detail && (evenement.key === 'ArrowDown' || evenement.key === 'j') && suivante) {
+        evenement.preventDefault()
+        ouvrir(suivante.id)
+      } else if (!enSaisie && detail && (evenement.key === 'ArrowUp' || evenement.key === 'k') && precedente) {
+        evenement.preventDefault()
+        ouvrir(precedente.id)
+      }
+    }
+    window.addEventListener('keydown', touche)
+    return () => window.removeEventListener('keydown', touche)
+  }, [detail, page, ouvrir, basculerLaterale, suivante, precedente])
+
+  // Une information se retire seule ; une erreur reste jusqu'à ce qu'on la ferme.
+  useEffect(() => {
+    if (!information) return
+    const minuterie = window.setTimeout(() => setInformation(null), 6000)
+    return () => window.clearTimeout(minuterie)
+  }, [information])
+
+  const fil: string[] =
+    page === 'tableau'
+      ? ['Accueil']
+      : page === 'documents'
+        ? ['Factures', vue === 'toutes' ? 'Toutes les factures' : LIBELLE_ETAT[vue]]
+        : page === 'validations'
+          ? ['Factures', 'À traiter']
+          : page === 'assistant'
+            ? ['Assistant']
+            : ['Connecteurs', ONGLETS_CONNECTEURS.find((o) => o.onglet === ongletConnecteursEffectif)!.nom]
+
+  // La fiche s'ouvre à côté des listes et de l'assistant ; l'accueil et les connecteurs gardent toute la largeur.
+  const panneauFacture = detail && page !== 'connecteurs' && page !== 'tableau'
+  const enSaisieNom = !auteur.trim()
+
   return (
     <div
-      className={`application${detail ? ' application--ouvert' : ''}`}
+      className={`app${laterale ? '' : ' app--sans-laterale'}`}
       onDragOver={(evenement) => {
         evenement.preventDefault()
         setSurvol(true)
@@ -331,57 +452,48 @@ export function Application() {
         if (!occupe) deposer([...evenement.dataTransfer.files])
       }}
     >
-      <nav className="menu" aria-label="Navigation">
-        <div className="menu__marque">
-          <span className="menu__logo" aria-hidden="true" />
-          <p>
-            <strong>DocuFlow AI</strong>
-            <small>Lire. Contrôler. Décider.</small>
-          </p>
+      <header className="haut">
+        <div className="haut__marque">
+          <span className="marque" aria-hidden="true">
+            <Icone nom="facture" taille={14} />
+          </span>
+          <span className="haut__nom">DocuFlow</span> <small>Factures fournisseurs</small>
         </div>
-        <ul>
-          {MENU.map((entree) => (
-            <li key={entree.page}>
-              <button aria-current={page === entree.page ? 'page' : undefined} onClick={() => setPage(entree.page)}>
-                <Icone nom={entree.icone} />
-                <span>{entree.nom}</span>
-                {entree.page === 'validations' && aTraiter.length > 0 && <span className="menu__compte">{aTraiter.length}</span>}
-              </button>
-            </li>
-          ))}
-        </ul>
-        <p className={`menu__etat menu__etat--${enService === false ? 'arret' : 'marche'}`}>
-          <span aria-hidden="true" />
-          {enService === false ? 'Moteur injoignable' : enService ? 'Système opérationnel' : 'Connexion…'}
-        </p>
-      </nav>
 
-      <div className="scene">
-        <header className="barre">
-          <label className="barre__recherche">
-            <Icone nom="recherche" />
-            <input
-              type="search"
-              value={recherche}
-              placeholder="Rechercher un fournisseur, un numéro…"
-              aria-label="Rechercher une facture"
-              onChange={(evenement) => {
-                setRecherche(evenement.target.value)
-                if (page !== 'validations') setPage('documents')
-              }}
-            />
-          </label>
+        <label className="recherche">
+          <Icone nom="recherche" />
+          <input
+            ref={champRecherche}
+            type="search"
+            value={recherche}
+            placeholder="Rechercher un fournisseur, un numéro, un SIRET"
+            aria-label="Rechercher une facture"
+            onChange={(evenement) => {
+              setRecherche(evenement.target.value)
+              if (page !== 'validations' && page !== 'documents') setPage('documents')
+            }}
+          />
+          <kbd>Ctrl K</kbd>
+        </label>
+
+        <div className="haut__actions">
           <button className="bouton bouton--plein" onClick={() => champFichier.current?.click()} disabled={occupe}>
-            Déposer des factures
+            <Icone nom="deposer" />
+            <span>Déposer</span>
           </button>
-          <label className="barre__auteur">
-            Bonjour,
-            <input ref={champAuteur} value={auteur} onChange={(evenement) => setAuteur(evenement.target.value)} placeholder="votre nom" maxLength={100} aria-label="Votre nom" />
+          <label className="auteur" title="Votre nom, inscrit au journal à chaque décision">
+            <span className={`avatar teinte-3`} aria-hidden="true">
+              {enSaisieNom ? <Icone nom="utilisateur" taille={12} /> : initiales(auteur)}
+            </span>
+            <input ref={champAuteur} value={auteur} onChange={(evenement) => setAuteur(evenement.target.value)} placeholder="Votre nom" maxLength={100} aria-label="Votre nom" />
           </label>
+          <button className="bouton bouton--fantome bouton--icone" onClick={changerTheme} aria-label={theme === 'dark' ? 'Passer en thème clair' : 'Passer en thème sombre'} title="Changer de thème">
+            <Icone nom={theme === 'dark' ? 'soleil' : 'lune'} />
+          </button>
           <input
             ref={champFichier}
             type="file"
-            accept="application/pdf"
+            accept="application/pdf,image/jpeg,image/png,image/webp"
             multiple
             hidden
             onChange={(evenement) => {
@@ -389,90 +501,277 @@ export function Application() {
               evenement.target.value = ''
             }}
           />
-        </header>
+        </div>
+      </header>
 
-        {erreur && (
-          <p className="bandeau" role="alert">
-            {erreur}
-            <button onClick={() => setErreur(null)}>Fermer</button>
-          </p>
-        )}
-        {information && (
-          <p className="bandeau bandeau--information" role="status">
-            {information}
-            <button onClick={() => setInformation(null)}>Fermer</button>
-          </p>
-        )}
+      <nav className="rail" aria-label="Navigation">
+        {MENU.map((entree) => (
+          <button
+            key={entree.page}
+            className="rail__bouton"
+            aria-current={page === entree.page ? 'page' : undefined}
+            onClick={() => {
+              if (entree.page === 'documents') setVue('toutes')
+              setPage(entree.page)
+            }}
+          >
+            <Icone nom={entree.icone} taille={18} />
+            {entree.nom}
+            {entree.page === 'validations' && aTraiter.length > 0 && <span className="rail__compte">{aTraiter.length}</span>}
+          </button>
+        ))}
+        <div className="rail__bas">
+          <span
+            className={`rail__etat${enService === false ? ' rail__etat--arret' : ''}`}
+            title={enService === false ? 'Moteur injoignable' : 'Système opérationnel'}
+            role="status"
+            aria-label={enService === false ? 'Moteur injoignable' : 'Système opérationnel'}
+          />
+        </div>
+      </nav>
 
-        <div className="scene__page">
-          {page === 'tableau' && statistiques && (
-            <TableauDeBord
-              statistiques={statistiques}
-              vedette={vedette}
-              depotEnCours={depotEnCours}
-              surOuverture={ouvrir}
-              surAssistant={versAssistant}
-              surDocuments={() => setPage('documents')}
-            />
-          )}
-          {page === 'documents' && (
-            <Documents titre="Documents" sousTitre="Toutes les factures reçues." factures={factures} recherche={recherche} ouverte={detail?.id ?? null} surOuverture={ouvrir} />
-          )}
-          {page === 'validations' && (
-            <Documents
-              titre="Validations"
-              sousTitre="Les factures qui attendent votre décision, les anomalies en premier."
-              factures={aTraiter}
-              recherche={recherche}
-              ouverte={detail?.id ?? null}
-              surOuverture={ouvrir}
-            />
-          )}
-          {page === 'assistant' && (
-            <Conversation
-              tours={tours}
-              occupe={occupe}
-              connecteurs={branches}
-              surConnecteurs={() => setPage('connecteurs')}
-              surEnvoi={envoyer}
-              surFichiers={deposerAvecAssistant}
-              surProposition={repondreProposition}
-              surOuverture={ouvrir}
-            />
-          )}
-          {page === 'connecteurs' && (
-            <Connecteurs auteur={auteur} messageInitial={messageConnexion} statistiques={statistiques} surChangement={rechargerConnecteurs} surSansAuteur={() => champAuteur.current?.focus()} />
+      <aside className="laterale" aria-label="Navigation de la section" aria-hidden={!laterale || undefined}>
+        {page === 'connecteurs' ? (
+          <>
+            <div className="laterale__tete">
+              <h2>Connecteurs</h2>
+            </div>
+            <div className="laterale__corps">
+              {ONGLETS_CONNECTEURS.map((entree) => (
+                <button
+                  key={entree.onglet}
+                  className="laterale__ligne"
+                  aria-current={ongletConnecteursEffectif === entree.onglet || undefined}
+                  onClick={() => setOngletConnecteurs(entree.onglet)}
+                  tabIndex={laterale ? 0 : -1}
+                >
+                  <Icone nom={entree.icone} />
+                  <span>{entree.nom}</span>
+                  {entree.onglet === 'mes' && <span className="laterale__compte">{branches.length}</span>}
+                </button>
+              ))}
+            </div>
+            <p className="laterale__pied">Lecture seule : l’assistant cherche, il ne modifie jamais rien dans vos logiciels.</p>
+          </>
+        ) : page === 'assistant' ? (
+          <>
+            <div className="laterale__tete">
+              <h2>Assistant</h2>
+              <button className="bouton bouton--fantome bouton--icone" onClick={() => setTours([])} disabled={occupe} aria-label="Nouvelle conversation" title="Nouvelle conversation" tabIndex={laterale ? 0 : -1}>
+                <Icone nom="conversation" />
+              </button>
+            </div>
+            <div className="laterale__corps">
+              <p className="laterale__section">Il cherche dans</p>
+              {['Vos factures', 'Registre des entreprises', 'Annonces légales (BODACC)', ...branches].map((source) => (
+                <p key={source} className="laterale__ligne" style={{ cursor: 'default' }}>
+                  <Icone nom="coche" />
+                  <span>{source}</span>
+                </p>
+              ))}
+              <button className="laterale__ligne" onClick={() => setPage('connecteurs')} tabIndex={laterale ? 0 : -1}>
+                <Icone nom="plus" />
+                <span>Brancher un logiciel</span>
+              </button>
+            </div>
+            <p className="laterale__pied">L’assistant propose, vous décidez : rien n’est validé sans votre clic.</p>
+          </>
+        ) : (
+          <>
+            <div className="laterale__tete">
+              <h2>Factures</h2>
+              <button className="bouton bouton--plein bouton--petit" onClick={() => champFichier.current?.click()} disabled={occupe} tabIndex={laterale ? 0 : -1}>
+                <Icone nom="plus" taille={14} /> Déposer
+              </button>
+            </div>
+            <div className="laterale__corps">
+              <button className="laterale__ligne" aria-current={page === 'tableau' || undefined} onClick={() => setPage('tableau')} tabIndex={laterale ? 0 : -1}>
+                <Icone nom="accueil" />
+                <span>Vue d’ensemble</span>
+              </button>
+              <button className="laterale__ligne" aria-current={page === 'validations' || undefined} onClick={() => setPage('validations')} tabIndex={laterale ? 0 : -1}>
+                <Icone nom="validation" />
+                <span>À traiter</span>
+                <span className="laterale__compte">{aTraiter.length}</span>
+              </button>
+              <button className="laterale__ligne" aria-current={(page === 'documents' && vue === 'toutes') || undefined} onClick={() => allerVue('toutes')} tabIndex={laterale ? 0 : -1}>
+                <Icone nom="document" />
+                <span>Toutes les factures</span>
+                <span className="laterale__compte">{factures.length}</span>
+              </button>
+              <p className="laterale__section">Par état</p>
+              {ORDRE_ETATS.filter((etat) => etat !== 'extraite').map((etat) => (
+                <button key={etat} className="laterale__ligne" aria-current={(page === 'documents' && vue === etat) || undefined} onClick={() => allerVue(etat)} tabIndex={laterale ? 0 : -1}>
+                  <span className={`puce puce--${etat}`} aria-hidden="true" />
+                  <span>{LIBELLE_ETAT[etat]}</span>
+                  <span className="laterale__compte">{compte.get(etat) ?? 0}</span>
+                </button>
+              ))}
+            </div>
+            <p className="laterale__pied">
+              Ou par mail : <strong>depot@factures.moussagaye.com</strong>
+            </p>
+          </>
+        )}
+      </aside>
+
+      <main className="espace">
+        <div className="espace__tete">
+          <button className="bouton bouton--fantome bouton--icone" onClick={basculerLaterale} aria-label={laterale ? 'Replier la barre latérale' : 'Déplier la barre latérale'} title="Barre latérale ( [ )">
+            <Icone nom="panneau" />
+          </button>
+          <ol className="fil" aria-label="Vous êtes ici">
+            {fil.map((etape) => (
+              <li key={etape}>{etape}</li>
+            ))}
+          </ol>
+          {(page === 'documents' || page === 'validations') && recherche.trim() && (
+            <div className="espace__outils">
+              <button className="pastille-filtre" aria-pressed="true" onClick={() => setRecherche('')}>
+                « {recherche.trim()} » <Icone nom="fermer" taille={12} />
+              </button>
+            </div>
           )}
         </div>
-      </div>
 
-      {detail && (
-        <aside className="volet" aria-label="Facture ouverte">
-          <div className="volet__onglets">
-            <button aria-pressed={onglet === 'donnees'} onClick={() => setOnglet('donnees')}>
-              Données lues par l’IA
-            </button>
-            <button aria-pressed={onglet === 'document'} onClick={() => setOnglet('document')}>
-              Document reçu
-            </button>
-            <button className="volet__fermer" onClick={() => ouvrir(null)}>
-              Fermer
+        <div className="espace__corps">
+          {page === 'connecteurs' ? (
+            <Connecteurs
+              auteur={auteur}
+              onglet={ongletConnecteursEffectif}
+              messageInitial={messageConnexion}
+              statistiques={statistiques}
+              surOnglet={setOngletConnecteurs}
+              surChangement={rechargerConnecteurs}
+              surSansAuteur={() => champAuteur.current?.focus()}
+            />
+          ) : (
+            <div className={`page${page === 'assistant' ? ' page--pleine' : ''}`}>
+              {page === 'tableau' &&
+                (statistiques ? (
+                  <TableauDeBord
+                    statistiques={statistiques}
+                    vedette={vedette}
+                    depotEnCours={depotEnCours}
+                    auteur={auteur}
+                    surOuverture={(id) => {
+                      allerVue('toutes')
+                      ouvrir(id)
+                    }}
+                    surAssistant={versAssistant}
+                    surDocuments={() => allerVue('toutes')}
+                  />
+                ) : (
+                  <p className="note">{enService === false ? 'Le moteur ne répond pas.' : 'Chargement…'}</p>
+                ))}
+              {(page === 'documents' || page === 'validations') && (
+                <>
+                  <header className="page__titre">
+                    <div>
+                      <h1>{page === 'validations' ? 'À traiter' : vue === 'toutes' ? 'Toutes les factures' : LIBELLE_ETAT[vue]}</h1>
+                      <p>{page === 'validations' ? 'Les factures qui attendent une décision, les anomalies en premier.' : 'Cliquez sur une facture pour l’ouvrir à côté de la liste.'}</p>
+                    </div>
+                  </header>
+                  <Documents factures={listeAffichee} recherche={recherche} ouverte={detail?.id ?? null} surOuverture={ouvrir} surDepot={() => champFichier.current?.click()} />
+                </>
+              )}
+              {page === 'assistant' && (
+                <Conversation
+                  tours={tours}
+                  occupe={occupe}
+                  connecteurs={branches}
+                  surConnecteurs={() => setPage('connecteurs')}
+                  surEnvoi={envoyer}
+                  surFichiers={deposerAvecAssistant}
+                  surProposition={repondreProposition}
+                  surOuverture={ouvrir}
+                />
+              )}
+            </div>
+          )}
+
+          {panneauFacture && (
+            <aside className="panneau" aria-label="Facture ouverte">
+              <header className="panneau__tete">
+                <span className={`avatar avatar--grand teinte-${teinte(detail.fournisseur_nom ?? detail.nom_fichier)}`} aria-hidden="true">
+                  {initiales(detail.fournisseur_nom ?? detail.nom_fichier)}
+                </span>
+                <div className="panneau__titre">
+                  <h2>{detail.fournisseur_nom ?? detail.nom_fichier}</h2>
+                  <p>
+                    <span className={`etat etat--${detail.etat}`}>{LIBELLE_ETAT[detail.etat]}</span>
+                    {detail.numero_facture && <span>n° {detail.numero_facture}</span>}
+                    {detail.total_ttc && <strong>{euros(detail.total_ttc)}</strong>}
+                  </p>
+                  <Tampon facture={detail} />
+                </div>
+                <div className="panneau__boutons">
+                  <button className="bouton bouton--fantome bouton--icone" onClick={() => precedente && ouvrir(precedente.id)} disabled={!precedente} aria-label="Facture précédente" title="Précédente (↑)">
+                    <Icone nom="precedent" />
+                  </button>
+                  <button className="bouton bouton--fantome bouton--icone" onClick={() => suivante && ouvrir(suivante.id)} disabled={!suivante} aria-label="Facture suivante" title="Suivante (↓)">
+                    <Icone nom="suivant" />
+                  </button>
+                  <a className="bouton bouton--fantome bouton--icone" href={api.adresseFichier(detail.id)} target="_blank" rel="noreferrer" aria-label="Ouvrir le PDF dans un nouvel onglet" title="Ouvrir le PDF">
+                    <Icone nom="externe" />
+                  </a>
+                  <button className="bouton bouton--fantome bouton--icone" onClick={() => ouvrir(null)} aria-label="Fermer" title="Fermer (Échap)">
+                    <Icone nom="fermer" />
+                  </button>
+                </div>
+              </header>
+              <div className="onglets" role="tablist">
+                <button role="tab" aria-selected={onglet === 'donnees'} onClick={() => setOnglet('donnees')}>
+                  <Icone nom="assistant" taille={14} /> Données
+                </button>
+                <button role="tab" aria-selected={onglet === 'document'} onClick={() => setOnglet('document')}>
+                  <Icone nom="document" taille={14} /> Document
+                </button>
+                <button role="tab" aria-selected={onglet === 'journal'} onClick={() => setOnglet('journal')}>
+                  <Icone nom="journal" taille={14} /> Journal
+                </button>
+              </div>
+              <div className="panneau__corps">
+                {onglet === 'document' ? (
+                  <iframe key={detail.id} className="panneau__document" src={api.adresseFichier(detail.id)} title={`Facture ${detail.nom_fichier}`} />
+                ) : onglet === 'journal' ? (
+                  <Journal facture={detail} />
+                ) : (
+                  <Fiche
+                    key={detail.id + detail.etat}
+                    facture={detail}
+                    occupe={decision}
+                    surValidation={() => decider(detail.id, api.valider)}
+                    surRejet={(motif) => decider(detail.id, (id, nom) => api.rejeter(id, nom, motif))}
+                    surExport={() => decider(detail.id, api.exporter)}
+                  />
+                )}
+              </div>
+            </aside>
+          )}
+        </div>
+      </main>
+
+      <div className="notifications" aria-live="polite">
+        {erreur && (
+          <div className="notification notification--erreur" role="alert">
+            <Icone nom="anomalie" />
+            <p>{erreur}</p>
+            <button className="bouton bouton--fantome bouton--petit bouton--icone" onClick={() => setErreur(null)} aria-label="Fermer">
+              <Icone nom="fermer" taille={14} />
             </button>
           </div>
-          {onglet === 'document' ? (
-            <iframe key={detail.id} className="volet__document" src={api.adresseFichier(detail.id)} title={`Facture ${detail.nom_fichier}`} />
-          ) : (
-            <Fiche
-              key={detail.id + detail.etat}
-              facture={detail}
-              occupe={decision}
-              surValidation={() => decider(detail.id, api.valider)}
-              surRejet={(motif) => decider(detail.id, (id, nom) => api.rejeter(id, nom, motif))}
-              surExport={() => decider(detail.id, api.exporter)}
-            />
-          )}
-        </aside>
-      )}
+        )}
+        {information && (
+          <div className="notification" role="status">
+            <Icone nom="coche" />
+            <p>{information}</p>
+            <button className="bouton bouton--fantome bouton--petit bouton--icone" onClick={() => setInformation(null)} aria-label="Fermer">
+              <Icone nom="fermer" taille={14} />
+            </button>
+          </div>
+        )}
+      </div>
 
       {survol && <div className="depot">Relâchez pour déposer les factures</div>}
     </div>

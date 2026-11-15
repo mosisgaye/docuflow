@@ -1,12 +1,13 @@
 import type { FactureDetail, Statistiques } from './api'
 import * as api from './api'
-import { ETAPES, LIBELLE_ETAT, avancement, duree, euros, heureCourte, ilYA, jour, manquant, raconter } from './format'
+import { ETAPES, LIBELLE_ETAT, avancement, duree, euros, heureCourte, ilYA, initiales, jour, manquant, raconter, teinte } from './format'
 import { Icone } from './Icones'
 
 interface Props {
   statistiques: Statistiques
   vedette: FactureDetail | null
   depotEnCours: string | null
+  auteur: string
   surOuverture: (id: string) => void
   surAssistant: (question?: string) => void
   surDocuments: () => void
@@ -27,7 +28,7 @@ function Courbe({ valeurs }: { valeurs: number[] }) {
   })
   return (
     <svg className="courbe" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
-      <polyline points={points.join(' ')} fill="none" stroke="currentColor" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+      <polyline points={points.join(' ')} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
     </svg>
   )
 }
@@ -41,7 +42,7 @@ function Parcours({ faites, alerte, heures, enCours, sansIA = false }: { faites:
         return (
           <li key={etape} className={`parcours__etape parcours__etape--${etat}${enCours && rang === faites ? ' parcours__etape--tourne' : ''}`}>
             <span className="parcours__rond">
-              <Icone nom={ICONES_ETAPES[rang]} taille={18} />
+              <Icone nom={etat === 'faite' ? 'coche' : ICONES_ETAPES[rang]} taille={14} />
             </span>
             <span className="parcours__nom">{etape}</span>
             <span className="parcours__heure">{heures[rang] ?? ''}</span>
@@ -66,18 +67,18 @@ function Repartition({ statistiques }: { statistiques: Statistiques }) {
   const parEtat = statistiques.par_etat
   const parts = [
     { nom: 'À valider', nombre: parEtat.a_valider + (parEtat.en_approbation ?? 0), couleur: 'var(--bleu)' },
-    { nom: 'En anomalie', nombre: parEtat.en_anomalie + parEtat.echec, couleur: 'var(--orange)' },
-    { nom: 'Validées', nombre: parEtat.validee, couleur: 'var(--vert)' },
-    { nom: 'Envoyées en comptabilité', nombre: parEtat.exportee, couleur: 'var(--vert-fonce)' },
-    { nom: 'Rejetées', nombre: parEtat.rejetee, couleur: 'var(--violet)' },
+    { nom: 'En anomalie', nombre: parEtat.en_anomalie + parEtat.echec, couleur: 'var(--ambre)' },
+    { nom: 'Validées', nombre: parEtat.validee, couleur: 'var(--vert-trait)' },
+    { nom: 'En comptabilité', nombre: parEtat.exportee, couleur: 'var(--vert)' },
+    { nom: 'Rejetées', nombre: parEtat.rejetee, couleur: 'var(--rouge)' },
   ]
   const total = statistiques.total || 1
   const perimetre = 2 * Math.PI * 42
   let depart = 0
   return (
-    <div className="repartition">
+    <div className="repartition bloc__corps">
       <svg viewBox="0 0 100 100" role="img" aria-label={`Répartition de ${statistiques.total} factures par état`}>
-        <circle cx="50" cy="50" r="42" fill="none" stroke="var(--creux)" strokeWidth="13" />
+        <circle cx="50" cy="50" r="42" fill="none" stroke="var(--creux)" strokeWidth="10" />
         {parts.map((part) => {
           const longueur = (part.nombre / total) * perimetre
           const arc = (
@@ -88,7 +89,7 @@ function Repartition({ statistiques }: { statistiques: Statistiques }) {
               r="42"
               fill="none"
               stroke={part.couleur}
-              strokeWidth="13"
+              strokeWidth="10"
               strokeDasharray={`${longueur} ${perimetre - longueur}`}
               strokeDashoffset={-depart}
               transform="rotate(-90 50 50)"
@@ -97,17 +98,17 @@ function Repartition({ statistiques }: { statistiques: Statistiques }) {
           depart += longueur
           return part.nombre > 0 ? arc : null
         })}
-        <text x="50" y="49" textAnchor="middle" className="repartition__total">
+        <text x="50" y="52" textAnchor="middle" className="repartition__total">
           {statistiques.total}
         </text>
-        <text x="50" y="62" textAnchor="middle" className="repartition__legende">
-          au total
+        <text x="50" y="65" textAnchor="middle" className="repartition__legende">
+          factures
         </text>
       </svg>
       <ul>
         {parts.map((part) => (
           <li key={part.nom}>
-            <span className="repartition__puce" style={{ background: part.couleur }} />
+            <span className="puce" style={{ background: part.couleur }} />
             <span>{part.nom}</span>
             <strong>{part.nombre}</strong>
           </li>
@@ -117,188 +118,196 @@ function Repartition({ statistiques }: { statistiques: Statistiques }) {
   )
 }
 
-export function TableauDeBord({ statistiques, vedette, depotEnCours, surOuverture, surAssistant, surDocuments }: Props) {
+export function TableauDeBord({ statistiques, vedette, depotEnCours, auteur, surOuverture, surAssistant, surDocuments }: Props) {
   const total = statistiques.total
   const progression = vedette ? avancement(vedette.etat) : { faites: 1, alerte: false }
+  const prenom = auteur.trim().split(/\s+/)[0]
 
   return (
     <div className="tableau">
-      <header className="tableau__titre">
-        <h1>Bienvenue sur DocuFlow AI</h1>
-        <p>Vos factures fournisseurs, lues par l’IA, contrôlées par des règles, validées par vous.</p>
+      <header className="page__titre">
+        <div>
+          <h1>{prenom ? `Bonjour ${prenom}` : 'Vue d’ensemble'}</h1>
+          <p>Vos factures fournisseurs, lues par l’IA, contrôlées par des règles, validées par vous.</p>
+        </div>
       </header>
 
-      <section className="chiffres" aria-label="Chiffres clés">
-        <article className="chiffre chiffre--bleu">
-          <span className="chiffre__icone">
-            <Icone nom="document" taille={24} />
-          </span>
-          <div>
-            <strong>{total}</strong>
-            <p>
-              Factures reçues
-              {statistiques.lues_sans_ia > 0 && `, dont ${statistiques.lues_sans_ia} Factur-X lue${statistiques.lues_sans_ia > 1 ? 's' : ''} sans IA`}
-            </p>
-          </div>
-        </article>
-        <article className="chiffre chiffre--vert">
-          <span className="chiffre__icone">
-            <Icone nom="bouclier" taille={24} />
-          </span>
-          <div>
-            <strong>{total ? POURCENT.format(statistiques.conformes / total) : 'Aucune'}</strong>
-            <p>Conformes dès la lecture</p>
-          </div>
-        </article>
-        <article className="chiffre chiffre--violet">
-          <span className="chiffre__icone">
-            <Icone nom="horloge" taille={24} />
-          </span>
-          <div>
-            <strong>{statistiques.duree_moyenne_s === null ? 'Aucune' : duree(statistiques.duree_moyenne_s)}</strong>
-            <p>Temps moyen d’analyse par l’IA</p>
-          </div>
+      <section className="indicateurs" aria-label="Chiffres clés">
+        <div className="indicateur">
+          <p>
+            <Icone nom="document" taille={14} /> Factures reçues
+          </p>
+          <strong>{total}</strong>
+          <small>{statistiques.lues_sans_ia > 0 ? `dont ${statistiques.lues_sans_ia} Factur-X lue${statistiques.lues_sans_ia > 1 ? 's' : ''} sans IA` : 'toutes sources confondues'}</small>
+        </div>
+        <div className="indicateur">
+          <p>
+            <Icone nom="bouclier" taille={14} /> Conformes dès la lecture
+          </p>
+          <strong>{total ? POURCENT.format(statistiques.conformes / total) : '—'}</strong>
+          <small>sans aucune anomalie</small>
+        </div>
+        <div className="indicateur">
+          <p>
+            <Icone nom="horloge" taille={14} /> Temps moyen d’analyse
+          </p>
+          <strong>{statistiques.duree_moyenne_s === null ? '—' : duree(statistiques.duree_moyenne_s)}</strong>
+          <small>par l’IA, mesuré</small>
           <Courbe valeurs={statistiques.durees_recentes_s} />
-        </article>
-        <article className="chiffre chiffre--orange">
-          <span className="chiffre__icone">
-            <Icone nom="alerte" taille={24} />
-          </span>
-          <div>
-            <strong>{statistiques.anomalies_detectees}</strong>
-            <p>Anomalies attrapées par les contrôles</p>
-          </div>
-        </article>
+        </div>
+        <div className="indicateur">
+          <p>
+            <Icone nom="alerte" taille={14} /> Anomalies attrapées
+          </p>
+          <strong>{statistiques.anomalies_detectees}</strong>
+          <small>par les contrôles</small>
+        </div>
       </section>
 
-      <section className="carte carte--workflow">
-        <header className="carte__tete">
-          <h2>
-            <Icone nom="eclair" /> Parcours d’une facture
-          </h2>
-          {depotEnCours && <span className="pastille pastille--bleu">Analyse en cours</span>}
-        </header>
-        {depotEnCours ? (
-          <>
-            <Parcours faites={1} alerte={false} heures={[]} enCours />
-            <p className="workflow__attente">Lecture de « {depotEnCours} » par l’IA…</p>
-          </>
-        ) : vedette ? (
-          <>
-            <Parcours
-              faites={progression.faites}
-              alerte={progression.alerte}
-              heures={heuresDesEtapes(vedette)}
-              enCours={false}
-              sansIA={vedette.evenements.some((evenement) => evenement.type === 'EXTRACTION' && evenement.detail.source === 'factur-x')}
-            />
-            <div className="workflow__detail">
-              <iframe className="workflow__apercu" src={api.adresseFichier(vedette.id)} title={`Aperçu de ${vedette.nom_fichier}`} tabIndex={-1} />
-              <div className="workflow__fiche">
-                <div className="workflow__entete">
-                  <h3>Facture n° {vedette.numero_facture ?? vedette.nom_fichier}</h3>
-                  <span className={`pastille pastille--${vedette.etat}`}>{LIBELLE_ETAT[vedette.etat]}</span>
+      <div className="tableau__principal">
+        <section className="bloc">
+          <header className="bloc__tete">
+            <h2>
+              <Icone nom="eclair" /> Parcours d’une facture
+            </h2>
+            {depotEnCours && <span className="etat etat--recue">Analyse en cours</span>}
+          </header>
+          {depotEnCours ? (
+            <>
+              <Parcours faites={1} alerte={false} heures={[]} enCours />
+              <p className="attente">Lecture de « {depotEnCours} » par l’IA…</p>
+            </>
+          ) : vedette ? (
+            <>
+              <Parcours
+                faites={progression.faites}
+                alerte={progression.alerte}
+                heures={heuresDesEtapes(vedette)}
+                enCours={false}
+                sansIA={vedette.evenements.some((evenement) => evenement.type === 'EXTRACTION' && evenement.detail.source === 'factur-x')}
+              />
+              <div className="vedette">
+                <iframe className="vedette__apercu" src={`${api.adresseFichier(vedette.id)}`} title={`Aperçu de ${vedette.nom_fichier}`} tabIndex={-1} />
+                <div>
+                  <div className="vedette__entete">
+                    <h3>Facture n° {vedette.numero_facture ?? vedette.nom_fichier}</h3>
+                    <span className={`etat etat--${vedette.etat}`}>{LIBELLE_ETAT[vedette.etat]}</span>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>Fournisseur</dt>
+                      <dd>{vedette.fournisseur_nom ?? manquant(vedette.etat)}</dd>
+                    </div>
+                    <div>
+                      <dt>Montant TTC</dt>
+                      <dd>{euros(vedette.total_ttc, manquant(vedette.etat))}</dd>
+                    </div>
+                    <div>
+                      <dt>Échéance</dt>
+                      <dd>{jour(vedette.donnees?.date_echeance ?? null, manquant(vedette.etat))}</dd>
+                    </div>
+                  </dl>
+                  {vedette.anomalies[0] && <p className="vedette__anomalie">{vedette.anomalies[0].message}</p>}
+                  <div className="progression" role="progressbar" aria-valuenow={progression.faites * 20} aria-valuemin={0} aria-valuemax={100} aria-label="Avancement">
+                    <span className="progression__piste">
+                      <span style={{ width: `${progression.faites * 20}%` }} className={progression.alerte ? 'progression--alerte' : undefined} />
+                    </span>
+                    {progression.faites * 20} %
+                  </div>
+                  <button className="bouton bouton--plein" onClick={() => surOuverture(vedette.id)}>
+                    Ouvrir la facture <Icone nom="fleche" />
+                  </button>
                 </div>
-                <dl>
-                  <div>
-                    <dt>Fournisseur</dt>
-                    <dd>{vedette.fournisseur_nom ?? manquant(vedette.etat)}</dd>
-                  </div>
-                  <div>
-                    <dt>Montant TTC</dt>
-                    <dd>{euros(vedette.total_ttc, manquant(vedette.etat))}</dd>
-                  </div>
-                  <div>
-                    <dt>Échéance</dt>
-                    <dd>{jour(vedette.donnees?.date_echeance ?? null, manquant(vedette.etat))}</dd>
-                  </div>
-                </dl>
-                {vedette.anomalies[0] && <p className="workflow__anomalie">{vedette.anomalies[0].message}</p>}
-                <div className="workflow__barre" role="progressbar" aria-valuenow={progression.faites * 20} aria-valuemin={0} aria-valuemax={100}>
-                  <span style={{ width: `${progression.faites * 20}%` }} className={progression.alerte ? 'workflow__barre--alerte' : undefined} />
-                  <strong>{progression.faites * 20} %</strong>
-                </div>
-                <button className="bouton bouton--plein" onClick={() => surOuverture(vedette.id)}>
-                  Ouvrir la facture
-                </button>
               </div>
+            </>
+          ) : (
+            <div className="vide">
+              <Icone nom="reception" taille={28} />
+              <strong>Aucune facture pour l’instant</strong>
+              <p>Déposez une première facture pour voir son parcours ici.</p>
             </div>
-          </>
-        ) : (
-          <p className="carte__vide">Déposez une première facture pour voir son parcours ici.</p>
-        )}
-      </section>
+          )}
+        </section>
 
-      <section className="carte carte--recents">
-        <header className="carte__tete">
+        <section className="bloc">
+          <header className="bloc__tete">
+            <h2>
+              <Icone nom="document" /> Factures récentes
+            </h2>
+            <button className="bouton bouton--fantome bouton--petit" onClick={surDocuments}>
+              Tout voir <Icone nom="suivant" taille={14} />
+            </button>
+          </header>
+          {statistiques.recentes.length === 0 ? (
+            <p className="attente">Aucune facture reçue.</p>
+          ) : (
+            <ul className="rangees">
+              {statistiques.recentes.map((facture) => (
+                <li key={facture.id}>
+                  <button className="rangee" onClick={() => surOuverture(facture.id)}>
+                    <span className={`avatar avatar--grand teinte-${teinte(facture.fournisseur_nom ?? facture.nom_fichier)}`} aria-hidden="true">
+                      {initiales(facture.fournisseur_nom ?? facture.nom_fichier)}
+                    </span>
+                    <span className="rangee__texte">
+                      <strong>{facture.fournisseur_nom ?? facture.nom_fichier}</strong>
+                      <small>
+                        {facture.numero_facture ? `n° ${facture.numero_facture}` : facture.nom_fichier}
+                        {facture.total_ttc ? ` · ${euros(facture.total_ttc)}` : ''}
+                      </small>
+                    </span>
+                    <span className={`etat etat--${facture.etat}`}>{LIBELLE_ETAT[facture.etat]}</span>
+                    <span className="rangee__quand">{ilYA(facture.cree_le)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      <div className="tableau__cote">
+        <section className="bloc">
+          <header className="bloc__tete">
+            <h2>Répartition par état</h2>
+          </header>
+          <Repartition statistiques={statistiques} />
+        </section>
+
+        <section className="bloc">
+          <header className="bloc__tete">
+            <h2>
+              <Icone nom="journal" /> Activité récente
+            </h2>
+          </header>
+          {statistiques.activite.length === 0 ? (
+            <p className="attente">Rien pour l’instant.</p>
+          ) : (
+            <ol className="activite" style={{ padding: '6px 0' }}>
+              {statistiques.activite.slice(0, 6).map((evenement) => (
+                <li key={evenement.facture_id + evenement.rang}>
+                  <time dateTime={evenement.cree_le}>{heureCourte(evenement.cree_le)}</time>
+                  <button onClick={() => surOuverture(evenement.facture_id)}>
+                    <strong>{evenement.numero_facture ?? evenement.nom_fichier}</strong> {raconter(evenement)}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+
+        <section className="bloc bloc--assistant">
           <h2>
-            <Icone nom="document" /> Factures récentes
+            <Icone nom="assistant" /> Demandez à l’assistant
           </h2>
-          <button className="lien" onClick={surDocuments}>
-            Tout voir
+          <p>Il consulte vos factures, vérifie un fournisseur auprès de l’État et dans vos logiciels, puis prépare vos décisions.</p>
+          <button className="question" onClick={() => surAssistant('Quelles factures posent problème, et pourquoi ?')}>
+            <Icone nom="conversation" /> Quelles factures posent problème ?
           </button>
-        </header>
-        {statistiques.recentes.length === 0 ? (
-          <p className="carte__vide">Aucune facture reçue.</p>
-        ) : (
-          <ul className="recents">
-            {statistiques.recentes.map((facture) => (
-              <li key={facture.id}>
-                <button onClick={() => surOuverture(facture.id)}>
-                  <span className="recents__pdf">PDF</span>
-                  <span className="recents__nom">
-                    <strong>{facture.fournisseur_nom ?? facture.nom_fichier}</strong>
-                    <small>{facture.numero_facture ? `n° ${facture.numero_facture}` : facture.nom_fichier}</small>
-                  </span>
-                  <span className={`pastille pastille--${facture.etat}`}>{LIBELLE_ETAT[facture.etat]}</span>
-                  <small className="recents__quand">{ilYA(facture.cree_le)}</small>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="carte carte--repartition">
-        <header className="carte__tete">
-          <h2>Répartition par état</h2>
-        </header>
-        <Repartition statistiques={statistiques} />
-      </section>
-
-      <section className="carte carte--activite">
-        <header className="carte__tete">
-          <h2>Activité récente</h2>
-        </header>
-        {statistiques.activite.length === 0 ? (
-          <p className="carte__vide">Rien pour l’instant.</p>
-        ) : (
-          <ol className="activite">
-            {statistiques.activite.slice(0, 5).map((evenement) => (
-              <li key={evenement.facture_id + evenement.rang} className={`activite--${evenement.etat}`}>
-                <time dateTime={evenement.cree_le}>{heureCourte(evenement.cree_le)}</time>
-                <span className="activite__puce" />
-                <button onClick={() => surOuverture(evenement.facture_id)}>
-                  <strong>{evenement.numero_facture ?? evenement.nom_fichier}</strong> {raconter(evenement)}
-                </button>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
-
-      <section className="carte carte--assistant">
-        <h2>
-          <Icone nom="assistant" taille={22} /> Demandez à l’assistant
-        </h2>
-        <p>Il consulte vos factures, vérifie un fournisseur auprès de l’État et prépare vos décisions.</p>
-        <button className="carte__question" onClick={() => surAssistant('Quelles factures posent problème, et pourquoi ?')}>
-          Quelles factures posent problème ?
-        </button>
-        <button className="bouton bouton--plein" onClick={() => surAssistant()}>
-          Ouvrir l’assistant <Icone nom="fleche" taille={16} />
-        </button>
-      </section>
+          <button className="bouton bouton--plein" onClick={() => surAssistant()}>
+            Ouvrir l’assistant <Icone nom="fleche" />
+          </button>
+        </section>
+      </div>
     </div>
   )
 }

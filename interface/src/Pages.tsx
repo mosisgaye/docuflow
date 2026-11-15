@@ -1,116 +1,203 @@
-import type { FactureResume, Statistiques } from './api'
-import { LIBELLE_ETAT, euros, ilYA, manquant, siret } from './format'
-import { Icone } from './Icones'
+import { useState } from 'react'
+import type { Etat, FactureResume, Statistiques } from './api'
+import { LIBELLE_ETAT, ORDRE_ETATS, euros, ilYA, initiales, jour, manquant, teinte, urgence } from './format'
+import { Icone, type NomIcone } from './Icones'
 
 interface PropsDocuments {
-  titre: string
-  sousTitre: string
   factures: FactureResume[]
   recherche: string
   ouverte: string | null
   surOuverture: (id: string) => void
+  surDepot: () => void
 }
 
-export function Documents({ titre, sousTitre, factures, recherche, ouverte, surOuverture }: PropsDocuments) {
-  const mots = recherche.trim().toLowerCase()
-  const visibles = factures.filter((facture) =>
-    [facture.fournisseur_nom, facture.numero_facture, facture.nom_fichier, facture.fournisseur_siret].some((valeur) => valeur?.toLowerCase().includes(mots)),
-  )
+function Ligne({ facture, ouverte, surOuverture }: { facture: FactureResume; ouverte: boolean; surOuverture: (id: string) => void }) {
+  const echeance = urgence(facture.date_echeance)
+  const lue = facture.etat !== 'recue' && facture.etat !== 'echec'
   return (
-    <div className="page">
-      <header className="tableau__titre">
-        <h1>{titre}</h1>
-        <p>{sousTitre}</p>
-      </header>
-      <section className="carte">
-        {visibles.length === 0 ? (
-          <p className="carte__vide">{mots ? `Aucune facture ne correspond à « ${recherche} ».` : 'Aucune facture ici.'}</p>
+    <tr className="liste__ligne" aria-selected={ouverte} onClick={() => surOuverture(facture.id)}>
+      <td>
+        <span className="liste__fournisseur">
+          <span className={`avatar teinte-${teinte(facture.fournisseur_nom ?? facture.nom_fichier)}`} aria-hidden="true">
+            {initiales(facture.fournisseur_nom ?? facture.nom_fichier)}
+          </span>
+          <button className="liste__nom" onClick={() => surOuverture(facture.id)}>
+            {facture.fournisseur_nom ?? facture.nom_fichier}
+          </button>
+        </span>
+      </td>
+      <td className="liste__col-numero liste__secondaire">{facture.numero_facture ?? manquant(facture.etat)}</td>
+      <td className="liste__droite">{euros(facture.total_ttc, manquant(facture.etat))}</td>
+      <td className={`liste__col-echeance ${echeance ? `echeance--${echeance}` : 'liste__secondaire'}`}>
+        {facture.date_echeance ? jour(facture.date_echeance) : <span className="liste__muet">{lue ? 'Absente' : '—'}</span>}
+      </td>
+      <td className="liste__col-anomalies">
+        {facture.nb_anomalies > 0 ? (
+          <span className="liste__anomalies">
+            <Icone nom="anomalie" taille={14} />
+            {facture.nb_anomalies}
+          </span>
         ) : (
-          <table className="liste">
-            <thead>
-              <tr>
-                <th scope="col">Fournisseur</th>
-                <th scope="col">Numéro</th>
-                <th scope="col">SIRET</th>
-                <th scope="col" className="liste__droite">
-                  Montant TTC
-                </th>
-                <th scope="col">État</th>
-                <th scope="col">Reçue</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibles.map((facture) => (
-                <tr key={facture.id} aria-selected={facture.id === ouverte} onClick={() => surOuverture(facture.id)}>
-                  <td>
-                    <button className="liste__nom" onClick={() => surOuverture(facture.id)}>
-                      {facture.fournisseur_nom ?? facture.nom_fichier}
-                    </button>
-                  </td>
-                  <td>{facture.numero_facture ?? manquant(facture.etat)}</td>
-                  <td>{siret(facture.fournisseur_siret)}</td>
-                  <td className="liste__droite">{euros(facture.total_ttc, manquant(facture.etat))}</td>
-                  <td>
-                    <span className={`pastille pastille--${facture.etat}`}>{LIBELLE_ETAT[facture.etat]}</span>
-                    {facture.nb_anomalies > 0 && <small className="liste__anomalies">{facture.nb_anomalies} anomalie{facture.nb_anomalies > 1 ? 's' : ''}</small>}
-                  </td>
-                  <td>{ilYA(facture.cree_le)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <span className="liste__muet">—</span>
         )}
-      </section>
-    </div>
+      </td>
+      <td>
+        <span className={`etat etat--${facture.etat}`}>{LIBELLE_ETAT[facture.etat]}</span>
+      </td>
+      <td className="liste__col-recue liste__muet">{ilYA(facture.cree_le)}</td>
+    </tr>
+  )
+}
+
+/** Les factures en liste dense, groupées par état comme une liste de tâches. */
+export function Documents({ factures, recherche, ouverte, surOuverture, surDepot }: PropsDocuments) {
+  const [grouper, setGrouper] = useState(true)
+  const [anomaliesSeules, setAnomaliesSeules] = useState(false)
+  const [replies, setReplies] = useState<Set<Etat>>(new Set())
+  const visibles = anomaliesSeules ? factures.filter((facture) => facture.nb_anomalies > 0) : factures
+  const groupes: { etat: Etat | null; factures: FactureResume[] }[] = grouper
+    ? ORDRE_ETATS.map((etat) => ({ etat, factures: visibles.filter((facture) => facture.etat === etat) })).filter((groupe) => groupe.factures.length > 0)
+    : [{ etat: null, factures: visibles }]
+
+  const basculer = (etat: Etat) =>
+    setReplies((actuels) => {
+      const suivants = new Set(actuels)
+      if (suivants.has(etat)) suivants.delete(etat)
+      else suivants.add(etat)
+      return suivants
+    })
+
+  return (
+    <>
+      <div className="barre-outils">
+        <button className="pastille-filtre" aria-pressed={grouper} onClick={() => setGrouper(!grouper)}>
+          <Icone nom="grouper" taille={14} /> Grouper : état
+        </button>
+        <button className="pastille-filtre" aria-pressed={anomaliesSeules} onClick={() => setAnomaliesSeules(!anomaliesSeules)}>
+          <Icone nom="anomalie" taille={14} /> Anomalies seulement
+        </button>
+        <span className="barre-outils__compte">
+          {visibles.length} facture{visibles.length > 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {visibles.length === 0 ? (
+        <div className="vide">
+          <Icone nom={recherche.trim() ? 'recherche' : 'reception'} taille={28} />
+          <strong>{recherche.trim() ? `Aucune facture ne correspond à « ${recherche.trim()} »` : 'Aucune facture ici'}</strong>
+          <p>{recherche.trim() ? 'Essayez un nom de fournisseur, un numéro ou un SIRET.' : 'Déposez un PDF ou une photo de facture : elle est lue en quelques secondes.'}</p>
+          {!recherche.trim() && (
+            <button className="bouton bouton--plein" onClick={surDepot}>
+              <Icone nom="deposer" /> Déposer des factures
+            </button>
+          )}
+        </div>
+      ) : (
+        <table className="liste">
+          <colgroup>
+            <col />
+            <col className="liste__col-numero" style={{ width: 130 }} />
+            <col style={{ width: 120 }} />
+            <col className="liste__col-echeance" style={{ width: 104 }} />
+            <col className="liste__col-anomalies" style={{ width: 84 }} />
+            <col style={{ width: 150 }} />
+            <col className="liste__col-recue" style={{ width: 100 }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Fournisseur</th>
+              <th scope="col" className="liste__col-numero">
+                Numéro
+              </th>
+              <th scope="col" className="liste__droite">
+                Montant TTC
+              </th>
+              <th scope="col" className="liste__col-echeance">
+                Échéance
+              </th>
+              <th scope="col" className="liste__col-anomalies">
+                Anomalies
+              </th>
+              <th scope="col">État</th>
+              <th scope="col" className="liste__col-recue">
+                Reçue
+              </th>
+            </tr>
+          </thead>
+          {groupes.map((groupe) => {
+            const replie = groupe.etat !== null && replies.has(groupe.etat)
+            return (
+              <tbody key={groupe.etat ?? 'toutes'}>
+                {groupe.etat && (
+                  <tr className={`liste__groupe${replie ? ' liste__groupe--replie' : ''}`}>
+                    <th colSpan={7} scope="rowgroup">
+                      <button aria-expanded={!replie} onClick={() => basculer(groupe.etat!)}>
+                        <Icone nom="deplier" taille={14} />
+                        <span className={`etat etat--${groupe.etat}`}>{LIBELLE_ETAT[groupe.etat]}</span>
+                        <span className="liste__groupe-compte">{groupe.factures.length}</span>
+                      </button>
+                    </th>
+                  </tr>
+                )}
+                {!replie && groupe.factures.map((facture) => <Ligne key={facture.id} facture={facture} ouverte={facture.id === ouverte} surOuverture={surOuverture} />)}
+              </tbody>
+            )
+          })}
+        </table>
+      )}
+    </>
   )
 }
 
 const pluriel = (nombre: number, singulier: string, plurielle: string) => `${nombre} ${nombre > 1 ? plurielle : singulier}`
 
-const INTEGRATIONS = [
+const INTEGRATIONS: { nom: string; detail: string; icone: NomIcone }[] = [
   {
     nom: 'Réception par mail',
     detail: 'Les factures envoyées à depot@factures.moussagaye.com arrivent toutes seules, avec l’expéditeur et l’objet du mail. Chaque envoi est signé.',
-    etat: 'actif',
-    icone: 'document',
+    icone: 'mail',
   },
   {
     nom: 'IA d’extraction',
-    detail: 'Lit le texte de la facture et en sort les données. Le fournisseur est interchangeable : OpenAI ou Gemini, par simple réglage.',
-    etat: 'actif',
+    detail: 'Lit la facture et en sort les données. Le fournisseur est interchangeable : OpenAI ou Gemini, par simple réglage.',
     icone: 'assistant',
   },
   {
-    nom: 'Registre des entreprises',
-    detail: 'Service de l’État français. L’assistant y vérifie qu’un fournisseur existe et qu’il est en activité.',
-    etat: 'actif',
-    icone: 'bouclier',
-  },
-  {
-    nom: 'Annonces légales (BODACC)',
-    detail: 'Service de l’État français. Signale un fournisseur en redressement ou en liquidation.',
-    etat: 'actif',
-    icone: 'alerte',
-  },
-  {
-    nom: 'Logiciel de comptabilité',
-    detail: 'Chaque facture validée devient une écriture au journal des achats, en fichier CSV importable. L’envoi direct au logiciel du client se règle par une simple adresse.',
-    etat: 'actif',
-    icone: 'integration',
+    nom: 'Factures scannées et photos',
+    detail: 'Un scan ou une photo prise au téléphone est lu sur l’image par l’IA, jusqu’à 3 pages. Le coût de chaque lecture est compté.',
+    icone: 'document',
   },
   {
     nom: 'Factures électroniques (Factur-X)',
     detail: 'Format de la réforme française de 2026. Les données sont lues directement dans le XML de la facture, sans IA, en quelques millisecondes.',
-    etat: 'actif',
-    icone: 'document',
+    icone: 'facture',
   },
   {
-    nom: 'Lecture des scans',
-    detail: 'Reconnaissance de texte pour les factures photographiées ou scannées.',
-    etat: 'prevu',
-    icone: 'recherche',
+    nom: 'Registre des entreprises',
+    detail: 'Service de l’État français. L’assistant y vérifie qu’un fournisseur existe et qu’il est en activité.',
+    icone: 'entreprise',
   },
-] as const
+  {
+    nom: 'Annonces légales (BODACC)',
+    detail: 'Service de l’État français. Signale un fournisseur en redressement ou en liquidation.',
+    icone: 'alerte',
+  },
+  {
+    nom: 'Mails d’approbation et relances',
+    detail: 'Chaque approbateur reçoit un lien signé. Sans réponse après 48 heures, ou à 3 jours de l’échéance, il est relancé.',
+    icone: 'sortie',
+  },
+  {
+    nom: 'API publique',
+    detail: 'D’autres logiciels déposent et lisent les factures avec une clé, dont les droits se règlent et qui se révoque en un clic.',
+    icone: 'cle',
+  },
+  {
+    nom: 'Événements sortants',
+    detail: 'Un message signé part vers l’adresse de votre choix quand une facture change d’état. Retenté en cas d’échec.',
+    icone: 'crochet',
+  },
+]
 
 /** Ce qui fonctionne sans rien brancher : les services intégrés à DocuFlow (onglet de la page Connecteurs). */
 export function ServicesIntegres({ statistiques }: { statistiques: Statistiques | null }) {
@@ -118,18 +205,18 @@ export function ServicesIntegres({ statistiques }: { statistiques: Statistiques 
     <>
       <ul className="integrations">
         {INTEGRATIONS.map((integration) => (
-          <li key={integration.nom} className="carte">
+          <li key={integration.nom}>
             <span className="integrations__icone">
-              <Icone nom={integration.icone} taille={22} />
+              <Icone nom={integration.icone} />
             </span>
             <h2>{integration.nom}</h2>
             <p>{integration.detail}</p>
-            <span className={`pastille pastille--${integration.etat === 'actif' ? 'validee' : 'recue'}`}>{integration.etat === 'actif' ? 'En service' : 'Prévue'}</span>
+            <span className="etat etat--validee">En service</span>
           </li>
         ))}
       </ul>
       {statistiques && (
-        <p className="page__note">
+        <p className="note" style={{ marginTop: 14 }}>
           {pluriel(statistiques.lues_par_ia, 'facture lue', 'factures lues')} par l’IA d’extraction,{' '}
           {pluriel(statistiques.lues_sans_ia, 'facture électronique Factur-X lue', 'factures électroniques Factur-X lues')} sans IA.
         </p>

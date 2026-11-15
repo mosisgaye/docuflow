@@ -83,7 +83,7 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
       )}
       {secret && <SecretUneFois titre={secret.titre} valeur={secret.valeur} surFermer={() => setSecret(null)} />}
 
-      <section className="carte acces__bloc">
+      <section className="bloc acces__bloc">
         <h2>Clés d’API</h2>
         <p className="acces__explication">
           Un autre logiciel (ERP, outil d’automatisation, script) peut déposer des factures et lire leur état avec une clé. Chaque clé a des droits précis
@@ -118,9 +118,9 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
           </button>
         </form>
         {cles === null ? (
-          <p className="page__note">Chargement…</p>
+          <p className="note">Chargement…</p>
         ) : cles.length === 0 ? (
-          <p className="page__note">Aucune clé pour l’instant.</p>
+          <p className="note">Aucune clé pour l’instant.</p>
         ) : (
           <ul className="acces__liste">
             {cles.map((cle) => (
@@ -133,7 +133,7 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
                   </p>
                 </div>
                 {!cle.revoquee_le && (
-                  <button className="bouton bouton--rejet" onClick={() => agir(() => api.revoquerCle(cle.id), `La clé « ${cle.nom} » est révoquée : elle ne marche plus.`)}>
+                  <button className="bouton bouton--danger" onClick={() => agir(() => api.revoquerCle(cle.id), `La clé « ${cle.nom} » est révoquée : elle ne marche plus.`)}>
                     Révoquer
                   </button>
                 )}
@@ -143,7 +143,7 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
         )}
       </section>
 
-      <section className="carte acces__bloc">
+      <section className="bloc acces__bloc">
         <h2>Prévenir un autre logiciel</h2>
         <p className="acces__explication">
           DocuFlow envoie un message signé à l’adresse de votre choix quand une facture change d’état. En cas d’échec, il réessaie : 30 s, 2 min, 10 min,
@@ -178,9 +178,9 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
           </button>
         </form>
         {abonnements === null ? (
-          <p className="page__note">Chargement…</p>
+          <p className="note">Chargement…</p>
         ) : abonnements.length === 0 ? (
-          <p className="page__note">Aucune adresse à prévenir pour l’instant.</p>
+          <p className="note">Aucune adresse à prévenir pour l’instant.</p>
         ) : (
           <ul className="acces__liste">
             {abonnements.map((abonnement) => (
@@ -208,7 +208,7 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
                   <button className="bouton" onClick={() => agir(() => api.essayerAbonnement(abonnement.id), 'Événement d’essai préparé : il part dans la seconde.')}>
                     Envoyer un essai
                   </button>
-                  <button className="bouton bouton--rejet" onClick={() => agir(() => api.arreterAbonnement(abonnement.id), 'Plus rien ne part vers cette adresse.')}>
+                  <button className="bouton bouton--danger" onClick={() => agir(() => api.arreterAbonnement(abonnement.id), 'Plus rien ne part vers cette adresse.')}>
                     Arrêter
                   </button>
                 </div>

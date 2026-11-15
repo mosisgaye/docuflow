@@ -49,6 +49,7 @@ export interface FactureResume {
   fournisseur_siret: string | null
   fournisseur_nom: string | null
   total_ttc: string | null
+  date_echeance?: string | null
   nb_anomalies: number
   cree_le: string
 }

@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import * as api from './api'
 import type { Connecteur, FicheConnecteur, Statistiques, StatutConnecteur } from './api'
 import { heure, jourEtHeure } from './format'
+import { Icone } from './Icones'
 import { INITIALES, LOGOS } from './logos'
 import { ServicesIntegres } from './Pages'
 import { AccesDeveloppeurs } from './AccesDeveloppeurs'
 
-type Onglet = 'mes' | 'decouvrir' | 'integres' | 'developpeurs'
+export type OngletConnecteurs = 'mes' | 'decouvrir' | 'integres' | 'developpeurs'
 
 const LIBELLE_STATUT: Record<StatutConnecteur, string> = {
   disponible: 'Disponible',
@@ -16,7 +17,7 @@ const LIBELLE_STATUT: Record<StatutConnecteur, string> = {
 }
 
 /** Logo officiel quand il est libre de droits, sinon une pastille neutre à l'initiale. */
-function Logo({ connecteur, taille = 44 }: { connecteur: Pick<Connecteur, 'id' | 'nom'>; taille?: number }) {
+function Logo({ connecteur, taille = 32 }: { connecteur: Pick<Connecteur, 'id' | 'nom'>; taille?: number }) {
   const logo = LOGOS[connecteur.id]
   return (
     <span className="logo-connecteur" style={{ width: taille, height: taille }} aria-hidden="true">
@@ -45,21 +46,30 @@ function etat(connecteur: Connecteur): string | null {
 function Action({ connecteur, occupe, surBrancher, surOuvrir }: { connecteur: Connecteur; occupe: boolean; surBrancher: () => void; surOuvrir: () => void }) {
   if (connecteur.branche)
     return (
-      <button className="carte-connecteur__etat carte-connecteur__etat--branche" onClick={surOuvrir} aria-label={`${connecteur.nom} est branché : voir le détail`}>
-        Branché
-      </button>
+      <>
+        <span className="carte-connecteur__etat carte-connecteur__etat--branche">
+          <Icone nom="coche" taille={14} /> Branché
+        </span>
+        <button className="bouton bouton--petit" onClick={surOuvrir}>
+          Gérer
+        </button>
+      </>
     )
-  if (etat(connecteur)) return null
+  const attente = etat(connecteur)
+  if (attente) return <span className="carte-connecteur__etat">{attente}</span>
   return (
-    <button className="bouton bouton--plein carte-connecteur__brancher" onClick={surBrancher} disabled={occupe}>
-      {occupe ? 'Connexion…' : connecteur.connexion === 'oauth' ? 'Connecter mon compte' : 'Brancher'}
-    </button>
+    <>
+      <span className="carte-connecteur__etat" />
+      <button className="bouton bouton--plein bouton--petit" onClick={surBrancher} disabled={occupe}>
+        {occupe ? 'Connexion…' : connecteur.connexion === 'oauth' ? 'Connecter mon compte' : 'Brancher'}
+      </button>
+    </>
   )
 }
 
-function Carte({ connecteur, occupe, surBrancher, surOuvrir }: { connecteur: Connecteur; occupe: boolean; surBrancher: () => void; surOuvrir: () => void }) {
+function Carte({ connecteur, occupe, ouverte, surBrancher, surOuvrir }: { connecteur: Connecteur; occupe: boolean; ouverte: boolean; surBrancher: () => void; surOuvrir: () => void }) {
   return (
-    <li className="carte carte-connecteur">
+    <li className="carte-connecteur" aria-current={ouverte || undefined}>
       <button className="carte-connecteur__ouvrir" onClick={surOuvrir} aria-label={`Détail de ${connecteur.nom}`}>
         <Logo connecteur={connecteur} />
         <span className="carte-connecteur__texte">
@@ -68,13 +78,12 @@ function Carte({ connecteur, occupe, surBrancher, surOuvrir }: { connecteur: Con
             {connecteur.statut === 'preversion' && <span className="carte-connecteur__marque">Préversion</span>}
           </span>
           <span className="carte-connecteur__description">{connecteur.description}</span>
-          <span className="carte-connecteur__editeur">
-            par {connecteur.editeur}
-            {etat(connecteur) && <span className="carte-connecteur__etat">{etat(connecteur)}</span>}
-          </span>
+          <span className="carte-connecteur__editeur">par {connecteur.editeur}</span>
         </span>
       </button>
-      <Action connecteur={connecteur} occupe={occupe} surBrancher={surBrancher} surOuvrir={surOuvrir} />
+      <div className="carte-connecteur__pied">
+        <Action connecteur={connecteur} occupe={occupe} surBrancher={surBrancher} surOuvrir={surOuvrir} />
+      </div>
     </li>
   )
 }
@@ -95,12 +104,6 @@ function Fiche({
   surOutils: (autorises: string[] | null) => void
 }) {
   const lecture = fiche.outils.filter((outil) => outil.lecture)
-  const cadre = useRef<HTMLElement>(null)
-  // La fiche s'ouvre sous la grille : on l'amène à l'écran, sinon le clic semble sans effet.
-  useEffect(() => {
-    // Accolades obligatoires : scrollIntoView peut renvoyer une promesse, que React prendrait pour un nettoyage.
-    cadre.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [fiche.id])
   const basculer = (nom: string) => {
     const actuels = new Set(lecture.filter((outil) => outil.autorise).map((outil) => outil.nom))
     if (actuels.has(nom)) actuels.delete(nom)
@@ -109,27 +112,40 @@ function Fiche({
     surOutils(actuels.size === lecture.length ? null : [...actuels])
   }
   return (
-    <section ref={cadre} className="carte fiche-connecteur" aria-label={`Connecteur ${fiche.nom}`}>
-      <header className="fiche-connecteur__entete">
-        <Logo connecteur={fiche} taille={52} />
-        <div>
+    <aside className="panneau" aria-label={`Connecteur ${fiche.nom}`}>
+      <header className="panneau__tete">
+        <Logo connecteur={fiche} taille={36} />
+        <div className="panneau__titre">
           <h2>{fiche.nom}</h2>
           <p>
-            par {fiche.editeur} · {LIBELLE_STATUT[fiche.statut]}
-            {fiche.branche && fiche.branche_par && fiche.branche_le && ` · branché par ${fiche.branche_par} le ${jourEtHeure(fiche.branche_le)}`}
+            par {fiche.editeur}, {LIBELLE_STATUT[fiche.statut].toLowerCase()}
           </p>
         </div>
-        <button className="bouton" onClick={surFermer}>
-          Fermer
-        </button>
+        <div className="panneau__boutons">
+          <button className="bouton bouton--fantome bouton--icone" onClick={surFermer} aria-label="Fermer" title="Fermer (Échap)">
+            <Icone nom="fermer" />
+          </button>
+        </div>
       </header>
+      <div className="panneau__corps fiche-connecteur">
+      {fiche.branche && fiche.branche_par && fiche.branche_le && (
+        <p className="signal signal--vert" style={{ marginTop: 14 }}>
+          <Icone nom="coche" />
+          <span>
+            Branché par {fiche.branche_par} le {jourEtHeure(fiche.branche_le)}
+          </span>
+        </p>
+      )}
 
       <p className="fiche-connecteur__note">{fiche.note}</p>
 
       <h3>Ce que l’assistant peut en faire</h3>
       <ul className="fiche-connecteur__usages">
         {fiche.usages.map((usage) => (
-          <li key={usage}>{usage}</li>
+          <li key={usage}>
+            <Icone nom="coche" taille={14} />
+            {usage}
+          </li>
         ))}
       </ul>
 
@@ -177,9 +193,9 @@ function Fiche({
 
           <div className="fiche-connecteur__actions">
             <a className="bouton" href={fiche.documentation} target="_blank" rel="noreferrer">
-              Documentation
+              Documentation <Icone nom="externe" taille={14} />
             </a>
-            <button className="bouton bouton--rejet" onClick={surDebrancher} disabled={occupe}>
+            <button className="bouton bouton--danger" onClick={surDebrancher} disabled={occupe}>
               Débrancher
             </button>
           </div>
@@ -187,7 +203,7 @@ function Fiche({
       ) : (
         <div className="fiche-connecteur__actions">
           <a className="bouton" href={fiche.documentation} target="_blank" rel="noreferrer">
-            Documentation
+            Documentation <Icone nom="externe" taille={14} />
           </a>
           {(fiche.statut === 'disponible' || fiche.statut === 'preversion') && fiche.connexion_prete && (
             <button className="bouton bouton--plein" onClick={surBrancher} disabled={occupe}>
@@ -196,21 +212,23 @@ function Fiche({
           )}
         </div>
       )}
-    </section>
+      </div>
+    </aside>
   )
 }
 
 interface Props {
   auteur: string
+  onglet: OngletConnecteurs
   messageInitial: string | null  // au retour d'une connexion par compte
   statistiques: Statistiques | null
+  surOnglet: (onglet: OngletConnecteurs) => void
   surChangement: () => void
   surSansAuteur: () => void
 }
 
-export function Connecteurs({ auteur, messageInitial, statistiques, surChangement, surSansAuteur }: Props) {
+export function Connecteurs({ auteur, onglet, messageInitial, statistiques, surOnglet, surChangement, surSansAuteur }: Props) {
   const [liste, setListe] = useState<Connecteur[] | null>(null)
-  const [onglet, setOnglet] = useState<Onglet | null>(null)
   const [recherche, setRecherche] = useState('')
   const [ouvert, setOuvert] = useState<string | null>(null)
   const [fiche, setFiche] = useState<FicheConnecteur | null>(null)
@@ -220,7 +238,6 @@ export function Connecteurs({ auteur, messageInitial, statistiques, surChangemen
   const recharger = useCallback(async () => {
     const nouvelle = await api.connecteurs()
     setListe(nouvelle)
-    setOnglet((actuel) => actuel ?? (nouvelle.some((connecteur) => connecteur.branche) ? 'mes' : 'decouvrir'))
     return nouvelle
   }, [])
 
@@ -278,68 +295,81 @@ export function Connecteurs({ auteur, messageInitial, statistiques, surChangemen
     [connecteur.nom, connecteur.editeur, connecteur.description].some((texte) => texte.toLowerCase().includes(mots)),
   )
 
-  return (
-    <div className="page connecteurs">
-      <header className="tableau__titre">
-        <h1>Connecteurs</h1>
-        <p>Les logiciels de l’entreprise où l’assistant peut chercher : en lecture seule, chaque appel inscrit au journal.</p>
-      </header>
+  // Échap ferme la fiche ouverte.
+  useEffect(() => {
+    if (!ouvert) return
+    const fermer = (evenement: KeyboardEvent) => {
+      if (evenement.key === 'Escape') setOuvert(null)
+    }
+    window.addEventListener('keydown', fermer)
+    return () => window.removeEventListener('keydown', fermer)
+  }, [ouvert])
 
-      <div className="connecteurs__barre">
-        <div className="connecteurs__onglets" role="tablist">
-          <button role="tab" aria-selected={onglet === 'mes'} onClick={() => setOnglet('mes')}>
-            Mes connecteurs <span className="connecteurs__compte">{branches.length}</span>
-          </button>
-          <button role="tab" aria-selected={onglet === 'decouvrir'} onClick={() => setOnglet('decouvrir')}>
-            Découvrir
-          </button>
-          <button role="tab" aria-selected={onglet === 'integres'} onClick={() => setOnglet('integres')}>
-            Intégrés à DocuFlow
-          </button>
-          <button role="tab" aria-selected={onglet === 'developpeurs'} onClick={() => setOnglet('developpeurs')}>
-            Accès développeurs
-          </button>
-        </div>
+  return (
+    <>
+      <div className="page">
+        <header className="page__titre">
+          <div>
+            <h1>{TITRES[onglet].titre}</h1>
+            <p>{TITRES[onglet].texte}</p>
+          </div>
+        </header>
+
         {(onglet === 'mes' || onglet === 'decouvrir') && (
-          <input className="connecteurs__recherche" type="search" value={recherche} onChange={(evenement) => setRecherche(evenement.target.value)} placeholder="Rechercher un outil" aria-label="Rechercher un connecteur" />
+          <div className="connecteurs__barre">
+            <label className="recherche">
+              <Icone nom="recherche" />
+              <input type="search" value={recherche} onChange={(evenement) => setRecherche(evenement.target.value)} placeholder="Rechercher un outil" aria-label="Rechercher un connecteur" />
+            </label>
+          </div>
+        )}
+
+        {message && (
+          <p className="connecteurs__message" role="status">
+            {message}
+          </p>
+        )}
+
+        {onglet === 'developpeurs' ? (
+          <AccesDeveloppeurs auteur={auteur} surSansAuteur={surSansAuteur} />
+        ) : onglet === 'integres' ? (
+          <ServicesIntegres statistiques={statistiques} />
+        ) : liste === null ? (
+          <p className="note">Chargement des connecteurs…</p>
+        ) : visibles.length === 0 ? (
+          <div className="vide">
+            <Icone nom="integration" taille={28} />
+            {onglet === 'mes' && !mots ? (
+              <>
+                <strong>Aucun connecteur branché</strong>
+                <p>Branchez un logiciel de l’entreprise : l’assistant pourra y chercher, en lecture seule.</p>
+                <button className="bouton bouton--plein" onClick={() => surOnglet('decouvrir')}>
+                  Découvrir les connecteurs
+                </button>
+              </>
+            ) : (
+              <strong>Aucun connecteur ne correspond à cette recherche</strong>
+            )}
+          </div>
+        ) : (
+          <ul className="connecteurs__grille">
+            {visibles.map((connecteur) => (
+              <Carte
+                key={connecteur.id}
+                connecteur={connecteur}
+                occupe={occupe === connecteur.id}
+                ouverte={ouvert === connecteur.id}
+                surBrancher={() => brancher(connecteur)}
+                surOuvrir={() => setOuvert(connecteur.id)}
+              />
+            ))}
+          </ul>
         )}
       </div>
 
-      {message && (
-        <p className="connecteurs__message" role="status">
-          {message}
-        </p>
-      )}
-
-      {onglet === 'developpeurs' ? (
-        <AccesDeveloppeurs auteur={auteur} surSansAuteur={surSansAuteur} />
-      ) : onglet === 'integres' ? (
-        <ServicesIntegres statistiques={statistiques} />
-      ) : liste === null ? (
-        <p className="page__note">Chargement des connecteurs…</p>
-      ) : visibles.length === 0 ? (
-        <div className="carte carte__vide">
-          {onglet === 'mes' && !mots ? (
-            <>
-              Aucun connecteur branché.{' '}
-              <button className="lien" onClick={() => setOnglet('decouvrir')}>
-                Découvrir les connecteurs
-              </button>
-            </>
-          ) : (
-            'Aucun connecteur ne correspond à cette recherche.'
-          )}
-        </div>
-      ) : (
-        <ul className="connecteurs__grille">
-          {visibles.map((connecteur) => (
-            <Carte key={connecteur.id} connecteur={connecteur} occupe={occupe === connecteur.id} surBrancher={() => brancher(connecteur)} surOuvrir={() => setOuvert(connecteur.id)} />
-          ))}
-        </ul>
-      )}
-
-      {fiche && (
+      {fiche && (onglet === 'mes' || onglet === 'decouvrir') && (
         <Fiche
+          key={fiche.id}
           fiche={fiche}
           occupe={occupe === fiche.id}
           surFermer={() => setOuvert(null)}
@@ -348,6 +378,13 @@ export function Connecteurs({ auteur, messageInitial, statistiques, surChangemen
           surOutils={(autorises) => agir(fiche.id, () => api.autoriserOutils(fiche.id, autorises), 'Outils autorisés mis à jour.')}
         />
       )}
-    </div>
+    </>
   )
+}
+
+const TITRES: Record<OngletConnecteurs, { titre: string; texte: string }> = {
+  mes: { titre: 'Mes connecteurs', texte: 'Les logiciels branchés, où l’assistant peut chercher : en lecture seule, chaque appel inscrit au journal.' },
+  decouvrir: { titre: 'Découvrir', texte: 'Les logiciels qu’on peut brancher à DocuFlow.' },
+  integres: { titre: 'Intégrés à DocuFlow', texte: 'Ce qui fonctionne sans rien brancher.' },
+  developpeurs: { titre: 'Accès développeurs', texte: 'Pour qu’un autre logiciel dépose et lise les factures, ou soit prévenu de leurs changements.' },
 }

@@ -141,3 +141,26 @@ export function avancement(etat: Etat): { faites: number; alerte: boolean } {
       return { faites: 5, alerte: etat === 'rejetee' }
   }
 }
+
+/** Initiales d'un fournisseur pour sa pastille : « Garage Central Bertin » donne « GC ». */
+export function initiales(nom: string | null) {
+  const mots = (nom ?? '?').replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(Boolean)
+  return (mots.length > 1 ? mots[0][0] + mots[1][0] : (mots[0] ?? '?').slice(0, 2)).toUpperCase()
+}
+
+/** Une teinte stable par fournisseur (8 teintes), pour reconnaître une ligne d'un coup d'œil. */
+export function teinte(nom: string | null) {
+  let somme = 0
+  for (const lettre of nom ?? '') somme = (somme * 31 + lettre.charCodeAt(0)) >>> 0
+  return somme % 8
+}
+
+/** L'ordre des groupes dans la liste : ce qui demande une action d'abord. */
+export const ORDRE_ETATS: Etat[] = ['en_anomalie', 'echec', 'a_valider', 'en_approbation', 'recue', 'extraite', 'validee', 'exportee', 'rejetee']
+
+/** Une échéance proche ou dépassée se signale. */
+export function urgence(iso: string | null | undefined, maintenant = new Date()): 'depassee' | 'proche' | null {
+  if (!iso) return null
+  const jours = Math.floor((new Date(iso).getTime() - maintenant.getTime()) / 86400000)
+  return jours < 0 ? 'depassee' : jours <= 3 ? 'proche' : null
+}
