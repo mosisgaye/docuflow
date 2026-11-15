@@ -21,6 +21,7 @@ import subprocess
 import sys
 
 from moteur.controles import cle_de_luhn_valide, siret_correct
+from outils.generer_demo import MODELES_DEMO
 from outils.generer_factures import CLIENT, IBANS, MODELES, iban_francais
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent
@@ -40,6 +41,11 @@ COMPLEMENTS = {
 # Bons de commande : ce que Transports Lemaire avait commandé. Une seule différence volontaire.
 ECARTS = {"F26-1193": {"Plaquettes de frein avant": "85.00"}}  # devis à 85,00 €, facturé 98,40 €
 SANS_COMMANDE = {"FA-2026-0431", "F26-1240"}  # achat sans commande, et la facture frauduleuse (jamais commandée)
+
+# Factures de la démonstration guidée (demo/) : seulement celles d'un fournisseur connu, qui ont un bon de commande.
+# Le doublon reprend le numéro de la 01 (sa commande existe déjà) ; le fournisseur inconnu n'est pas dans Odoo, exprès.
+MODELES_COMMANDES_DEMO = [m for m in MODELES_DEMO if m["commande"] and m["fournisseur"][2] in COMPLEMENTS]
+ECARTS.update({m["numero"]: m["ecart"] for m in MODELES_DEMO if m.get("ecart")})
 
 SERVICES = ("Maintenance", "Hébergement", "Licence", "Main-d", "Formation", "Développement", "Déplacement", "Vidange", "Remplacement")
 
@@ -84,7 +90,7 @@ def adresse(texte: str) -> tuple[str, str, str]:
 
 def donnees(nouvelle_cle: bool) -> dict:
     fournisseurs, produits, bons = {}, {}, []
-    for modele in MODELES:
+    for modele in [*MODELES, *MODELES_COMMANDES_DEMO]:
         nom, adresse_texte, siret, tva = modele["fournisseur"]
         if modele["anomalies"] == ["SIRET_INVALIDE"]:
             siret = next(m["fournisseur"][2] for m in MODELES if m["fournisseur"][0] == nom and not m["anomalies"])  # le vrai SIRET
