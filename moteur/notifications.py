@@ -110,18 +110,19 @@ def _euros(valeur) -> str:
     return f"{float(valeur):,.2f} €".replace(",", " ").replace(".", ",") if valeur is not None else "montant inconnu"
 
 
-def composer(facture: FactureEnBase, niveau: str, personne: str) -> Message:
+def composer(facture: FactureEnBase, niveau: str, personne: str, rappel: str | None = None) -> Message:
     donnees = facture.donnees or {}
     niveau_circuit = next((n for n in (facture.circuit or {}).get("niveaux", []) if n["niveau"] == niveau), {"raisons": []})
     lien = adresse_lien(signer_lien(facture.id, niveau, personne, facture.donnees))
     numero, fournisseur, montant = donnees.get("numero_facture") or "?", donnees.get("fournisseur_nom") or "Fournisseur", _euros(donnees.get("total_ttc"))
     avertissements = [a["message"] for a in facture.anomalies]
-    sujet = f"Approbation demandée : facture {numero} de {fournisseur} ({montant})"
+    sujet = f"{'Rappel : approbation' if rappel else 'Approbation'} demandée : facture {numero} de {fournisseur} ({montant})"
     lignes_texte = [
         f"Bonjour,",
         "",
         f"La facture {numero} de {fournisseur}, d'un montant de {montant}, attend votre approbation en tant que {LIBELLES[niveau].lower()}.",
         f"Pourquoi vous : {' ; '.join(niveau_circuit['raisons'])}.",
+        *([f"Rappel : {rappel}"] if rappel else []),
         *([f"À regarder : {' '.join(avertissements)}"] if avertissements else []),
         "",
         f"Examiner la facture et décider : {lien}",
@@ -136,12 +137,14 @@ def composer(facture: FactureEnBase, niveau: str, personne: str) -> Message:
 <p>Bonjour,</p>
 <p>La facture <b>{e(numero)}</b> de <b>{e(fournisseur)}</b>, d'un montant de <b>{e(montant)}</b>, attend votre approbation en tant que <b>{e(LIBELLES[niveau].lower())}</b>.</p>
 <p style="color:#55627b">Pourquoi vous : {e(' ; '.join(niveau_circuit['raisons']))}.</p>
+{f'<p style="background:#e6eeff;color:#1746c9;padding:8px 12px;border-radius:8px"><b>Rappel :</b> {e(rappel)}</p>' if rappel else ''}
 {''.join(f'<p style="background:#fdeed6;color:#8a4a00;padding:8px 12px;border-radius:8px">{e(a)}</p>' for a in avertissements)}
 <p><a href="{e(lien)}" style="display:inline-block;background:#1f5bff;color:#ffffff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Examiner la facture et décider</a></p>
 <p style="color:#55627b;font-size:13px">Le lien ouvre une page de confirmation : rien n'est approuvé tant que vous n'avez pas cliqué sur le bouton. Il expire dans 7 jours, et ne vaut plus si la facture change.</p>
 <p style="color:#55627b;font-size:13px">DocuFlow</p>
 </div>"""
-    idempotence = f"approbation-{facture.id}-{niveau}-{empreinte(facture.donnees)[:16]}"
+    # Un rappel a sa propre clé : sinon Resend le prendrait pour un doublon du premier mail.
+    idempotence = f"approbation-{facture.id}-{niveau}-{empreinte(facture.donnees)[:16]}" + (f"-rappel-{hashlib.sha256(rappel.encode()).hexdigest()[:12]}" if rappel else "")
     return Message(personne, sujet, corps_html, "\n".join(lignes_texte), idempotence)
 
 
@@ -162,25 +165,30 @@ def envoyer_par_resend(message: Message, client: httpx.Client | None = None) -> 
 # ───────── Après l'enregistrement ─────────
 
 
-def demander(session: Session, facture: FactureEnBase, niveau: str) -> None:
-    """Prépare la demande d'approbation pour ce niveau. Elle partira après la validation de la transaction."""
+def demander(session: Session, facture: FactureEnBase, niveau: str, rappel: str | None = None) -> bool:
+    """Prépare la demande d'approbation pour ce niveau. Elle partira après la validation de la transaction.
+
+    Renvoie faux si les mails ne sont pas configurés (l'approbation se fait alors dans DocuFlow).
+    """
     personne = destinataire(niveau)
     if personne is None or not config.lire("APPROBATION_SECRET", ""):
-        return  # notifications pas configurées : l'approbation se fait dans DocuFlow
-    session.info.setdefault(CLE_SESSION, []).append((facture.id, niveau, personne))
+        return False
+    session.info.setdefault(CLE_SESSION, []).append((facture.id, niveau, personne, rappel))
+    return True
 
 
 def envoyer_en_attente(session: Session, fabrique_session: Callable[[], Session], envoyer: Callable[[Message], dict] = envoyer_par_resend) -> None:
     """À appeler juste après session.commit() : envoie les mails préparés et note le résultat au journal."""
     from moteur.workflow import MOTEUR, _journaliser  # import ici : workflow importe ce module
 
-    for facture_id, niveau, personne in session.info.pop(CLE_SESSION, []):
+    for facture_id, niveau, personne, rappel in session.info.pop(CLE_SESSION, []):
         with fabrique_session() as autre:
             facture = autre.get(FactureEnBase, facture_id)
+            detail = {"niveau": niveau, "destinataire": personne, **({"rappel": rappel} if rappel else {})}
             try:
-                resultat = envoyer(composer(facture, niveau, personne))
-                _journaliser(autre, facture, "NOTIFICATION", MOTEUR, {"niveau": niveau, "destinataire": personne, "id": resultat.get("id")})
+                resultat = envoyer(composer(facture, niveau, personne, rappel))
+                _journaliser(autre, facture, "NOTIFICATION", MOTEUR, {**detail, "id": resultat.get("id")})
             except Exception as erreur:  # noqa: BLE001 - un mail raté ne doit jamais casser le parcours
                 journal.warning("Mail d'approbation non envoyé (%s, %s) : %s", facture_id, niveau, erreur)
-                _journaliser(autre, facture, "NOTIFICATION_ECHOUEE", MOTEUR, {"niveau": niveau, "destinataire": personne, "raison": str(erreur)[:300]})
+                _journaliser(autre, facture, "NOTIFICATION_ECHOUEE", MOTEUR, {**detail, "raison": str(erreur)[:300]})
             autre.commit()

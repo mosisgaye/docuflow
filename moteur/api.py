@@ -56,7 +56,8 @@ from moteur.odoo import Odoo, depuis_configuration
 from moteur.base import AppelConnecteur, ConnecteurBranche
 from moteur import oauth
 from moteur.approbation import LIBELLES, approbations_valides, empreinte, niveau_attendu, publier, version_en_vigueur
-from moteur import notifications
+from moteur import cles_api, evenements_sortants, notifications
+from moteur.base import Abonnement, CleApi, Livraison
 from moteur.connecteurs import CATALOGUE, ErreurConnecteur, Passerelle, adresse_serveur, fiche_catalogue
 from moteur.reception_mail import SignatureInvalide, cles_publiques, lire_mail_brut, recevoir_mail, verifier_signature
 from moteur.workflow import FactureIntrouvable, TransitionInterdite, exporter, ranger_fichier, recevoir, rejeter, traiter, valider
@@ -120,6 +121,49 @@ class DemandeAgent(BaseModel):
     messages: list[MessageAgent] = Field(min_length=1, max_length=40)
     facture_id: uuid.UUID | None = None  # la facture affichée à l'écran, s'il y en a une
     auteur: str | None = Field(default=None, max_length=100)  # la personne connectée, pour signer les courriels
+
+
+class NouvelleCle(BaseModel):
+    nom: str = Field(min_length=1, max_length=100)
+    droits: list[str] = Field(min_length=1)
+    auteur: str = Field(min_length=1, max_length=100)
+
+
+class NouvelAbonnement(BaseModel):
+    url: str = Field(min_length=8, max_length=2000)
+    evenements: list[str] = Field(min_length=1)
+    auteur: str = Field(min_length=1, max_length=100)
+
+
+def _publique(facture: FactureEnBase, complete: bool = False) -> dict:
+    """La facture vue par l'API publique (/v1). Format stable : on ajoute des champs, on n'en retire jamais."""
+    donnees = facture.donnees or {}
+    vue = {
+        "id": str(facture.id),
+        "etat": facture.etat,
+        "numero": facture.numero_facture,
+        "fournisseur": donnees.get("fournisseur_nom"),
+        "siret": facture.fournisseur_siret,
+        "date_facture": donnees.get("date_facture"),
+        "date_echeance": donnees.get("date_echeance"),
+        "total_ht": donnees.get("total_ht"),
+        "total_tva": donnees.get("total_tva"),
+        "total_ttc": donnees.get("total_ttc"),
+        "anomalies": [{"code": a["code"], "message": a["message"]} for a in facture.anomalies],
+        "recue_le": facture.cree_le.isoformat(),
+    }
+    if complete:
+        vue["donnees"] = facture.donnees
+        vue["journal"] = [{"type": e.type, "etat": e.etat, "auteur": e.auteur, "le": e.cree_le.isoformat()} for e in facture.evenements]
+    return vue
+
+
+def _vue_cle(cle: CleApi) -> dict:
+    return {
+        "id": str(cle.id), "nom": cle.nom, "debut": f"dfk_{cle.prefixe}_…", "droits": cle.droits, "creee_par": cle.creee_par,
+        "creee_le": cle.creee_le.isoformat(), "utilisee_le": cle.utilisee_le.isoformat() if cle.utilisee_le else None,
+        "revoquee_le": cle.revoquee_le.isoformat() if cle.revoquee_le else None,
+    }
 
 
 def _resume(facture: FactureEnBase) -> dict:
@@ -233,8 +277,8 @@ def creer_application(
             },
         }
 
-    @application.post("/factures", response_model=FactureDeposee, status_code=status.HTTP_202_ACCEPTED)
-    def deposer(reponse: Response, fichier: UploadFile = File(...), session: Session = Depends(session_de_requete, scope="function")) -> dict:
+    def fichier_en_pdf(fichier: UploadFile) -> tuple[bytes, str]:
+        """Le fichier déposé, vérifié, et mis en PDF si c'est une photo."""
         contenu = fichier.file.read(TAILLE_MAX_OCTETS + 1)
         if len(contenu) > TAILLE_MAX_OCTETS:
             raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Fichier trop volumineux (10 Mo au maximum).")
@@ -251,6 +295,11 @@ def creer_application(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ce fichier PDF est illisible.") from erreur
         # Le fichier est écrit AVANT la tâche : le travailleur ne peut jamais chercher un fichier absent.
         ranger_fichier(dossier, contenu)
+        return contenu, nom
+
+    @application.post("/factures", response_model=FactureDeposee, status_code=status.HTTP_202_ACCEPTED)
+    def deposer(reponse: Response, fichier: UploadFile = File(...), session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        contenu, nom = fichier_en_pdf(fichier)
         if traiter_tout_de_suite:
             resultat = traiter(session, contenu, nom, extracteur, odoo=odoo, extracteur_images=extracteur_images)
             reponse.status_code = status.HTTP_201_CREATED
@@ -616,6 +665,123 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
         branche.outils_autorises = demande.autorises
         session.flush()
         return vue_connecteur(entree, branche)
+
+    # ───────── API publique (/v1) : pour les autres logiciels, avec une clé ─────────
+
+    def acces(droit: str) -> Callable:
+        def verifier(authorization: str | None = Header(default=None), session: Session = Depends(session_de_requete, scope="function")) -> CleApi:
+            try:
+                return cles_api.verifier(session, authorization, droit)
+            except cles_api.AccesRefuse as erreur:
+                entetes = {"WWW-Authenticate": "Bearer"} if erreur.code == 401 else None
+                raise HTTPException(erreur.code, str(erreur), headers=entetes) from erreur
+
+        return verifier
+
+    @application.get("/v1/factures", tags=["API publique"])
+    def v1_lister(
+        etat: Etat | None = None, limite: int = 50, cle: CleApi = Depends(acces("factures:lire")),
+        session: Session = Depends(session_de_requete, scope="function"),
+    ) -> dict:
+        """Les factures, des plus récentes aux plus anciennes (200 au plus), filtrables par état."""
+        requete = select(FactureEnBase).order_by(FactureEnBase.cree_le.desc()).limit(max(1, min(limite, 200)))
+        if etat is not None:
+            requete = requete.where(FactureEnBase.etat == etat.value)
+        return {"factures": [_publique(facture) for facture in session.scalars(requete)]}
+
+    @application.get("/v1/factures/{facture_id}", tags=["API publique"])
+    def v1_detailler(
+        facture_id: uuid.UUID, cle: CleApi = Depends(acces("factures:lire")), session: Session = Depends(session_de_requete, scope="function")
+    ) -> dict:
+        """Une facture, avec toutes ses données lues et son journal."""
+        return _publique(facture_ou_404(session, facture_id), complete=True)
+
+    @application.post("/v1/factures", tags=["API publique"], status_code=status.HTTP_202_ACCEPTED)
+    def v1_deposer(
+        reponse: Response, fichier: UploadFile = File(...), cle: CleApi = Depends(acces("factures:deposer")),
+        session: Session = Depends(session_de_requete, scope="function"),
+    ) -> dict:
+        """Dépose une facture (PDF ou photo). Elle est lue dans les secondes qui suivent : suivez son état,
+        ou abonnez-vous à « facture.a_valider »."""
+        contenu, nom = fichier_en_pdf(fichier)
+        resultat = recevoir(session, contenu, nom, {"source": "api", "cle_api": f"dfk_{cle.prefixe}", "cle_nom": cle.nom})
+        if resultat.deja_vue:
+            reponse.status_code = status.HTTP_200_OK
+        return {**_publique(resultat.facture), "deja_vue": resultat.deja_vue}
+
+    # ───────── Gestion des clés et des abonnements (écran « Accès développeurs ») ─────────
+
+    @application.get("/cles-api")
+    def lister_cles(session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        cles = session.scalars(select(CleApi).order_by(CleApi.creee_le.desc()))
+        return {"droits": cles_api.DROITS, "cles": [_vue_cle(cle) for cle in cles]}
+
+    @application.post("/cles-api", status_code=status.HTTP_201_CREATED)
+    def creer_cle(demande: NouvelleCle, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        try:
+            creee = cles_api.creer(session, demande.nom.strip(), demande.droits, demande.auteur.strip())
+        except ValueError as erreur:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erreur)) from erreur
+        session.refresh(creee.cle)
+        return {**_vue_cle(creee.cle), "cle": creee.secret_complet}  # montrée cette fois-ci seulement
+
+    @application.delete("/cles-api/{cle_id}")
+    def revoquer_cle(cle_id: uuid.UUID, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        cle = session.get(CleApi, cle_id)
+        if cle is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Clé introuvable.")
+        cles_api.revoquer(session, cle)
+        return _vue_cle(cle)
+
+    def vue_abonnement(session: Session, abonnement: Abonnement) -> dict:
+        livraisons = session.scalars(
+            select(Livraison).where(Livraison.abonnement_id == abonnement.id).order_by(Livraison.cree_le.desc()).limit(10)
+        )
+        return {
+            "id": str(abonnement.id), "url": abonnement.url, "evenements": abonnement.evenements, "actif": abonnement.actif,
+            "cree_par": abonnement.cree_par, "cree_le": abonnement.cree_le.isoformat(),
+            "livraisons": [
+                {
+                    "id": str(l.id), "evenement": l.evenement, "etat": l.etat, "tentatives": l.tentatives, "reponse": l.derniere_reponse,
+                    "cree_le": l.cree_le.isoformat(), "prochain_essai_le": l.prochain_essai_le.isoformat() if l.etat == "en_attente" else None,
+                }
+                for l in livraisons
+            ],
+        }
+
+    @application.get("/abonnements")
+    def lister_abonnements(session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        abonnements = session.scalars(select(Abonnement).where(Abonnement.actif).order_by(Abonnement.cree_le.desc()))
+        return {"evenements": evenements_sortants.EVENEMENTS, "abonnements": [vue_abonnement(session, a) for a in abonnements]}
+
+    @application.post("/abonnements", status_code=status.HTTP_201_CREATED)
+    def creer_abonnement(demande: NouvelAbonnement, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        try:
+            abonnement, secret = evenements_sortants.creer_abonnement(session, demande.url.strip(), demande.evenements, demande.auteur.strip())
+        except evenements_sortants.AbonnementRefuse as erreur:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erreur)) from erreur
+        session.refresh(abonnement)
+        return {**vue_abonnement(session, abonnement), "secret": secret}  # montré cette fois-ci seulement
+
+    @application.post("/abonnements/{abonnement_id}/essai", status_code=status.HTTP_202_ACCEPTED)
+    def essayer_abonnement(abonnement_id: uuid.UUID, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        """Envoie un événement d'essai, pour vérifier l'adresse et la signature sans toucher à une facture."""
+        abonnement = session.get(Abonnement, abonnement_id)
+        if abonnement is None or not abonnement.actif:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Abonnement introuvable.")
+        session.add(Livraison(abonnement_id=abonnement.id, evenement="essai", charge={"evenement": "essai", "message": "Événement d'essai envoyé depuis DocuFlow."}))
+        session.flush()
+        return vue_abonnement(session, abonnement)
+
+    @application.delete("/abonnements/{abonnement_id}")
+    def arreter_abonnement(abonnement_id: uuid.UUID, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        """Désactive l'abonnement : plus rien ne part. L'historique des livraisons est gardé."""
+        abonnement = session.get(Abonnement, abonnement_id)
+        if abonnement is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Abonnement introuvable.")
+        abonnement.actif = False
+        session.flush()
+        return {"id": str(abonnement.id), "actif": False}
 
     @application.post("/agent")
     def parler_a_l_agent(demande: DemandeAgent) -> StreamingResponse:

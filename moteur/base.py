@@ -8,7 +8,8 @@ Les tables :
 - mails_recus : chaque mail reçu à l'adresse de dépôt, et ce qu'on a fait de ses pièces jointes ;
 - connecteurs et appels_connecteurs : les logiciels branchés (MCP) et le journal de leurs appels ;
 - demandes_oauth et jetons_connecteurs : les connexions par compte (OAuth), jetons chiffrés ;
-- regles_approbation et approbations : qui doit approuver une facture, et qui l'a fait.
+- regles_approbation et approbations : qui doit approuver une facture, et qui l'a fait ;
+- cles_api, abonnements et livraisons : l'API publique et les événements envoyés aux autres logiciels.
 
 Toute modification de ces modèles demande une migration (dossier migrations/).
 """
@@ -208,6 +209,56 @@ class Approbation(Base):
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.clock_timestamp())
 
     __table_args__ = (UniqueConstraint("facture_id", "niveau", name="uq_approbations_facture_niveau"),)
+
+
+class CleApi(Base):
+    """Une clé d'accès à l'API publique. Seule son empreinte est gardée : la clé n'est montrée qu'une fois."""
+
+    __tablename__ = "cles_api"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    nom: Mapped[str] = mapped_column(String(100))  # à quoi elle sert : « Make », « Logiciel de paie »…
+    prefixe: Mapped[str] = mapped_column(String(16), unique=True)  # début visible de la clé, pour la reconnaître
+    empreinte: Mapped[str] = mapped_column(String(64))  # SHA-256 de la clé complète
+    droits: Mapped[list] = mapped_column(JSONB)  # « factures:lire », « factures:deposer »
+    creee_par: Mapped[str] = mapped_column(String(100))
+    creee_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    utilisee_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoquee_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Abonnement(Base):
+    """Une adresse web à prévenir quand certains événements arrivent aux factures (webhook)."""
+
+    __tablename__ = "abonnements"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    url: Mapped[str] = mapped_column(Text)
+    evenements: Mapped[list] = mapped_column(JSONB)  # « facture.validee », « facture.rejetee »…
+    secret: Mapped[str] = mapped_column(Text)  # secret de signature des envois, chiffré
+    actif: Mapped[bool] = mapped_column(server_default=text("true"))
+    cree_par: Mapped[str] = mapped_column(String(100))
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Livraison(Base):
+    """Un événement à livrer à un abonnement. Préparé dans la même transaction que le changement
+    de la facture : il ne peut pas être perdu, ni annoncer un changement qui n'a pas eu lieu."""
+
+    __tablename__ = "livraisons"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    abonnement_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("abonnements.id"), index=True)
+    evenement: Mapped[str] = mapped_column(String(40))
+    charge: Mapped[dict] = mapped_column(JSONB)
+    etat: Mapped[str] = mapped_column(String(20), server_default="en_attente")  # en_attente, livree, abandonnee
+    tentatives: Mapped[int] = mapped_column(Integer, server_default="0")
+    prochain_essai_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    derniere_reponse: Mapped[str | None] = mapped_column(Text)
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.clock_timestamp())
+    livree_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("ix_livraisons_a_faire", "prochain_essai_le", postgresql_where=text("etat = 'en_attente'")),)
 
 
 def creer_moteur(url: str | None = None) -> Engine:

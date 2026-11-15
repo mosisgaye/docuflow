@@ -38,7 +38,7 @@ from moteur.lecture_pdf import lire_pdf, pages_en_images
 from moteur.modeles import Facture
 from moteur.odoo import ErreurOdoo, Odoo
 from moteur.approbation import LIBELLES, ApprobationRefusee, approuver, circuit, niveau_attendu, version_en_vigueur
-from moteur import notifications
+from moteur import evenements_sortants, notifications
 
 MOTEUR = "moteur"
 
@@ -89,6 +89,9 @@ def _passer(session: Session, facture: FactureEnBase, etat: Etat, type_evenement
         raise TransitionInterdite(f"Passage interdit de « {facture.etat} » à « {etat.value} ».")
     facture.etat = etat.value
     _journaliser(session, facture, type_evenement, auteur, detail)
+    if etat in evenements_sortants.PAR_ETAT:
+        # Dans la même transaction : l'événement part si, et seulement si, le changement est enregistré.
+        evenements_sortants.publier(session, facture, evenements_sortants.PAR_ETAT[etat])
 
 
 def _doublon_metier(session: Session, facture: FactureEnBase) -> list[Anomalie]:
@@ -347,6 +350,7 @@ def recevoir(session: Session, contenu: bytes, nom_fichier: str, origine: dict |
 
     facture = session.get(FactureEnBase, nouvel_id)
     _journaliser(session, facture, "RECEPTION", MOTEUR, {"nom_fichier": nom_fichier, "taille_octets": len(contenu), **origine})
+    evenements_sortants.publier(session, facture, "facture.recue")
     return ResultatTraitement(facture, deja_vue=False, tache=_mettre_en_file(session, facture))
 
 
