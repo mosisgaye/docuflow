@@ -512,7 +512,7 @@ def creer_application(
     def page(titre: str, corps: str, code: int = 200) -> HTMLResponse:
         return HTMLResponse(
             f"""<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{titre} | DocuFlow</title><style>
+<title>{titre} | Verifac</title><style>
 body{{font:16px/1.55 Arial,sans-serif;background:#f4f6fb;color:#13203a;margin:0;padding:32px 16px}}
 main{{max-width:560px;margin:0 auto;background:#fff;border:1px solid #dfe5ef;border-radius:16px;padding:24px}}
 h1{{font-size:22px;margin:0 0 12px}} .doux{{color:#55627b}} .alerte{{background:#fdeed6;color:#8a4a00;padding:8px 12px;border-radius:8px}}
@@ -828,7 +828,7 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
         abonnement = session.get(Abonnement, abonnement_id)
         if abonnement is None or not abonnement.actif:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Abonnement introuvable.")
-        session.add(Livraison(abonnement_id=abonnement.id, evenement="essai", charge={"evenement": "essai", "message": "Événement d'essai envoyé depuis DocuFlow."}))
+        session.add(Livraison(abonnement_id=abonnement.id, evenement="essai", charge={"evenement": "essai", "message": "Événement d'essai envoyé depuis Verifac."}))
         session.flush()
         return vue_abonnement(session, abonnement)
 

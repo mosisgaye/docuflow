@@ -26,7 +26,7 @@ const MENU: { page: Page; nom: string; icone: NomIcone }[] = [
 const ONGLETS_CONNECTEURS: { onglet: OngletConnecteurs; nom: string; icone: NomIcone }[] = [
   { onglet: 'mes', nom: 'Mes connecteurs', icone: 'integration' },
   { onglet: 'decouvrir', nom: 'Découvrir', icone: 'grille' },
-  { onglet: 'integres', nom: 'Intégrés à DocuFlow', icone: 'bouclier' },
+  { onglet: 'integres', nom: 'Intégrés à Verifac', icone: 'bouclier' },
   { onglet: 'developpeurs', nom: 'Accès développeurs', icone: 'code' },
 ]
 const FORMATS_ACCEPTES = /\.(pdf|jpe?g|png|webp)$/i
@@ -476,7 +476,7 @@ export function Application() {
           <span className="marque" aria-hidden="true">
             <Icone nom="facture" taille={14} />
           </span>
-          <span className="haut__nom">DocuFlow</span> <small>Factures fournisseurs</small>
+          <span className="haut__nom">Verifac</span> <small>Factures fournisseurs</small>
         </div>
 
         <label className="recherche">

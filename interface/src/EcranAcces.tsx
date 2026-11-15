@@ -30,7 +30,7 @@ export function EcranAcces({ surOuverture }: { surOuverture: () => void }) {
         <span className="marque acces-ecran__marque" aria-hidden="true">
           <Icone nom="facture" taille={20} />
         </span>
-        <h1>DocuFlow</h1>
+        <h1>Verifac</h1>
         <p>Démonstration privée du traitement des factures fournisseurs. Entrez le code d’accès qui vous a été transmis.</p>
         <label className="acces-ecran__champ">
           Code d’accès

@@ -202,7 +202,7 @@ export function Conversation({ tours, numeros, occupe, connecteurs, surConnecteu
                   <span className="marque" aria-hidden="true">
                     <Icone nom="assistant" taille={12} />
                   </span>
-                  Assistant DocuFlow
+                  Assistant Verifac
                 </p>
                 <Etapes etapes={tour.etapes} enCours={tour.enCours} />
                 {tour.texte && <TexteAssistant texte={tour.texte} numeros={numeros} surOuverture={surOuverture} />}

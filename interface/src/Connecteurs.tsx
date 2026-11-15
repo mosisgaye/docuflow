@@ -384,7 +384,7 @@ export function Connecteurs({ auteur, onglet, messageInitial, statistiques, surO
 
 const TITRES: Record<OngletConnecteurs, { titre: string; texte: string }> = {
   mes: { titre: 'Mes connecteurs', texte: 'Les logiciels branchés, où l’assistant peut chercher : en lecture seule, chaque appel inscrit au journal.' },
-  decouvrir: { titre: 'Découvrir', texte: 'Les logiciels qu’on peut brancher à DocuFlow.' },
-  integres: { titre: 'Intégrés à DocuFlow', texte: 'Ce qui fonctionne sans rien brancher.' },
+  decouvrir: { titre: 'Découvrir', texte: 'Les logiciels qu’on peut brancher à Verifac.' },
+  integres: { titre: 'Intégrés à Verifac', texte: 'Ce qui fonctionne sans rien brancher.' },
   developpeurs: { titre: 'Accès développeurs', texte: 'Pour qu’un autre logiciel dépose et lise les factures, ou soit prévenu de leurs changements.' },
 }

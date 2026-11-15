@@ -12,7 +12,7 @@ function SecretUneFois({ titre, valeur, surFermer }: { titre: string; valeur: st
     <div className="secret" role="status">
       <p className="secret__titre">{titre}</p>
       <code className="secret__valeur">{valeur}</code>
-      <p className="secret__note">Copiez-le maintenant : DocuFlow n’en garde qu’une empreinte et ne pourra plus vous le montrer.</p>
+      <p className="secret__note">Copiez-le maintenant : Verifac n’en garde qu’une empreinte et ne pourra plus vous le montrer.</p>
       <div className="secret__actions">
         <button className="bouton bouton--plein" onClick={() => navigator.clipboard.writeText(valeur).then(() => setCopie(true))}>
           {copie ? 'Copié' : 'Copier'}
@@ -146,7 +146,7 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
       <section className="bloc acces__bloc">
         <h2>Prévenir un autre logiciel</h2>
         <p className="acces__explication">
-          DocuFlow envoie un message signé à l’adresse de votre choix quand une facture change d’état. En cas d’échec, il réessaie : 30 s, 2 min, 10 min,
+          Verifac envoie un message signé à l’adresse de votre choix quand une facture change d’état. En cas d’échec, il réessaie : 30 s, 2 min, 10 min,
           1 h, 6 h.
         </p>
         <form

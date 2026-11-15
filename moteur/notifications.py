@@ -130,7 +130,7 @@ def composer(facture: FactureEnBase, niveau: str, personne: str, rappel: str | N
         "Le lien ouvre une page de confirmation : rien n'est approuvé tant que vous n'avez pas cliqué sur le bouton.",
         "Il expire dans 7 jours, et ne vaut plus si la facture change.",
         "",
-        "DocuFlow",
+        "Verifac",
     ]
     e = html.escape
     corps_html = f"""<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#13203a;max-width:560px">
@@ -141,7 +141,7 @@ def composer(facture: FactureEnBase, niveau: str, personne: str, rappel: str | N
 {''.join(f'<p style="background:#fdeed6;color:#8a4a00;padding:8px 12px;border-radius:8px">{e(a)}</p>' for a in avertissements)}
 <p><a href="{e(lien)}" style="display:inline-block;background:#1f5bff;color:#ffffff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Examiner la facture et décider</a></p>
 <p style="color:#55627b;font-size:13px">Le lien ouvre une page de confirmation : rien n'est approuvé tant que vous n'avez pas cliqué sur le bouton. Il expire dans 7 jours, et ne vaut plus si la facture change.</p>
-<p style="color:#55627b;font-size:13px">DocuFlow</p>
+<p style="color:#55627b;font-size:13px">Verifac</p>
 </div>"""
     # Un rappel a sa propre clé : sinon Resend le prendrait pour un doublon du premier mail.
     idempotence = f"approbation-{facture.id}-{niveau}-{empreinte(facture.donnees)[:16]}" + (f"-rappel-{hashlib.sha256(rappel.encode()).hexdigest()[:12]}" if rappel else "")
