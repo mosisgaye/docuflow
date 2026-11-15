@@ -8,7 +8,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel, ConfigDict
+from pydantic import AfterValidator, BaseModel, ConfigDict, field_validator
 
 
 def _au_centime(montant: Decimal) -> Decimal:
@@ -46,3 +46,10 @@ class Facture(BaseModel):
     taux_tva: Decimal | None
     total_tva: Montant | None
     total_ttc: Montant | None
+
+    @field_validator("fournisseur_iban", "fournisseur_tva")
+    @classmethod
+    def _sans_espace(cls, valeur: str | None) -> str | None:
+        """IBAN et numéro de TVA s'impriment souvent avec des espaces : on les range sans espace et en
+        majuscules, quelle que soit la façon dont ils ont été lus (sur une image, l'IA garde parfois les espaces)."""
+        return "".join(valeur.split()).upper() or None if valeur else None

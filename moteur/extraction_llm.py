@@ -49,7 +49,9 @@ CONSIGNE_IMAGE = (
     CONSIGNE.split("Texte de la facture :")[0].rstrip()
     .replace("à partir de son texte", "à partir des images de ses pages (scan ou photo)")
     .replace("N'utilise que le texte fourni.", "N'utilise que ce qui est écrit sur les images.")
-    + "\n- Lis chaque chiffre avec soin. Si un chiffre est illisible, mets null plutôt que de deviner.\n"
+    + "\n- Lis chaque chiffre avec soin. Si un chiffre est illisible, mets null plutôt que de deviner."
+    + "\n- L'IBAN est imprimé par groupes de 4 caractères : recopie-les groupe par groupe, sans en sauter ni en fusionner."
+    + " Un IBAN français a 27 caractères.\n"
 )
 
 # Les champs demandés au LLM, décrits une seule fois pour tous les fournisseurs.

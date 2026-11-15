@@ -47,6 +47,8 @@ export function raconter(evenement: Evenement): string {
       return 'Fichier reçu'
     case 'EXTRACTION':
       if (detail.source === 'factur-x') return 'Facture électronique Factur-X : données lues directement, sans IA'
+      if (detail.source === 'ia-image')
+        return `Facture scannée : lue sur l’image par l’IA en ${NOMBRE.format(Number(detail.duree_s))} s (${String(detail.pages_lues)} page${Number(detail.pages_lues) > 1 ? 's' : ''})`
       return `Données lues par l’IA en ${NOMBRE.format(Number(detail.duree_s))} s (${String(detail.modele)})`
     case 'FACTURX_ILLISIBLE':
       return `Factur-X illisible, lecture confiée à l’IA : ${String(detail.raison)}`

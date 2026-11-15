@@ -225,7 +225,8 @@ def identifiants(facture: Facture) -> list[Anomalie]:
             Anomalie(
                 "IBAN_INVALIDE",
                 Gravite.BLOQUANTE,
-                f"L'IBAN {facture.fournisseur_iban} est invalide : sa clé de contrôle ne tombe pas juste. Ne payez pas sur ce compte.",
+                f"L'IBAN lu ({facture.fournisseur_iban}) est invalide : sa clé de contrôle ne tombe pas juste. "
+                "Erreur de lecture ou faux IBAN : comparez avec la facture, et ne payez pas sur ce compte avant d'avoir vérifié.",
                 "fournisseur_iban",
             )
         )

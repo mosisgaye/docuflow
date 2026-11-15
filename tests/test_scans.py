@@ -166,3 +166,12 @@ def test_par_mail_la_photo_jointe_est_lue_et_le_logo_ignore(fabrique, tmp_path):
     assert resultats["facture.jpg"]["resultat"] == "facture"
     assert resultats["logo.png"]["resultat"] == "ignoree"
     assert "logo" in resultats["logo.png"]["raison"]
+
+
+def test_iban_et_tva_sont_ranges_sans_espace():
+    """Sur une image, l'IA garde parfois les espaces imprimés : le code les retire toujours."""
+    facture = Facture.model_validate(
+        {**ATTENDU[GARAGE]["facture"], "fournisseur_tva": "fr52 529874315", "fournisseur_iban": "FR76 1820 6004 0065 0001 2398 765"}
+    )
+
+    assert (facture.fournisseur_tva, facture.fournisseur_iban) == ("FR52529874315", "FR7618206004006500012398765")

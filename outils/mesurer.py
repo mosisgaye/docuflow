@@ -3,6 +3,7 @@
 Usage :
     uv run python -m outils.mesurer            # lecture + extraction par LLM + contrôles
     uv run python -m outils.mesurer --lecture  # lecture du PDF seule, sans LLM
+    uv run python -m outils.mesurer --scans    # versions scannées (factures/scans), lues sur image
 """
 
 import json
@@ -11,8 +12,8 @@ import sys
 import time
 
 from moteur.controles import controler
-from moteur.extraction_llm import ErreurExtraction, extraire
-from moteur.lecture_pdf import lire_pdf
+from moteur.extraction_llm import ErreurExtraction, extraire, extraire_images
+from moteur.lecture_pdf import lire_pdf, pages_en_images
 from moteur.modeles import Facture
 
 FACTURES = pathlib.Path(__file__).resolve().parent.parent / "factures"
@@ -42,9 +43,11 @@ def compter_valeurs_justes(obtenue: Facture, attendue: Facture) -> tuple[int, in
 
 def main() -> None:
     lecture_seule = "--lecture" in sys.argv
+    scans = "--scans" in sys.argv
     attendus = json.loads((FACTURES / "attendu.json").read_text(encoding="utf-8"))
+    bilan = {"justes": 0, "total": 0, "entree": 0, "sortie": 0}
     for nom, attendu in attendus.items():
-        contenu = (FACTURES / nom).read_bytes()
+        contenu = ((FACTURES / "scans") if scans else FACTURES).joinpath(nom).read_bytes()
         debut = time.monotonic()
         lu = lire_pdf(contenu)
         duree_lecture = time.monotonic() - debut
@@ -53,11 +56,15 @@ def main() -> None:
             print(f"{ligne} | {len(lu.texte)} caractères")
             continue
         try:
-            resultat = extraire(lu.texte)
+            resultat = extraire_images(pages_en_images(contenu)) if scans else extraire(lu.texte)
         except ErreurExtraction as erreur:
             print(f"{ligne} | ÉCHEC : {erreur}")
             continue
         justes, total, ecarts = compter_valeurs_justes(resultat.facture, Facture.model_validate(attendu["facture"]))
+        bilan["justes"] += justes
+        bilan["total"] += total
+        for sens in ("entree", "sortie"):
+            bilan[sens] += (resultat.jetons or {}).get(sens) or 0
         debut = time.monotonic()
         anomalies = controler(resultat.facture)
         duree_controles = time.monotonic() - debut
@@ -71,6 +78,12 @@ def main() -> None:
             print(f"    écart : {ecart}")
         for anomalie in anomalies:
             print(f"    {anomalie.gravite.value} : {anomalie.message}")
+    if bilan["total"]:
+        print(
+            f"\nBilan : {bilan['justes']} valeurs justes sur {bilan['total']}"
+            f" | jetons consommés : {bilan['entree']} en entrée, {bilan['sortie']} en sortie"
+            f" (soit {round(bilan['entree'] / len(attendus))} et {round(bilan['sortie'] / len(attendus))} par facture)"
+        )
 
 
 if __name__ == "__main__":

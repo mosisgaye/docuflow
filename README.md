@@ -89,6 +89,7 @@ Mesures faites le 14 novembre 2026 sur les factures du dossier `factures/`, avec
 | Exactitude de l'extraction | Résultat |
 |---|---|
 | `gpt-5.4-mini`, 8 factures, dont une sans TVA et une frauduleuse (IBAN modifié) | 176 valeurs justes sur 176, IBAN compris |
+| Les mêmes 8 factures **scannées** (`outils/generer_scans.py` : gris, penchées, grain, sans texte), lues sur image | de 172 à 175 valeurs justes sur 176 selon les passages. L'erreur qui revient : un « 0 » sauté dans un IBAN, **toujours arrêté** par la clé de contrôle de l'IBAN. Environ 3 400 jetons en entrée et 220 en sortie par facture, comptés par OpenAI |
 | `gpt-5.4-mini`, 3 factures | 69 sur 69 |
 | `gpt-4.1-mini`, 3 factures | 69 sur 69 |
 | `gpt-5.4-nano`, 3 factures | 68 sur 69 |

@@ -2112,3 +2112,13 @@ a.bouton {
   color: var(--rouge);
   font-weight: 700;
 }
+
+.scan {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--orange-pale);
+  color: var(--orange-fonce);
+  font-size: 14px;
+  font-weight: 600;
+}

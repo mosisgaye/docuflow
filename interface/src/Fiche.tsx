@@ -194,6 +194,9 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
         {facture.evenements.some((evenement) => evenement.type === 'EXTRACTION' && evenement.detail.source === 'factur-x') && (
           <p className="facturx">Facture électronique Factur-X : données lues directement dans le fichier, sans IA</p>
         )}
+        {facture.evenements.some((evenement) => evenement.type === 'EXTRACTION' && evenement.detail.source === 'ia-image') && (
+          <p className="scan">Facture scannée ou photographiée : lue sur l’image par l’IA. Comparez les montants et l’IBAN avec le document.</p>
+        )}
         {facture.evenements[0]?.detail.source === 'mail' && (
           <p className="origine">
             Reçue par mail de <strong>{String(facture.evenements[0].detail.expediteur)}</strong>

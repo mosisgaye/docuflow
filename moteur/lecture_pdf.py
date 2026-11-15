@@ -42,7 +42,8 @@ def lire_pdf(contenu: bytes) -> TexteLu:
 
 
 PAGES_IMAGES_MAX = 3  # au-delà, une facture scannée n'est lue que sur ses 3 premières pages
-RESOLUTION_DPI = 150  # assez pour lire un chiffre de 8 points, sans alourdir l'envoi
+# 200 dpi : à 150, l'IA sautait parfois un « 0 » dans les longues suites de chiffres d'un IBAN scanné.
+RESOLUTION_DPI = 200
 
 
 def pages_en_images(contenu: bytes, pages_max: int = PAGES_IMAGES_MAX) -> list[bytes]:
