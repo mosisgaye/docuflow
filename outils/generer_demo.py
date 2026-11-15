@@ -77,8 +77,8 @@ MODELES_DEMO = [
         "commande": True, "rendu": "facturx",
     },
     {
-        "fichier": "09-facture-scannee.pdf", "style": "bleu", "numero": "FA-2026-0522", "date": "2026-11-15", "echeance": "2026-12-15",
-        "fournisseur": ATELIER, "lignes": [("Licence logiciel de suivi", "4", "89.50"), ("Hébergement serveur, janvier 2027", "1", "120.00")],
+        "fichier": "09-facture-scannee.pdf", "style": "bleu", "numero": "2026-11-143", "date": "2026-11-15", "echeance": "2026-12-15",
+        "fournisseur": PAPETERIE, "lignes": [("Cartouches toner couleur", "3", "78.00"), ("Ramettes papier A3 80 g", "10", "9.40")],
         "commande": True, "rendu": "scan",
     },
     {
