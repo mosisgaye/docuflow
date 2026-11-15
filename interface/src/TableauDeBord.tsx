@@ -282,7 +282,7 @@ export function TableauDeBord({ statistiques, vedette, depotEnCours, auteur, sur
           {statistiques.activite.length === 0 ? (
             <p className="attente">Rien pour l’instant.</p>
           ) : (
-            <ol className="activite" style={{ padding: '6px 0' }}>
+            <ol className="activite" style={{ padding: '0.375rem 0' }}>
               {statistiques.activite.slice(0, 6).map((evenement) => (
                 <li key={evenement.facture_id + evenement.rang}>
                   <time dateTime={evenement.cree_le}>{heureCourte(evenement.cree_le)}</time>

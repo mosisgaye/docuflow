@@ -20,10 +20,10 @@ const LIBELLE_STATUT: Record<StatutConnecteur, string> = {
 function Logo({ connecteur, taille = 32 }: { connecteur: Pick<Connecteur, 'id' | 'nom'>; taille?: number }) {
   const logo = LOGOS[connecteur.id]
   return (
-    <span className="logo-connecteur" style={{ width: taille, height: taille }} aria-hidden="true">
+    <span className="logo-connecteur" style={{ width: `${taille / 16}rem`, height: `${taille / 16}rem` }} aria-hidden="true">
       {logo ? (
         // Le logo d'Odoo est un mot : il lui faut plus de largeur qu'un symbole pour rester lisible.
-        <svg viewBox="0 0 24 24" width={taille * (connecteur.id === 'odoo' ? 0.85 : 0.55)} height={taille * (connecteur.id === 'odoo' ? 0.85 : 0.55)} fill={logo.couleur}>
+        <svg viewBox="0 0 24 24" style={{ width: `${(taille * (connecteur.id === 'odoo' ? 0.85 : 0.55)) / 16}rem`, height: `${(taille * (connecteur.id === 'odoo' ? 0.85 : 0.55)) / 16}rem` }} fill={logo.couleur}>
           <path d={logo.chemin} />
         </svg>
       ) : (
@@ -129,7 +129,7 @@ function Fiche({
       </header>
       <div className="panneau__corps fiche-connecteur">
       {fiche.branche && fiche.branche_par && fiche.branche_le && (
-        <p className="signal signal--vert" style={{ marginTop: 14 }}>
+        <p className="signal signal--vert" style={{ marginTop: '0.875rem' }}>
           <Icone nom="coche" />
           <span>
             Branché par {fiche.branche_par} le {jourEtHeure(fiche.branche_le)}

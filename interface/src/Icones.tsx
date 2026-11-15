@@ -94,5 +94,15 @@ export type NomIcone = keyof typeof ICONES
 
 export function Icone({ nom, taille = 16 }: { nom: NomIcone; taille?: number }) {
   const Trace = ICONES[nom]
-  return <Trace size={taille} strokeWidth={1.65} absoluteStrokeWidth aria-hidden="true" className="icone" />
+  // La taille suit la base de l'interface (rem) : les icônes grandissent avec le texte.
+  return (
+    <Trace
+      size={taille}
+      strokeWidth={1.65}
+      absoluteStrokeWidth
+      aria-hidden="true"
+      className="icone"
+      style={{ width: `${taille / 16}rem`, height: `${taille / 16}rem` }}
+    />
+  )
 }

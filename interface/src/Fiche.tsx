@@ -171,7 +171,7 @@ function CircuitApprobation({ facture }: { facture: FactureDetail }) {
     <section className="fiche__section circuit" aria-label="Circuit d'approbation">
       <h3>Circuit d’approbation</h3>
       {circuit.bloque && (
-        <p className="signal signal--rouge" style={{ marginBottom: 10 }}>
+        <p className="signal signal--rouge" style={{ marginBottom: '0.625rem' }}>
           <Icone nom="refus" />
           <span>{circuit.bloque}</span>
         </p>

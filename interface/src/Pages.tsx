@@ -96,12 +96,12 @@ export function Documents({ factures, recherche, ouverte, surOuverture, surDepot
         <table className="liste">
           <colgroup>
             <col />
-            <col className="liste__col-numero" style={{ width: 130 }} />
-            <col style={{ width: 120 }} />
-            <col className="liste__col-echeance" style={{ width: 104 }} />
-            <col className="liste__col-anomalies" style={{ width: 84 }} />
-            <col style={{ width: 150 }} />
-            <col className="liste__col-recue" style={{ width: 100 }} />
+            <col className="liste__col-numero" style={{ width: '8.125rem' }} />
+            <col style={{ width: '7.5rem' }} />
+            <col className="liste__col-echeance" style={{ width: '6.5rem' }} />
+            <col className="liste__col-anomalies" style={{ width: '5.25rem' }} />
+            <col style={{ width: '9.375rem' }} />
+            <col className="liste__col-recue" style={{ width: '6.25rem' }} />
           </colgroup>
           <thead>
             <tr>
@@ -216,7 +216,7 @@ export function ServicesIntegres({ statistiques }: { statistiques: Statistiques 
         ))}
       </ul>
       {statistiques && (
-        <p className="note" style={{ marginTop: 14 }}>
+        <p className="note" style={{ marginTop: '0.875rem' }}>
           {pluriel(statistiques.lues_par_ia, 'facture lue', 'factures lues')} par l’IA d’extraction,{' '}
           {pluriel(statistiques.lues_sans_ia, 'facture électronique Factur-X lue', 'factures électroniques Factur-X lues')} sans IA.
         </p>
