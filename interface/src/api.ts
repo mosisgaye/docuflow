@@ -1,6 +1,6 @@
 // Appels à l'API du moteur. Toutes les routes passent par /api.
 
-export type Etat = 'recue' | 'extraite' | 'a_valider' | 'en_anomalie' | 'validee' | 'rejetee' | 'exportee' | 'echec'
+export type Etat = 'recue' | 'extraite' | 'a_valider' | 'en_approbation' | 'en_anomalie' | 'validee' | 'rejetee' | 'exportee' | 'echec'
 
 export interface Ligne {
   designation: string
@@ -52,10 +52,22 @@ export interface FactureResume {
   cree_le: string
 }
 
+export type Niveau = 'comptable' | 'directeur_financier' | 'gerant'
+
+/** Qui doit approuver une facture, et pourquoi : calculé par les règles d'approbation. */
+export interface Circuit {
+  version: number | null
+  niveaux: { niveau: Niveau; raisons: string[] }[]
+  bloque: string | null
+}
+
 export interface FactureDetail extends FactureResume {
   donnees: Donnees | null
   anomalies: Anomalie[]
   evenements: Evenement[]
+  circuit: Circuit | null
+  approbations: { niveau: Niveau; personne: string; cree_le: string }[]
+  niveau_attendu: Niveau | null
 }
 
 export interface FactureDeposee extends FactureDetail {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import * as api from './api'
 import type { FactureDetail } from './api'
-import { LIBELLE_ETAT, euros, heure, jour, jourEtHeure, nombre, raconter, siret } from './format'
+import { LIBELLE_ETAT, LIBELLE_NIVEAU, euros, heure, jour, jourEtHeure, nombre, raconter, siret } from './format'
 
 interface Props {
   facture: FactureDetail
@@ -106,6 +106,44 @@ function Odoo({ facture }: { facture: FactureDetail }) {
   )
 }
 
+/** Qui doit approuver, dans quel ordre et pourquoi ; qui l'a déjà fait. */
+function CircuitApprobation({ facture }: { facture: FactureDetail }) {
+  const circuit = facture.circuit
+  // Un circuit d'un seul niveau sans règles publiées n'a rien à expliquer : c'est la validation simple.
+  if (!circuit || circuit.version === null) return null
+  return (
+    <section className="circuit" aria-label="Circuit d'approbation">
+      <h3>Circuit d’approbation</h3>
+      {circuit.bloque && <p className="circuit__bloque">{circuit.bloque}</p>}
+      <ol>
+        {circuit.niveaux.map(({ niveau, raisons }) => {
+          const faite = facture.approbations.find((approbation) => approbation.niveau === niveau)
+          const etat = faite ? 'faite' : niveau === facture.niveau_attendu ? 'attendue' : 'a-venir'
+          return (
+            <li key={niveau} className={`circuit__niveau circuit__niveau--${etat}`}>
+              <span className="circuit__marque" aria-hidden="true">
+                {faite ? '✓' : ''}
+              </span>
+              <span className="circuit__texte">
+                <strong>{LIBELLE_NIVEAU[niveau]}</strong>
+                <span>
+                  {faite
+                    ? `Approuvé par ${faite.personne}, le ${jourEtHeure(faite.cree_le)}`
+                    : etat === 'attendue'
+                      ? 'En attente de sa décision'
+                      : 'Après le niveau précédent'}
+                </span>
+                <small>Pourquoi : {raisons.join(' ; ')}</small>
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+      <p className="circuit__regle">Règles d’approbation, version {circuit.version}. Une même personne n’approuve jamais deux niveaux.</p>
+    </section>
+  )
+}
+
 function Tampon({ facture }: { facture: FactureDetail }) {
   const decision = [...facture.evenements].reverse().find((evenement) => evenement.type === 'VALIDATION' || evenement.type === 'REJET')
   if (!decision) return null
@@ -129,7 +167,11 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
   const fautifs = new Set(facture.anomalies.map((anomalie) => anomalie.champ))
   const marque = (champ: string) => (fautifs.has(champ) ? 'fautif' : undefined)
   const bloquantes = facture.anomalies.filter((anomalie) => anomalie.gravite === 'bloquante')
-  const decidable = facture.etat === 'a_valider' || facture.etat === 'en_anomalie'
+  const decidable = facture.etat === 'a_valider' || facture.etat === 'en_approbation' || facture.etat === 'en_anomalie'
+  const approuvable = (facture.etat === 'a_valider' || facture.etat === 'en_approbation') && !facture.circuit?.bloque
+  const avecRegles = facture.circuit?.version != null
+  const libelleDecision =
+    avecRegles && facture.niveau_attendu ? `Approuver en tant que ${LIBELLE_NIVEAU[facture.niveau_attendu].toLowerCase()}` : 'Valider la facture'
 
   return (
     <article className="fiche" aria-label="Données de la facture">
@@ -237,6 +279,8 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
         </>
       )}
 
+      <CircuitApprobation facture={facture} />
+
       {decidable && (
         <div className="decision">
           {rejetOuvert ? (
@@ -268,8 +312,8 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
                 <button className="bouton" onClick={() => setRejetOuvert(true)} disabled={occupe}>
                   Rejeter
                 </button>
-                <button className="bouton bouton--plein" onClick={surValidation} disabled={occupe || facture.etat !== 'a_valider'}>
-                  Valider la facture
+                <button className="bouton bouton--plein" onClick={surValidation} disabled={occupe || !approuvable}>
+                  {libelleDecision}
                 </button>
               </div>
             </>

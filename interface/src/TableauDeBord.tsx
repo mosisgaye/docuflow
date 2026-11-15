@@ -65,7 +65,7 @@ function heuresDesEtapes(facture: FactureDetail): (string | null)[] {
 function Repartition({ statistiques }: { statistiques: Statistiques }) {
   const parEtat = statistiques.par_etat
   const parts = [
-    { nom: 'À valider', nombre: parEtat.a_valider, couleur: 'var(--bleu)' },
+    { nom: 'À valider', nombre: parEtat.a_valider + (parEtat.en_approbation ?? 0), couleur: 'var(--bleu)' },
     { nom: 'En anomalie', nombre: parEtat.en_anomalie + parEtat.echec, couleur: 'var(--orange)' },
     { nom: 'Validées', nombre: parEtat.validee, couleur: 'var(--vert)' },
     { nom: 'Envoyées en comptabilité', nombre: parEtat.exportee, couleur: 'var(--vert-fonce)' },

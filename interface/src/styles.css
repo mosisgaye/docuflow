@@ -215,8 +215,10 @@ button {
 }
 
 .pastille--a_valider,
+.pastille--en_approbation,
 .pastille--bleu,
-.etat--a_valider {
+.etat--a_valider,
+.etat--en_approbation {
   background: var(--bleu-pale);
   color: var(--bleu-fonce);
 }
@@ -2003,6 +2005,105 @@ a.bouton {
   width: min(780px, calc(100% - 56px));
   margin: 0 auto 8px;
   padding-left: 16px;
+  color: var(--encre-douce);
+  font-size: 13px;
+}
+
+/* ───────── Circuit d'approbation ───────── */
+
+.circuit {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--filet);
+  border-radius: 12px;
+  background: var(--carte);
+}
+
+.circuit h3 {
+  margin-bottom: 10px;
+  font: 700 15px/1.3 var(--titre);
+}
+
+.circuit ol {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.circuit__niveau {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 12px;
+  padding-bottom: 14px;
+  position: relative;
+}
+
+.circuit__niveau:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 26px;
+  bottom: 0;
+  width: 2px;
+  background: var(--filet);
+}
+
+.circuit__marque {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--filet);
+  border-radius: 50%;
+  background: var(--carte);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.circuit__niveau--faite .circuit__marque {
+  border-color: var(--vert);
+  background: var(--vert);
+  color: #ffffff;
+}
+
+.circuit__niveau--attendue .circuit__marque {
+  border-color: var(--bleu);
+  box-shadow: 0 0 0 4px var(--bleu-pale);
+}
+
+.circuit__texte {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.circuit__texte > span {
+  color: var(--encre-douce);
+  font-size: 14px;
+}
+
+.circuit__niveau--attendue .circuit__texte > span {
+  color: var(--bleu-fonce);
+  font-weight: 600;
+}
+
+.circuit__texte small {
+  color: var(--encre-douce);
+  font-size: 13px;
+}
+
+.circuit__bloque {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: var(--rouge-pale);
+  color: var(--rouge);
+  font-weight: 600;
+}
+
+.circuit__regle {
   color: var(--encre-douce);
   font-size: 13px;
 }

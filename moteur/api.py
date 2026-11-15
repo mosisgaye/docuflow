@@ -16,6 +16,8 @@
     PUT  /connecteurs/{id}/outils     choisir les outils de lecture autorisés
     POST /connecteurs/{id}/oauth      commencer la connexion d'un compte (renvoie l'adresse de l'éditeur)
     GET  /oauth/retour                l'éditeur y renvoie le navigateur après la connexion
+    GET  /regles                      les règles d'approbation en vigueur
+    POST /regles                      publier une nouvelle version des règles
     POST /agent                       parler à l'assistant (réponse envoyée au fil de l'eau)
     GET  /statistiques                les chiffres du tableau de bord
     GET  /sante                       l'API et la base répondent-elles ? où en est la file de tâches ?
@@ -34,10 +36,10 @@ from datetime import datetime
 import httpx
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pypdf.errors import PyPdfError
 from sqlalchemy import func, select, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, object_session, sessionmaker
 
 from moteur import config
 from moteur.agent import converser, flux_openai
@@ -50,6 +52,7 @@ from moteur.lecture_pdf import lire_pdf
 from moteur.odoo import Odoo, depuis_configuration
 from moteur.base import AppelConnecteur, ConnecteurBranche
 from moteur import oauth
+from moteur.approbation import approbations_valides, niveau_attendu, publier, version_en_vigueur
 from moteur.connecteurs import CATALOGUE, ErreurConnecteur, Passerelle, adresse_serveur, fiche_catalogue
 from moteur.reception_mail import SignatureInvalide, cles_publiques, lire_mail_brut, recevoir_mail, verifier_signature
 from moteur.workflow import FactureIntrouvable, TransitionInterdite, exporter, ranger_fichier, recevoir, rejeter, traiter, valider
@@ -87,6 +90,9 @@ class FactureDetail(FactureResume):
     donnees: dict | None
     anomalies: list[dict]
     evenements: list[EvenementSortie]
+    circuit: dict | None = None  # qui doit approuver et pourquoi
+    approbations: list[dict] = []  # qui a déjà approuvé, à quel niveau
+    niveau_attendu: str | None = None  # le prochain niveau qui doit approuver
 
 
 class FactureDeposee(FactureDetail):
@@ -128,11 +134,17 @@ def _resume(facture: FactureEnBase) -> dict:
 
 
 def _detail(facture: FactureEnBase) -> dict:
+    session = object_session(facture)
+    approuvables = facture.etat in (Etat.A_VALIDER.value, Etat.EN_APPROBATION.value)
+    valides = approbations_valides(session, facture) if session else []
     return {
         **_resume(facture),
         "donnees": facture.donnees,
         "anomalies": facture.anomalies,
         "evenements": [EvenementSortie.model_validate(evenement) for evenement in facture.evenements],
+        "circuit": facture.circuit,
+        "approbations": [{"niveau": a.niveau, "personne": a.personne, "cree_le": a.cree_le.isoformat()} for a in valides],
+        "niveau_attendu": niveau_attendu(session, facture) if session and approuvables else None,
     }
 
 
@@ -354,6 +366,27 @@ def creer_application(
                 for evenement in derniers
             ],
         }
+
+    # ───────── Règles d'approbation ─────────
+
+    @application.get("/regles")
+    def lire_regles(session: Session = Depends(session_de_requete, scope="function")) -> dict | None:
+        version = version_en_vigueur(session)
+        if version is None:
+            return None
+        return {"version": version.version, "regles": version.regles, "publie_par": version.publie_par, "publie_le": version.publie_le}
+
+    class Publication(BaseModel):
+        auteur: str = Field(min_length=1, max_length=100)
+        regles: list[dict] = Field(min_length=1, max_length=50)
+
+    @application.post("/regles", status_code=status.HTTP_201_CREATED)
+    def publier_regles(demande: Publication, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        try:
+            version = publier(session, demande.regles, demande.auteur)
+        except ValidationError as erreur:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Règle mal formée : {erreur.errors()[0]['msg']}") from erreur
+        return {"version": version.version, "regles": version.regles, "publie_par": version.publie_par}
 
     # ───────── Connecteurs ─────────
 

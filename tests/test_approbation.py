@@ -204,3 +204,25 @@ def test_par_l_api_le_refus_est_explique(connexion, tmp_path):
     assert premiere.json()["etat"] == "en_approbation"
     assert seconde.status_code == 409
     assert "autre personne" in seconde.json()["detail"]
+
+
+def test_par_l_api_la_fiche_montre_le_circuit_et_les_regles_se_publient(connexion, tmp_path):
+    fabrique = lambda: Session(bind=connexion, join_transaction_mode="create_savepoint")  # noqa: E731
+    donnees = Facture.model_validate(ATTENDU[MOYENNE]["facture"])
+    client = TestClient(
+        creer_application(
+            fabrique_session=fabrique, extracteur=lambda texte: ResultatExtraction(donnees, 0.1, "test", "faux"),
+            dossier_fichiers=tmp_path, traiter_tout_de_suite=True, odoo=None,
+        )
+    )
+    assert client.get("/regles").json() is None
+    assert client.post("/regles", json={"auteur": "Moussa", "regles": [{"nom": "x", "si": {"toujours": True}}]}).status_code == 422
+    assert client.post("/regles", json={"auteur": "Moussa", "regles": REGLES_DEMO}).json()["version"] == 1
+
+    facture = client.post("/factures", files={"fichier": (MOYENNE, (FACTURES / MOYENNE).read_bytes(), "application/pdf")}).json()
+    assert [n["niveau"] for n in facture["circuit"]["niveaux"]] == ["comptable", "directeur_financier"]
+    assert facture["niveau_attendu"] == "comptable"
+
+    apres = client.post(f"/factures/{facture['id']}/validation", json={"auteur": "Claire"}).json()
+    assert [(a["niveau"], a["personne"]) for a in apres["approbations"]] == [("comptable", "Claire")]
+    assert apres["niveau_attendu"] == "directeur_financier"

@@ -26,6 +26,7 @@ export const LIBELLE_ETAT: Record<Etat, string> = {
   recue: 'Lecture en cours',
   extraite: 'Extraite',
   a_valider: 'À valider',
+  en_approbation: 'En approbation',
   en_anomalie: 'En anomalie',
   validee: 'Validée',
   rejetee: 'Rejetée',
@@ -33,7 +34,9 @@ export const LIBELLE_ETAT: Record<Etat, string> = {
   echec: 'Lecture impossible',
 }
 
-export const A_TRAITER: Etat[] = ['en_anomalie', 'echec', 'a_valider', 'recue', 'extraite']
+export const A_TRAITER: Etat[] = ['en_anomalie', 'echec', 'en_approbation', 'a_valider', 'recue', 'extraite']
+
+export const LIBELLE_NIVEAU: Record<string, string> = { comptable: 'Comptable', directeur_financier: 'Directeur financier', gerant: 'Gérant' }
 
 /** Phrase lisible pour une ligne du journal. */
 export function raconter(evenement: Evenement): string {
@@ -62,8 +65,10 @@ export function raconter(evenement: Evenement): string {
     case 'EXTRACTION_ECHOUEE':
     case 'LECTURE_IMPOSSIBLE':
       return String(detail.raison ?? 'Lecture impossible')
+    case 'APPROBATION':
+      return `Approuvée par ${evenement.auteur} (${LIBELLE_NIVEAU[String(detail.niveau)]?.toLowerCase() ?? 'niveau'}) : au niveau suivant`
     case 'VALIDATION':
-      return `Validée par ${evenement.auteur}`
+      return detail.niveau ? `Validée par ${evenement.auteur} (${LIBELLE_NIVEAU[String(detail.niveau)]?.toLowerCase()}), circuit terminé` : `Validée par ${evenement.auteur}`
     case 'REJET':
       return `Rejetée par ${evenement.auteur} : ${String(detail.motif)}`
     case 'EXPORT': {
@@ -120,6 +125,7 @@ export function avancement(etat: Etat): { faites: number; alerte: boolean } {
     case 'extraite':
       return { faites: 2, alerte: false }
     case 'a_valider':
+    case 'en_approbation':
       return { faites: 3, alerte: false }
     case 'en_anomalie':
       return { faites: 3, alerte: true }
