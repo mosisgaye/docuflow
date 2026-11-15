@@ -87,6 +87,7 @@ class FactureResume(BaseModel):
     fournisseur_siret: str | None
     fournisseur_nom: str | None = None
     total_ttc: str | None = None
+    date_echeance: str | None = None
     nb_anomalies: int = 0
     cree_le: datetime
 
@@ -176,6 +177,7 @@ def _resume(facture: FactureEnBase) -> dict:
         "fournisseur_siret": facture.fournisseur_siret,
         "fournisseur_nom": donnees.get("fournisseur_nom"),
         "total_ttc": donnees.get("total_ttc"),
+        "date_echeance": donnees.get("date_echeance"),
         "nb_anomalies": len(facture.anomalies),
         "cree_le": facture.cree_le,
     }
