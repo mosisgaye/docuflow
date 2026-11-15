@@ -199,6 +199,28 @@ def _fournisseur_dans_odoo(session: Session, facture: FactureEnBase, donnees: Fa
         session, facture, "FOURNISSEUR_ODOO", MOTEUR,
         {"trouve": True, "id": fournisseur.id, "nom": fournisseur.nom, "adresse": odoo.adresse_fiche("res.partner", fournisseur.id)},
     )
+    return _commande_dans_odoo(session, facture, donnees, odoo, fournisseur.id)
+
+
+def _commande_dans_odoo(session: Session, facture: FactureEnBase, donnees: Facture, odoo: Odoo, fournisseur_id: int) -> list[Anomalie]:
+    """Compare la facture au bon de commande. Un écart ou une absence de commande est un avertissement :
+    la personne qui valide le voit, et les règles d'approbation pourront s'en servir."""
+    try:
+        rapprochement = odoo.rapprocher(fournisseur_id, donnees)
+    except ErreurOdoo as erreur:
+        _journaliser(session, facture, "ODOO_INDISPONIBLE", MOTEUR, {"raison": str(erreur)})
+        return []
+    detail = {"statut": rapprochement.statut, "commande": rapprochement.commande, "ecarts": rapprochement.ecarts}
+    if rapprochement.commande_id:
+        detail["adresse"] = odoo.adresse_fiche("purchase.order", rapprochement.commande_id)
+    _journaliser(session, facture, "COMMANDE_ODOO", MOTEUR, detail)
+    if rapprochement.statut == "sans_commande":
+        return [Anomalie("SANS_COMMANDE", Gravite.AVERTISSEMENT, "Aucun bon de commande dans Odoo ne correspond à cette facture : achat fait sans commande ?", "lignes")]
+    if rapprochement.statut == "ecart":
+        return [
+            Anomalie("ECART_COMMANDE", Gravite.AVERTISSEMENT, f"Écart avec le bon de commande {rapprochement.commande} : {ecart}.", "lignes")
+            for ecart in rapprochement.ecarts
+        ]
     return []
 
 

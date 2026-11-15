@@ -4,8 +4,10 @@ DocuFlow lui parle par l'API JSON-2 d'Odoo (POST /json/2/<modèle>/<méthode>), 
 d'API d'un utilisateur technique aux droits limités. XML-RPC et JSON-RPC, dépréciés depuis
 Odoo 19, ne sont pas utilisés.
 
-Deux usages :
+Trois usages :
 - à la lecture d'une facture : retrouver le fournisseur dans Odoo par son SIRET ;
+- à la lecture aussi : la comparer, ligne par ligne, au bon de commande ouvert chez ce
+  fournisseur (quantités et prix), ou signaler un achat sans commande ;
 - à l'envoi en comptabilité : créer la facture fournisseur dans Odoo, en brouillon, avec
   ses lignes, sa TVA et le PDF d'origine joint. Une facture déjà envoyée n'est jamais créée
   une seconde fois (même fournisseur, même numéro).
@@ -16,7 +18,10 @@ Réglages : ODOO_URL (http://127.0.0.1:8069), ODOO_BASE (demo).
 
 import base64
 import pathlib
-from dataclasses import dataclass
+import re
+import unicodedata
+from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from decimal import Decimal
 
 import httpx
@@ -26,6 +31,8 @@ from moteur.export import ErreurEnvoi
 from moteur.modeles import Facture
 
 CODES_PASSAGERS = {408, 429, 500, 502, 503, 504}
+RESSEMBLANCE_MIN = 0.85  # deux désignations au-delà de ce score sont la même ligne (« Main d'œuvre » ≈ « Main-d'œuvre »)
+CENTIME = Decimal("0.01")
 
 
 class ErreurOdoo(ErreurEnvoi):
@@ -43,6 +50,30 @@ class FournisseurOdoo:
     siret: str | None
     tva: str | None
     nb_comptes_bancaires: int
+
+
+@dataclass(frozen=True)
+class Rapprochement:
+    """Comparaison d'une facture avec le bon de commande du fournisseur."""
+
+    statut: str  # "conforme", "ecart" ou "sans_commande"
+    commande: str | None = None  # numéro du bon de commande retenu (P00015…)
+    commande_id: int | None = None
+    ecarts: list[str] = field(default_factory=list)
+    lignes: dict[int, int] = field(default_factory=dict)  # rang de la ligne facturée → ligne de commande Odoo
+
+
+def _normaliser(texte: str) -> str:
+    sans_accents = unicodedata.normalize("NFKD", texte).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", " ", sans_accents.lower()).strip()
+
+
+def _euros(montant: Decimal) -> str:
+    return f"{montant.quantize(CENTIME):.2f}".replace(".", ",") + " €"
+
+
+def _quantite(valeur: Decimal) -> str:
+    return f"{valeur.normalize():f}".replace(".", ",")
 
 
 class Odoo:
@@ -99,6 +130,74 @@ class Odoo:
             return None
         return FournisseurOdoo(trouve["id"], trouve["name"], trouve.get("l10n_fr_siret") or None, trouve.get("vat") or None, len(trouve.get("bank_ids") or []))
 
+    # ───────── Bons de commande ─────────
+
+    def rapprocher(self, fournisseur_id: int, donnees: Facture) -> Rapprochement:
+        """Trouve le bon de commande qui correspond le mieux à la facture, puis la compare ligne par ligne.
+
+        On retient la commande confirmée du fournisseur dont le plus de lignes ressemblent aux lignes
+        facturées (à égalité, la plus proche en montant). Une ligne facturée sans équivalent, une
+        quantité ou un prix différents sont des écarts. Une facture partielle (lignes commandées non
+        facturées) n'en est pas un.
+        """
+        commandes = self.appeler(
+            "purchase.order", "search_read",
+            domain=[["partner_id", "=", fournisseur_id], ["state", "in", ["purchase", "done"]]],
+            fields=["name", "amount_total"],
+        )
+        if not commandes:
+            return Rapprochement("sans_commande")
+        lignes_commandes = self.appeler(
+            "purchase.order.line", "search_read",
+            domain=[["order_id", "in", [commande["id"] for commande in commandes]], ["display_type", "=", False]],
+            fields=["order_id", "name", "product_qty", "price_unit"],
+        )
+        meilleur = None
+        for commande in commandes:
+            siennes = [ligne for ligne in lignes_commandes if ligne["order_id"][0] == commande["id"]]
+            paires = self._apparier(donnees, siennes)
+            ecart_montant = abs(Decimal(str(commande["amount_total"])) - (donnees.total_ttc or Decimal("0")))
+            cle = (len(paires), -ecart_montant)
+            if paires and (meilleur is None or cle > meilleur[0]):
+                meilleur = (cle, commande, siennes, paires)
+        if meilleur is None:
+            return Rapprochement("sans_commande")
+        _, commande, siennes, paires = meilleur
+        par_id = {ligne["id"]: ligne for ligne in siennes}
+        ecarts = []
+        for rang, ligne in enumerate(donnees.lignes):
+            if rang not in paires:
+                ecarts.append(f"« {ligne.designation} » ne figure pas sur la commande")
+                continue
+            commandee = par_id[paires[rang]]
+            prix_commande = Decimal(str(commandee["price_unit"])).quantize(CENTIME)
+            quantite_commande = Decimal(str(commandee["product_qty"]))
+            if ligne.prix_unitaire_ht is not None and ligne.prix_unitaire_ht.quantize(CENTIME) != prix_commande:
+                ecarts.append(f"{ligne.designation} : commandé à {_euros(prix_commande)}, facturé à {_euros(ligne.prix_unitaire_ht)}")
+            if ligne.quantite is not None and ligne.quantite != quantite_commande:
+                ecarts.append(f"{ligne.designation} : {_quantite(quantite_commande)} commandé(s), {_quantite(ligne.quantite)} facturé(s)")
+        return Rapprochement("ecart" if ecarts else "conforme", commande["name"], commande["id"], ecarts, paires)
+
+    @staticmethod
+    def _apparier(donnees: Facture, lignes_commande: list[dict]) -> dict[int, int]:
+        """Associe chaque ligne facturée à la ligne de commande la plus ressemblante (chacune une seule fois)."""
+        candidats = sorted(
+            (
+                (SequenceMatcher(None, _normaliser(ligne.designation), _normaliser(commandee["name"])).ratio(), rang, commandee["id"])
+                for rang, ligne in enumerate(donnees.lignes)
+                for commandee in lignes_commande
+            ),
+            reverse=True,
+        )
+        paires, prises = {}, set()
+        for score, rang, identifiant in candidats:
+            if score < RESSEMBLANCE_MIN:
+                break
+            if rang not in paires and identifiant not in prises:
+                paires[rang] = identifiant
+                prises.add(identifiant)
+        return paires
+
     # ───────── Factures fournisseurs ─────────
 
     def _taxe_achat(self, taux: Decimal | None) -> list[int]:
@@ -136,16 +235,24 @@ class Odoo:
             return self._compte_rendu(existantes[0], fournisseur, donnees, deja_envoyee=True)
 
         taxes = self._taxe_achat(donnees.taux_tva)
+        rapprochement = self.rapprocher(fournisseur.id, donnees)
+        lignes = []
+        for rang, ligne in enumerate(donnees.lignes):
+            valeurs_ligne = {"name": ligne.designation, "quantity": float(ligne.quantite), "price_unit": float(ligne.prix_unitaire_ht), "tax_ids": [[6, 0, taxes]]}
+            if rang in rapprochement.lignes:
+                # Ligne reliée à sa ligne de commande : c'est le rapprochement natif d'Odoo
+                # (quantités facturées mises à jour, alertes d'Odoo en cas d'écart).
+                valeurs_ligne["purchase_line_id"] = rapprochement.lignes[rang]
+            lignes.append([0, 0, valeurs_ligne])
         valeurs = {
             "move_type": "in_invoice",
             "partner_id": fournisseur.id,
             "ref": donnees.numero_facture,
             "invoice_date": donnees.date_facture.isoformat() if donnees.date_facture else False,
-            "invoice_line_ids": [
-                [0, 0, {"name": ligne.designation, "quantity": float(ligne.quantite), "price_unit": float(ligne.prix_unitaire_ht), "tax_ids": [[6, 0, taxes]]}]
-                for ligne in donnees.lignes
-            ],
+            "invoice_line_ids": lignes,
         }
+        if rapprochement.commande:
+            valeurs["invoice_origin"] = rapprochement.commande
         if donnees.date_echeance:
             valeurs["invoice_date_due"] = donnees.date_echeance.isoformat()
         identifiant = self.appeler("account.move", "create", vals_list=[valeurs])[0]

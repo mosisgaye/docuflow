@@ -36,6 +36,13 @@ class FauxOdoo:
             {"id": 40, "name": "DIOP Mouhamadou (MD Plomberie)", "l10n_fr_siret": "90856344800012", "vat": False, "bank_ids": []},
         ]
         self.taxes = [{"id": 1, "name": "20% G", "amount": 20.0}, {"id": 21, "name": "20% S", "amount": 20.0}]
+        # Le bon de commande du garage : les plaquettes avaient été commandées à 85,00 €.
+        self.commandes = [{"id": 15, "name": "P00015", "partner_id": 36, "amount_total": 462.0}]
+        self.lignes_commandes = [
+            {"id": 101, "order_id": [15, "P00015"], "name": "Vidange et filtre à huile", "product_qty": 1.0, "price_unit": 145.0},
+            {"id": 102, "order_id": [15, "P00015"], "name": "Plaquettes de frein avant", "product_qty": 1.0, "price_unit": 85.0},
+            {"id": 103, "order_id": [15, "P00015"], "name": "Main d'oeuvre (heures)", "product_qty": 2.5, "price_unit": 62.0},
+        ]
         self.factures, self.pieces, self.appels = [], [], []
         self.panne: int | None = None  # code HTTP à renvoyer
         self.panne_sur: str | None = None  # « modèle.méthode » à faire échouer, sinon tout
@@ -56,6 +63,12 @@ class FauxOdoo:
             return self.partenaires
         if cible == "account.tax.search_read":
             return [taxe for taxe in self.taxes if taxe["amount"] == corps["domain"][1][2]]
+        if cible == "purchase.order.search_read":
+            fournisseur = corps["domain"][0][2]
+            return [commande for commande in self.commandes if commande["partner_id"] == fournisseur]
+        if cible == "purchase.order.line.search_read":
+            commandes = corps["domain"][0][2]
+            return [ligne for ligne in self.lignes_commandes if ligne["order_id"][0] in commandes]
         if cible == "account.move.search_read":
             filtres = {champ: valeur for champ, _, valeur in corps["domain"]}
             return [f for f in self.factures if f["partner_id"] == filtres["partner_id"] and f["ref"] == filtres["ref"]]
@@ -120,6 +133,9 @@ def test_la_facture_fournisseur_est_creee_avec_ses_lignes_et_son_pdf(odoo, faux)
     facture = faux.factures[0]
     assert (facture["move_type"], facture["partner_id"], facture["ref"], facture["invoice_date"]) == ("in_invoice", 36, "F26-1193", "2026-11-10")
     assert [ligne[2]["tax_ids"] for ligne in facture["invoice_line_ids"]] == [[[6, 0, [21]]]] * 3  # TVA à 20 %, services
+    # Chaque ligne est reliée à sa ligne de commande : le rapprochement natif d'Odoo.
+    assert [ligne[2]["purchase_line_id"] for ligne in facture["invoice_line_ids"]] == [101, 102, 103]
+    assert facture["invoice_origin"] == "P00015"
     assert base64.b64decode(faux.pieces[0]["raw"]) == b"%PDF-1.7 contenu"
     assert compte_rendu["total_odoo"] == "478.08"
     assert compte_rendu["ecart_total"] is None
@@ -211,8 +227,13 @@ def extracteur(nom: str):
 def test_a_la_lecture_le_fournisseur_reconnu_est_note_au_journal(session, odoo):
     facture = traiter(session, (FACTURES / GARAGE).read_bytes(), GARAGE, extracteur(GARAGE), AUJOURD_HUI, odoo=odoo).facture
 
-    assert [e.type for e in facture.evenements] == ["RECEPTION", "EXTRACTION", "FOURNISSEUR_ODOO", "CONTROLE"]
+    assert [e.type for e in facture.evenements] == ["RECEPTION", "EXTRACTION", "FOURNISSEUR_ODOO", "COMMANDE_ODOO", "CONTROLE"]
     assert facture.evenements[2].detail == {"trouve": True, "id": 36, "nom": "Garage Central Bertin", "adresse": "http://odoo.test/odoo/res.partner/36"}
+    assert facture.evenements[3].detail["commande"] == "P00015"
+    assert facture.evenements[3].detail["adresse"] == "http://odoo.test/odoo/purchase.order/15"
+    # L'écart de prix est un avertissement : la personne le voit, la facture reste validable.
+    assert [(a["code"], a["gravite"]) for a in facture.anomalies] == [("ECART_COMMANDE", "avertissement")]
+    assert "commandé à 85,00 €, facturé à 98,40 €" in facture.anomalies[0]["message"]
     assert facture.etat == "a_valider"
 
 
@@ -271,3 +292,52 @@ def test_par_l_api_un_refus_d_odoo_repond_502(connexion, odoo, faux, tmp_path):
 
     assert reponse.status_code == 502
     assert "Odoo" in reponse.json()["detail"]
+
+
+# ───────── Bons de commande ─────────
+
+
+def test_une_facture_conforme_a_sa_commande(odoo, faux):
+    faux.lignes_commandes[1]["price_unit"] = 98.40
+
+    rapprochement = odoo.rapprocher(36, donnees(GARAGE))
+
+    assert (rapprochement.statut, rapprochement.commande, rapprochement.ecarts) == ("conforme", "P00015", [])
+    # « Main d'oeuvre » sur la commande, « Main-d'œuvre » sur la facture : c'est la même ligne.
+    assert rapprochement.lignes == {0: 101, 1: 102, 2: 103}
+
+
+def test_chaque_ecart_est_explique(odoo, faux):
+    faux.lignes_commandes[0]["product_qty"] = 2.0
+    faux.lignes_commandes.pop()  # la main-d'œuvre n'était pas commandée
+
+    rapprochement = odoo.rapprocher(36, donnees(GARAGE))
+
+    assert rapprochement.statut == "ecart"
+    assert rapprochement.ecarts == [
+        "Vidange et filtre à huile : 2 commandé(s), 1 facturé(s)",
+        "Plaquettes de frein avant : commandé à 85,00 €, facturé à 98,40 €",
+        "« Main-d'œuvre (heures) » ne figure pas sur la commande",
+    ]
+
+
+def test_un_achat_sans_commande(odoo, faux):
+    faux.commandes = []
+
+    assert odoo.rapprocher(36, donnees(GARAGE)).statut == "sans_commande"
+
+
+def test_la_commande_retenue_est_celle_qui_ressemble_le_plus_a_la_facture(odoo, faux):
+    faux.commandes.append({"id": 16, "name": "P00016", "partner_id": 36, "amount_total": 478.08})
+    faux.lignes_commandes.append({"id": 201, "order_id": [16, "P00016"], "name": "Pneus hiver", "product_qty": 4.0, "price_unit": 119.52})
+
+    assert odoo.rapprocher(36, donnees(GARAGE)).commande == "P00015"  # même montant, mais rien de commun
+
+
+def test_un_achat_sans_commande_donne_un_avertissement_a_la_lecture(session, odoo, faux):
+    faux.commandes = []
+
+    facture = traiter(session, (FACTURES / GARAGE).read_bytes(), GARAGE, extracteur(GARAGE), AUJOURD_HUI, odoo=odoo).facture
+
+    assert [(a["code"], a["gravite"]) for a in facture.anomalies] == [("SANS_COMMANDE", "avertissement")]
+    assert facture.etat == "a_valider"

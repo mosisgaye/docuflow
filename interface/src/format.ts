@@ -76,6 +76,10 @@ export function raconter(evenement: Evenement): string {
     }
     case 'FOURNISSEUR_ODOO':
       return detail.trouve ? `Fournisseur reconnu dans Odoo : ${String(detail.nom)}` : 'Fournisseur absent d’Odoo'
+    case 'COMMANDE_ODOO':
+      if (detail.statut === 'conforme') return `Conforme au bon de commande ${String(detail.commande)}`
+      if (detail.statut === 'ecart') return `Écart avec le bon de commande ${String(detail.commande)}`
+      return 'Aucun bon de commande dans Odoo'
     case 'ODOO_INDISPONIBLE':
       return `Odoo n’a pas répondu, fournisseur non vérifié : ${String(detail.raison)}`
     case 'EXPORT_ECHOUE':

@@ -60,6 +60,7 @@ function Ecriture({ facture }: { facture: FactureDetail }) {
 /** Ce qu'Odoo, le logiciel du client, sait de cette facture : le fournisseur, puis la facture créée. */
 function Odoo({ facture }: { facture: FactureDetail }) {
   const fournisseur = [...facture.evenements].reverse().find((evenement) => evenement.type === 'FOURNISSEUR_ODOO')
+  const commande = [...facture.evenements].reverse().find((evenement) => evenement.type === 'COMMANDE_ODOO')
   const envoi = [...facture.evenements].reverse().find((evenement) => evenement.type === 'EXPORT')?.detail.logiciel as
     | { logiciel?: string; adresse?: string; total_odoo?: string; ecart_total?: string | null }
     | undefined
@@ -76,6 +77,21 @@ function Odoo({ facture }: { facture: FactureDetail }) {
       ) : fournisseur ? (
         'Fournisseur absent d’Odoo'
       ) : null}
+      {commande && (
+        <>
+          <br />
+          {commande.detail.statut === 'sans_commande' ? (
+            'Aucun bon de commande correspondant'
+          ) : (
+            <>
+              {commande.detail.statut === 'conforme' ? 'Conforme au bon de commande ' : 'Écart avec le bon de commande '}
+              <a href={String(commande.detail.adresse)} target="_blank" rel="noreferrer">
+                {String(commande.detail.commande)}
+              </a>
+            </>
+          )}
+        </>
+      )}
       {envoi?.logiciel === 'odoo' && envoi.adresse && (
         <>
           {' · '}

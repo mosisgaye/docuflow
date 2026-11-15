@@ -208,7 +208,8 @@ Ce que fait le connecteur (`moteur/odoo.py`), actif dès que la clé existe :
 | Moment | Ce qui se passe |
 |---|---|
 | Lecture d'une facture | le fournisseur est cherché dans Odoo par son SIRET, ou à défaut par son numéro de TVA. Inconnu : avertissement « à créer avant l'envoi ». Odoo en panne : la lecture continue, le journal le dit |
-| Envoi en comptabilité | la facture fournisseur est créée dans Odoo en brouillon, avec ses lignes, la TVA française au bon taux (aucune pour un fournisseur en franchise), ses dates et le PDF d'origine joint. Le CSV de l'écriture est toujours produit |
+| Lecture d'une facture | elle est comparée, ligne par ligne, au bon de commande du fournisseur qui lui ressemble le plus : quantités et prix. Écart ou achat sans commande : avertissement expliqué (« Plaquettes de frein avant : commandé à 85,00 €, facturé à 98,40 € ») |
+| Envoi en comptabilité | la facture fournisseur est créée dans Odoo en brouillon, ses lignes reliées aux lignes du bon de commande (rapprochement natif d'Odoo), avec ses lignes, la TVA française au bon taux (aucune pour un fournisseur en franchise), ses dates et le PDF d'origine joint. Le CSV de l'écriture est toujours produit |
 | Nouvel essai | même fournisseur et même numéro : rien n'est recréé ; un envoi interrompu avant le PDF est complété |
 | Contrôle | le total recalculé par Odoo est comparé à celui de la facture ; tout écart est signalé |
 
