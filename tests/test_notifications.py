@@ -102,7 +102,7 @@ def test_un_mail_rate_ne_casse_rien_et_est_note(client, boite):
 
 
 def test_sans_reglages_aucun_mail_n_est_prepare(client, boite, monkeypatch):
-    monkeypatch.delenv("APPROBATION_SECRET")
+    monkeypatch.setenv("APPROBATION_SECRET", "")  # vidée, pas retirée : sinon le fichier de configuration reprend la main
 
     deposer(client)
 

@@ -142,7 +142,7 @@ def test_un_refus_de_l_editeur_ne_recopie_pas_son_message(session, editeur, clie
 
 
 def test_sans_identifiants_rien_ne_commence(session, client_http, monkeypatch):
-    monkeypatch.delenv("HUBSPOT_CLIENT_SECRET")
+    monkeypatch.setenv("HUBSPOT_CLIENT_SECRET", "")  # vidée, pas retirée : sinon le fichier de configuration reprend la main
 
     with pytest.raises(oauth.ErreurOAuth, match="HUBSPOT_CLIENT_ID"):
         oauth.commencer(session, "hubspot", ADRESSE, "Moussa", client_http)

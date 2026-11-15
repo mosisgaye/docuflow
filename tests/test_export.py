@@ -90,7 +90,7 @@ def test_le_nom_du_fichier_ne_depend_que_de_la_facture():
 
 
 def test_exporter_une_facture_validee(session, tmp_path, monkeypatch):
-    monkeypatch.delenv("EXPORT_WEBHOOK_URL", raising=False)
+    monkeypatch.setenv("EXPORT_WEBHOOK_URL", "")  # vidée, pas retirée : sinon le fichier de configuration reprend la main
     facture = recevoir(session)
     valider(session, facture.id, "Awa")
 
