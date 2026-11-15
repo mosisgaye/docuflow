@@ -8,7 +8,7 @@
     POST /factures/{id}/rejet         rejeter (une personne, avec un motif)
     POST /factures/{id}/export        envoyer une facture validée à la comptabilité
     GET  /factures/{id}/export        le fichier CSV de l'écriture comptable
-    POST /reception/mail              un mail reçu à l'adresse de dépôt, envoyé et signé par l'adaptateur
+    POST /reception/mail              un mail brut reçu à l'adresse de dépôt, transmis et signé par l'adaptateur
     POST /agent                       parler à l'assistant (réponse envoyée au fil de l'eau)
     GET  /statistiques                les chiffres du tableau de bord
     GET  /sante                       l'API et la base répondent-elles ? où en est la file de tâches ?
@@ -25,7 +25,7 @@ from datetime import datetime
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 from pypdf.errors import PyPdfError
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -38,11 +38,11 @@ from moteur.base import Etat, EtatTache, Evenement, FactureEnBase, Tache, creer_
 from moteur.extraction_llm import ResultatExtraction, extraire
 from moteur.export import ErreurEnvoi, ErreurExport
 from moteur.lecture_pdf import lire_pdf
-from moteur.reception_mail import MailEntrant, PieceIllisible, PieceJointe, SignatureInvalide, decoder, recevoir_mail, verifier_signature
+from moteur.reception_mail import SignatureInvalide, cles_publiques, lire_mail_brut, recevoir_mail, verifier_signature
 from moteur.workflow import FactureIntrouvable, TransitionInterdite, exporter, ranger_fichier, recevoir, rejeter, traiter, valider
 
 TAILLE_MAX_OCTETS = 10 * 1024 * 1024
-TAILLE_MAX_MAIL_OCTETS = 40 * 1024 * 1024  # un mail de 25 Mo, pièces encodées en base64
+TAILLE_MAX_MAIL_OCTETS = 30 * 1024 * 1024  # Email Routing n'accepte pas de mail de plus de 25 Mo
 
 
 class EvenementSortie(BaseModel):
@@ -88,21 +88,6 @@ class Rejet(Validation):
     motif: str = Field(min_length=1, max_length=500)
 
 
-class PieceEntree(BaseModel):
-    nom: str = Field(min_length=1, max_length=255)
-    type: str = Field(default="", max_length=255)
-    contenu_base64: str
-
-
-class MailEntree(BaseModel):
-    """Un mail, tel que l'adaptateur de messagerie l'envoie."""
-
-    message_id: str = Field(min_length=1, max_length=998)
-    expediteur: str = Field(min_length=1, max_length=320)
-    objet: str = Field(default="", max_length=2000)
-    pieces: list[PieceEntree] = Field(default_factory=list, max_length=100)
-
-
 class MessageAgent(BaseModel):
     role: str = Field(pattern="^(user|assistant)$")
     content: str = Field(min_length=1, max_length=8000)
@@ -146,13 +131,13 @@ def creer_application(
     dossier_exports: pathlib.Path | None = None,
     client_export=None,
     traiter_tout_de_suite: bool = False,
-    secret_mail: str | None = None,
+    cles_mail: list | None = None,
 ) -> FastAPI:
     """Construit l'application. Les paramètres servent aux tests ; en service, tout vient de .env.
 
     traiter_tout_de_suite : lire la facture pendant la requête au lieu de la confier au travailleur.
     Utile aux tests et aux démonstrations sans travailleur ; jamais en service.
-    secret_mail : secret partagé avec l'adaptateur de messagerie. Sans lui, la réception par mail est fermée.
+    cles_mail : clés publiques des adaptateurs de messagerie. Sans elles, la réception par mail est fermée.
     """
     if fabrique_session is None:
         moteur_base = creer_moteur()
@@ -160,7 +145,7 @@ def creer_application(
         fabrique_session = sessionmaker(moteur_base)
     dossier = dossier_fichiers or config.dossier_fichiers()
     dossier.mkdir(parents=True, exist_ok=True)
-    secret_mail = secret_mail if secret_mail is not None else config.lire("RECEPTION_MAIL_SECRET", "")
+    cles_mail = cles_mail if cles_mail is not None else cles_publiques(config.lire("RECEPTION_MAIL_CLES_PUBLIQUES", ""))
     exports = dossier_exports or pathlib.Path(config.lire("EXPORTS_DOSSIER", str(config.RACINE / "donnees" / "exports")))
 
     # L'assistant ne garde pas ses conversations : on enregistre sa consigne une fois, au démarrage,
@@ -237,7 +222,7 @@ def creer_application(
         signature: str | None = Header(default=None, alias="X-DocuFlow-Signature"),
     ) -> bytes:
         """Le corps brut de la requête, seulement si l'adaptateur de messagerie l'a bien signé."""
-        if not secret_mail:
+        if not cles_mail:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "La réception par mail n'est pas configurée.")
         corps = b""
         async for morceau in requete.stream():
@@ -245,7 +230,7 @@ def creer_application(
             if len(corps) > TAILLE_MAX_MAIL_OCTETS:
                 raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Mail trop volumineux.")
         try:
-            verifier_signature(secret_mail, horodatage, signature, corps)
+            verifier_signature(cles_mail, horodatage, signature, corps)
         except SignatureInvalide as erreur:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(erreur)) from erreur
         return corps
@@ -254,16 +239,10 @@ def creer_application(
     def recevoir_un_mail(
         reponse: Response, corps: bytes = Depends(corps_signe), session: Session = Depends(session_de_requete, scope="function")
     ) -> dict:
-        # Le corps est lu à la main (et non par FastAPI) parce que la signature porte sur ses octets exacts.
-        try:
-            entree = MailEntree.model_validate_json(corps)
-        except ValidationError as erreur:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Mail mal formé.") from erreur
-        try:
-            pieces = [PieceJointe(piece.nom, piece.type, decoder(piece.contenu_base64)) for piece in entree.pieces]
-        except PieceIllisible as erreur:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erreur)) from erreur
-        compte_rendu = recevoir_mail(session, MailEntrant(entree.message_id, entree.expediteur, entree.objet, pieces), dossier)
+        # Le corps est le mail brut, lu à la main (et non par FastAPI) : la signature porte sur ses octets exacts.
+        if not corps.strip():
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Mail vide.")
+        compte_rendu = recevoir_mail(session, lire_mail_brut(corps), dossier)
         if compte_rendu.deja_vu:
             reponse.status_code = status.HTTP_200_OK
         mail = compte_rendu.mail

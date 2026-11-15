@@ -1,0 +1,9 @@
+{
+  "name": "docuflow-reception",
+  "private": true,
+  "description": "Worker Cloudflare : transmet les mails de l'adresse de dépôt à DocuFlow, bruts et signés.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

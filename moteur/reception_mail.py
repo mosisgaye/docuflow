@@ -2,12 +2,15 @@
 
 Le mail arrive d'abord chez un adaptateur (aujourd'hui un Worker Cloudflare branché sur
 l'adresse de dépôt ; demain Microsoft 365, Gmail ou IMAP pour la boîte d'un client).
-L'adaptateur le ramène à une forme unique, MailEntrant, et l'envoie à POST /reception/mail.
-Le moteur ne connaît que cette forme : ajouter un adaptateur ne touche pas au moteur.
+L'adaptateur transmet le mail BRUT, tel que reçu (format RFC 5322), à POST /reception/mail.
+Toutes les messageries savent fournir ce format : l'analyse est faite une seule fois, ici,
+par la bibliothèque standard de Python. Ajouter un adaptateur ne touche pas au moteur.
 
-Sécurité : l'adaptateur signe chaque envoi avec un secret partagé (HMAC-SHA256 sur
-« horodatage.corps »). Une signature fausse, ou un envoi de plus de 5 minutes rejoué
-plus tard, est refusé.
+Sécurité : l'adaptateur signe chaque envoi avec sa clé privée Ed25519, sur
+« horodatage.corps ». DocuFlow ne connaît que les clés publiques : lire sa configuration
+ne permet pas de fabriquer un faux envoi. La clé privée de l'adaptateur Cloudflare a été
+créée chez Cloudflare et n'en sort jamais. Une signature fausse, ou un envoi de plus de
+5 minutes rejoué plus tard, est refusé.
 
 Chaque pièce jointe PDF devient une facture, exactement comme un dépôt à l'écran :
 même file de tâches, même lecture, mêmes contrôles. Le journal de la facture garde
@@ -17,12 +20,17 @@ l'expéditeur et l'objet du mail.
 import base64
 import binascii
 import hashlib
-import hmac
 import pathlib
 import time
 import uuid
 from dataclasses import dataclass
+from email import policy
+from email.message import EmailMessage
+from email.parser import BytesParser
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from pypdf.errors import PyPdfError
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -39,10 +47,6 @@ PIECES_MAX = 20
 
 class SignatureInvalide(Exception):
     """L'envoi ne vient pas de notre adaptateur, ou il est trop ancien."""
-
-
-class PieceIllisible(Exception):
-    """Le contenu d'une pièce jointe n'est pas un base64 valide."""
 
 
 @dataclass(frozen=True)
@@ -66,12 +70,27 @@ class CompteRenduMail:
     deja_vu: bool  # vrai si ce mail avait déjà été reçu : rien n'a été refait
 
 
-def signer(secret: str, horodatage: str, corps: bytes) -> str:
-    """La signature attendue pour un envoi. Utilisée par l'adaptateur et par les tests."""
-    return hmac.new(secret.encode(), horodatage.encode() + b"." + corps, hashlib.sha256).hexdigest()
+def _message(horodatage: str, corps: bytes) -> bytes:
+    return horodatage.encode() + b"." + corps
 
 
-def verifier_signature(secret: str, horodatage: str | None, signature: str | None, corps: bytes, maintenant: float | None = None) -> None:
+def signer(cle_privee: Ed25519PrivateKey, horodatage: str, corps: bytes) -> str:
+    """Signature d'un envoi, en base64. Le Worker fait la même chose en JavaScript."""
+    return base64.b64encode(cle_privee.sign(_message(horodatage, corps))).decode()
+
+
+def cles_publiques(texte: str) -> list[Ed25519PublicKey]:
+    """Les clés publiques acceptées, en base64 séparées par des virgules (plusieurs adaptateurs, ou une rotation)."""
+    return [Ed25519PublicKey.from_public_bytes(base64.b64decode(morceau.strip())) for morceau in texte.split(",") if morceau.strip()]
+
+
+def en_base64(cle: Ed25519PublicKey) -> str:
+    return base64.b64encode(cle.public_bytes(Encoding.Raw, PublicFormat.Raw)).decode()
+
+
+def verifier_signature(
+    cles: list[Ed25519PublicKey], horodatage: str | None, signature: str | None, corps: bytes, maintenant: float | None = None
+) -> None:
     if not horodatage or not signature:
         raise SignatureInvalide("Signature absente.")
     try:
@@ -80,16 +99,48 @@ def verifier_signature(secret: str, horodatage: str | None, signature: str | Non
         raise SignatureInvalide("Horodatage illisible.") from erreur
     if abs((maintenant if maintenant is not None else time.time()) - instant) > TOLERANCE_HORLOGE_S:
         raise SignatureInvalide("Envoi trop ancien ou horloge décalée.")
-    # compare_digest : la comparaison prend le même temps quelle que soit la signature reçue.
-    if not hmac.compare_digest(signer(secret, horodatage, corps), signature):
-        raise SignatureInvalide("Signature fausse.")
-
-
-def decoder(contenu_base64: str) -> bytes:
     try:
-        return base64.b64decode(contenu_base64, validate=True)
+        brute = base64.b64decode(signature, validate=True)
     except (binascii.Error, ValueError) as erreur:
-        raise PieceIllisible("Pièce jointe mal encodée.") from erreur
+        raise SignatureInvalide("Signature illisible.") from erreur
+    for cle in cles:
+        try:
+            cle.verify(brute, _message(horodatage, corps))
+            return
+        except InvalidSignature:
+            continue
+    raise SignatureInvalide("Signature fausse.")
+
+
+def _expediteur(mail: EmailMessage) -> str:
+    try:
+        adresses = mail["From"].addresses if mail["From"] is not None else ()
+        if adresses and adresses[0].addr_spec:
+            return adresses[0].addr_spec[:320]
+    except (AttributeError, IndexError, TypeError, ValueError):
+        pass  # en-tête From mal formé : on garde le texte tel quel
+    return (str(mail.get("From", "")).strip() or "expéditeur inconnu")[:320]
+
+
+def lire_mail_brut(brut: bytes) -> MailEntrant:
+    """Analyse un mail brut. Ne lève jamais d'erreur : un mail abîmé donne simplement moins d'informations."""
+    mail = BytesParser(policy=policy.default).parsebytes(brut)
+    # Sans Message-ID (rare), l'empreinte du mail en tient lieu : un renvoi à l'identique reste reconnu.
+    message_id = str(mail.get("Message-ID", "")).strip() or f"<sans-identifiant-{hashlib.sha256(brut).hexdigest()[:32]}@docuflow>"
+    pieces = []
+    for partie in mail.walk():
+        if partie.is_multipart():
+            continue
+        nom = partie.get_filename()
+        # Le corps du mail (texte, HTML) n'est pas une pièce jointe. Un PDF sans nom en est une.
+        if not nom and partie.get_content_disposition() != "attachment" and partie.get_content_type() != "application/pdf":
+            continue
+        try:
+            contenu = partie.get_payload(decode=True) or b""
+        except (binascii.Error, ValueError):
+            contenu = b""
+        pieces.append(PieceJointe(nom or "piece-jointe", partie.get_content_type(), contenu))
+    return MailEntrant(message_id[:998], _expediteur(mail), str(mail.get("Subject", "")).strip()[:2000], pieces)
 
 
 def _examiner(piece: PieceJointe) -> str | None:

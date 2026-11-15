@@ -131,7 +131,7 @@ Pour charger les factures d'exemple :
 uv run python -m outils.traiter_dossier
 ```
 
-Pour simuler un mail reçu à l'adresse de dépôt (il faut `RECEPTION_MAIL_SECRET` dans `.env`) :
+Pour simuler un mail reçu à l'adresse de dépôt (la clé publique d'essai affichée au premier lancement doit figurer dans `RECEPTION_MAIL_CLES_PUBLIQUES`) :
 
 ```bash
 uv run python -m outils.envoyer_mail_test factures/facture-F26-1193.pdf --de compta@fournisseur.fr --objet "Facture novembre"
@@ -139,7 +139,7 @@ uv run python -m outils.envoyer_mail_test factures/facture-F26-1193.pdf --de com
 
 ### Réception par mail
 
-Un adaptateur de messagerie (un Worker Cloudflare branché sur l'adresse de dépôt) ramène chaque mail à une forme unique (identifiant, expéditeur, objet, pièces jointes), le signe avec `RECEPTION_MAIL_SECRET` et l'envoie à `POST /reception/mail`. Chaque PDF devient une facture, avec le même circuit qu'un dépôt à l'écran. Le même mail reçu deux fois n'est traité qu'une fois ; une pièce qui n'est pas un PDF lisible est notée et ignorée. Pour brancher la boîte d'un client (transfert automatique, Microsoft 365, Gmail, IMAP), il suffit d'un autre adaptateur : le moteur ne change pas.
+Les factures envoyées à `depot@factures.moussagaye.com` arrivent chez Cloudflare (Email Routing). Un Worker (`reception-mail/`) transmet chaque mail **brut**, signé avec sa clé privée Ed25519, à `POST /reception/mail`, par un tunnel Cloudflare qui n'ouvre que cette route (`reception-mail/tunnel.exemple.yml`). DocuFlow analyse le mail avec la bibliothèque standard de Python et ne connaît que les clés publiques : la clé privée a été créée chez Cloudflare et n'en sort jamais. Chaque PDF devient une facture, avec le même circuit qu'un dépôt à l'écran. Le même mail reçu deux fois n'est traité qu'une fois ; une pièce qui n'est pas un PDF lisible est notée et ignorée. Pour brancher la boîte d'un client (transfert automatique, Microsoft 365, Gmail, IMAP), il suffit d'un autre adaptateur : le moteur ne change pas.
 
 ## Tests
 
@@ -201,7 +201,7 @@ Toutes les valeurs se règlent dans `.env` (voir `.env.example`).
 | `LLM_MODELE`, `AGENT_MODELE` | Modèles pour l'extraction et pour l'assistant |
 | `EXPORT_COMPTE_CHARGE` | Compte de charge par défaut (606000) |
 | `EXPORT_WEBHOOK_URL` | Adresse du logiciel de comptabilité, pour l'envoi direct |
-| `RECEPTION_MAIL_SECRET` | Secret partagé avec l'adaptateur de messagerie. Sans lui, la réception par mail est fermée |
+| `RECEPTION_MAIL_CLES_PUBLIQUES` | Clés publiques des adaptateurs de messagerie autorisés (pas des secrets). Sans elles, la réception par mail est fermée |
 
 ## Choix techniques
 

@@ -1,0 +1,10 @@
+# Tunnel Cloudflare de DocuFlow (copie de ~/.cloudflared/docuflow.yml, sans identifiants).
+# Seule la réception des mails est joignable depuis Internet : tout le reste de l'API répond 404.
+#   cloudflared tunnel --config ~/.cloudflared/docuflow.yml run docuflow
+tunnel: <identifiant du tunnel>
+credentials-file: /home/<utilisateur>/.cloudflared/<identifiant du tunnel>.json
+ingress:
+  - hostname: api-docuflow.moussagaye.com
+    path: ^/reception/mail$
+    service: http://127.0.0.1:8010
+  - service: http_status:404

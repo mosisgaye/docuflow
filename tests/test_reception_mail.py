@@ -1,40 +1,50 @@
-"""Réception des factures par mail : signature, idempotence, tri des pièces jointes."""
+"""Réception des factures par mail : signature, analyse du mail brut, idempotence, tri des pièces."""
 
-import base64
-import json
 import pathlib
 import threading
 import time
+from email.message import EmailMessage
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from moteur.api import creer_application
 from moteur.base import FactureEnBase, MailRecu, Tache
-from moteur.reception_mail import MailEntrant, PieceJointe, SignatureInvalide, recevoir_mail, signer, verifier_signature
+from moteur.reception_mail import SignatureInvalide, cles_publiques, en_base64, lire_mail_brut, recevoir_mail, signer, verifier_signature
 
 FACTURES = pathlib.Path(__file__).resolve().parent.parent / "factures"
 JUSTE = "facture-F26-1193.pdf"
 AUTRE = "facture-2026-11-087.pdf"
-SECRET = "secret-de-test"
+CLE = Ed25519PrivateKey.generate()  # la clé de l'adaptateur
+INTRUS = Ed25519PrivateKey.generate()  # une clé que DocuFlow ne connaît pas
 
 
-def piece(nom: str, contenu: bytes | None = None, type_mime: str = "application/pdf") -> dict:
-    contenu = contenu if contenu is not None else (FACTURES / nom).read_bytes()
-    return {"nom": nom, "type": type_mime, "contenu_base64": base64.b64encode(contenu).decode()}
+def mail(*pieces: tuple[str, bytes, str], message_id: str | None = "<abc@fournisseur.fr>", objet: str = "Facture novembre") -> bytes:
+    """Un mail brut, comme Cloudflare le transmet. pieces : (nom, contenu, type MIME)."""
+    message = EmailMessage()
+    message["From"] = "Service compta <compta@fournisseur.fr>"
+    message["To"] = "depot@factures.moussagaye.com"
+    message["Subject"] = objet
+    if message_id:
+        message["Message-ID"] = message_id
+    message.set_content("Bonjour, veuillez trouver nos factures en pièce jointe.")
+    for nom, contenu, type_mime in pieces:
+        principal, secondaire = type_mime.split("/")
+        message.add_attachment(contenu, maintype=principal, subtype=secondaire, filename=nom)
+    return message.as_bytes()
 
 
-def mail(*pieces: dict, message_id: str = "<abc@fournisseur.fr>") -> dict:
-    return {"message_id": message_id, "expediteur": "compta@fournisseur.fr", "objet": "Facture novembre", "pieces": list(pieces)}
+def pdf(nom: str) -> tuple[str, bytes, str]:
+    return (nom, (FACTURES / nom).read_bytes(), "application/pdf")
 
 
-def envoyer(client: TestClient, donnees: dict, secret: str = SECRET, horodatage: str | None = None, corps: bytes | None = None):
-    corps = corps if corps is not None else json.dumps(donnees).encode()
+def envoyer(client: TestClient, brut: bytes, cle: Ed25519PrivateKey = CLE, horodatage: str | None = None):
     horodatage = horodatage or str(int(time.time()))
-    entetes = {"X-DocuFlow-Horodatage": horodatage, "X-DocuFlow-Signature": signer(secret, horodatage, corps), "Content-Type": "application/json"}
-    return client.post("/reception/mail", content=corps, headers=entetes)
+    entetes = {"X-DocuFlow-Horodatage": horodatage, "X-DocuFlow-Signature": signer(cle, horodatage, brut), "Content-Type": "message/rfc822"}
+    return client.post("/reception/mail", content=brut, headers=entetes)
 
 
 @pytest.fixture
@@ -44,7 +54,7 @@ def fabrique(connexion):
 
 @pytest.fixture
 def client(fabrique, tmp_path):
-    return TestClient(creer_application(fabrique_session=fabrique, dossier_fichiers=tmp_path / "recus", secret_mail=SECRET))
+    return TestClient(creer_application(fabrique_session=fabrique, dossier_fichiers=tmp_path / "recus", cles_mail=[CLE.public_key()]))
 
 
 def compter(fabrique, modele) -> int:
@@ -52,11 +62,39 @@ def compter(fabrique, modele) -> int:
         return session.scalar(select(func.count()).select_from(modele))
 
 
+# ───────── Analyse du mail brut ─────────
+
+
+def test_le_mail_brut_est_analyse():
+    lu = lire_mail_brut(mail(pdf(JUSTE), objet="Facture décembre"))
+
+    assert lu.message_id == "<abc@fournisseur.fr>"
+    assert lu.expediteur == "compta@fournisseur.fr"  # l'adresse seule, sans le nom affiché
+    assert lu.objet == "Facture décembre"  # accents décodés
+    assert [(piece.nom, piece.type_mime) for piece in lu.pieces] == [(JUSTE, "application/pdf")]
+    assert lu.pieces[0].contenu == (FACTURES / JUSTE).read_bytes()  # le PDF arrive intact
+    # Le texte du mail n'est pas pris pour une pièce jointe.
+
+
+def test_un_mail_sans_identifiant_reste_reconnaissable():
+    brut = mail(pdf(JUSTE), message_id=None)
+
+    assert lire_mail_brut(brut).message_id == lire_mail_brut(brut).message_id
+    assert lire_mail_brut(brut).message_id.startswith("<sans-identifiant-")
+
+
+def test_un_mail_abime_ne_fait_pas_tomber_l_analyse():
+    lu = lire_mail_brut(b"From: \x00\xff pas une adresse\r\n\r\ncorps sans structure")
+
+    assert lu.pieces == []
+    assert lu.expediteur
+
+
 # ───────── Signature ─────────
 
 
 def test_un_mail_signe_cree_la_facture_et_sa_tache(client, fabrique, tmp_path):
-    reponse = envoyer(client, mail(piece(JUSTE)))
+    reponse = envoyer(client, mail(pdf(JUSTE)))
 
     assert reponse.status_code == 202
     corps = reponse.json()
@@ -76,12 +114,12 @@ def test_un_mail_signe_cree_la_facture_et_sa_tache(client, fabrique, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "secret, decalage_s",
-    [("mauvais-secret", 0), (SECRET, -3600), (SECRET, 3600)],
-    ids=["secret faux", "envoi rejoué une heure après", "horodatage dans le futur"],
+    "cle, decalage_s",
+    [(INTRUS, 0), (CLE, -3600), (CLE, 3600)],
+    ids=["clé inconnue", "envoi rejoué une heure après", "horodatage dans le futur"],
 )
-def test_un_envoi_mal_signe_est_refuse(client, fabrique, secret, decalage_s):
-    reponse = envoyer(client, mail(piece(JUSTE)), secret=secret, horodatage=str(int(time.time()) + decalage_s))
+def test_un_envoi_mal_signe_est_refuse(client, fabrique, cle, decalage_s):
+    reponse = envoyer(client, mail(pdf(JUSTE)), cle=cle, horodatage=str(int(time.time()) + decalage_s))
 
     assert reponse.status_code == 401
     assert compter(fabrique, MailRecu) == 0
@@ -89,43 +127,48 @@ def test_un_envoi_mal_signe_est_refuse(client, fabrique, secret, decalage_s):
 
 
 def test_un_envoi_sans_signature_est_refuse(client):
-    reponse = client.post("/reception/mail", json=mail(piece(JUSTE)))
-
-    assert reponse.status_code == 401
+    assert client.post("/reception/mail", content=mail(pdf(JUSTE))).status_code == 401
 
 
-def test_un_corps_modifie_apres_signature_est_refuse(client):
-    corps = json.dumps(mail(piece(JUSTE))).encode()
+def test_un_mail_modifie_apres_signature_est_refuse(client):
+    brut = mail(pdf(JUSTE))
     horodatage = str(int(time.time()))
-    entetes = {"X-DocuFlow-Horodatage": horodatage, "X-DocuFlow-Signature": signer(SECRET, horodatage, corps)}
+    entetes = {"X-DocuFlow-Horodatage": horodatage, "X-DocuFlow-Signature": signer(CLE, horodatage, brut)}
 
-    reponse = client.post("/reception/mail", content=corps.replace(b"Facture novembre", b"Facture piegee"), headers=entetes)
+    reponse = client.post("/reception/mail", content=brut.replace(b"Facture novembre", b"Facture piegee!!"), headers=entetes)
 
     assert reponse.status_code == 401
 
 
-def test_sans_secret_configure_la_reception_est_fermee(fabrique, tmp_path):
-    client = TestClient(creer_application(fabrique_session=fabrique, dossier_fichiers=tmp_path, secret_mail=""))
+def test_sans_cle_configuree_la_reception_est_fermee(fabrique, tmp_path):
+    client = TestClient(creer_application(fabrique_session=fabrique, dossier_fichiers=tmp_path, cles_mail=[]))
 
-    assert envoyer(client, mail(piece(JUSTE))).status_code == 503
+    assert envoyer(client, mail(pdf(JUSTE))).status_code == 503
 
 
 def test_verifier_signature_accepte_la_bonne_et_refuse_le_reste():
-    corps = b'{"a": 1}'
-    verifier_signature(SECRET, "1000", signer(SECRET, "1000", corps), corps, maintenant=1000)
-    with pytest.raises(SignatureInvalide):
-        verifier_signature(SECRET, "abc", "x", corps, maintenant=1000)
-    with pytest.raises(SignatureInvalide):
-        verifier_signature(SECRET, "1000", signer(SECRET, "1000", corps), corps, maintenant=1301)
+    corps = b"un mail"
+    cles = [INTRUS.public_key(), CLE.public_key()]  # plusieurs clés acceptées : n'importe laquelle suffit
+    verifier_signature(cles, "1000", signer(CLE, "1000", corps), corps, maintenant=1000)
+    for horodatage, signature, maintenant in [("abc", "x", 1000), ("1000", "pas du base64 !", 1000), ("1000", signer(CLE, "1000", corps), 1301)]:
+        with pytest.raises(SignatureInvalide):
+            verifier_signature(cles, horodatage, signature, corps, maintenant=maintenant)
+
+
+def test_les_cles_publiques_se_lisent_depuis_la_configuration():
+    texte = f"{en_base64(CLE.public_key())}, {en_base64(INTRUS.public_key())}"
+
+    assert [en_base64(cle) for cle in cles_publiques(texte)] == [en_base64(CLE.public_key()), en_base64(INTRUS.public_key())]
+    assert cles_publiques("") == []
 
 
 # ───────── Idempotence ─────────
 
 
 def test_le_meme_mail_recu_deux_fois_n_est_traite_qu_une_fois(client, fabrique):
-    premier = envoyer(client, mail(piece(JUSTE)))
+    premier = envoyer(client, mail(pdf(JUSTE)))
 
-    second = envoyer(client, mail(piece(JUSTE)))
+    second = envoyer(client, mail(pdf(JUSTE)))
 
     assert second.status_code == 200
     assert second.json()["deja_vu"] is True
@@ -138,7 +181,7 @@ def test_le_meme_mail_recu_deux_fois_n_est_traite_qu_une_fois(client, fabrique):
 def test_une_facture_deja_deposee_a_l_ecran_est_reconnue(client, fabrique):
     client.post("/factures", files={"fichier": (JUSTE, (FACTURES / JUSTE).read_bytes(), "application/pdf")})
 
-    reponse = envoyer(client, mail(piece(JUSTE)))
+    reponse = envoyer(client, mail(pdf(JUSTE)))
 
     assert reponse.json()["pieces"][0]["resultat"] == "deja_recue"
     assert compter(fabrique, FactureEnBase) == 1
@@ -154,11 +197,11 @@ def test_chaque_pdf_devient_une_facture_et_le_reste_est_ignore(client, fabrique)
     reponse = envoyer(
         client,
         mail(
-            piece(JUSTE),
-            piece(AUTRE),
-            piece("logo.png", b"\x89PNG\r\n\x1a\n...", "image/png"),
-            piece("faux.pdf", b"ceci n'est pas un pdf"),
-            piece("casse.pdf", b"%PDF-1.7\nn'importe quoi"),
+            pdf(JUSTE),
+            pdf(AUTRE),
+            ("logo.png", b"\x89PNG\r\n\x1a\n...", "image/png"),
+            ("faux.pdf", b"ceci n'est pas un pdf", "application/pdf"),
+            ("casse.pdf", b"%PDF-1.7\nn'importe quoi", "application/pdf"),
         ),
     )
 
@@ -177,34 +220,27 @@ def test_un_mail_sans_pdf_est_note_sans_facture(client, fabrique):
 
     assert reponse.status_code == 202
     assert reponse.json()["statut"] == "sans_facture"
+    assert reponse.json()["pieces"] == []  # le texte du mail n'est pas une pièce jointe
     assert compter(fabrique, MailRecu) == 1
     assert compter(fabrique, FactureEnBase) == 0
 
 
 def test_un_nom_de_piece_ne_peut_pas_sortir_du_dossier(client):
-    reponse = envoyer(client, mail(piece(JUSTE) | {"nom": "../../etc/facture.pdf"}))
+    reponse = envoyer(client, mail(("../../etc/facture.pdf", (FACTURES / JUSTE).read_bytes(), "application/pdf")))
 
     facture = client.get(f"/factures/{reponse.json()['pieces'][0]['facture_id']}").json()
     assert facture["nom_fichier"] == "facture.pdf"
 
 
-def test_une_piece_mal_encodee_est_refusee(client, fabrique):
-    reponse = envoyer(client, mail({"nom": "x.pdf", "type": "application/pdf", "contenu_base64": "@@pas du base64@@"}))
-
-    assert reponse.status_code == 422
-    assert compter(fabrique, MailRecu) == 0
-
-
-def test_un_mail_mal_forme_est_refuse(client):
-    assert envoyer(client, {}, corps=b'{"objet": "sans identifiant"}').status_code == 422
+def test_un_corps_vide_est_refuse(client):
+    assert envoyer(client, b"").status_code == 422
 
 
 # ───────── Concurrence (vraies transactions) ─────────
 
 
 def test_le_meme_mail_recu_deux_fois_en_meme_temps(moteur_base, tmp_path):
-    contenu = (FACTURES / JUSTE).read_bytes()
-    entrant = MailEntrant("<simultane@fournisseur.fr>", "compta@fournisseur.fr", "Facture", [PieceJointe(JUSTE, "application/pdf", contenu)])
+    entrant = lire_mail_brut(mail(pdf(JUSTE), message_id="<simultane@fournisseur.fr>"))
     comptes_rendus, depart = [], threading.Barrier(2)
 
     def recevoir():

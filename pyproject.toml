@@ -5,6 +5,7 @@ description = "Moteur de traitement de factures fournisseurs : lecture, extracti
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.13",
+    "cryptography>=43",
     "defusedxml>=0.7",
     "fastapi>=0.115",
     "httpx>=0.27",
