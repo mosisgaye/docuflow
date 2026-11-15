@@ -2122,3 +2122,165 @@ a.bouton {
   font-size: 14px;
   font-weight: 600;
 }
+
+/* ───────── Accès développeurs ───────── */
+
+.acces {
+  display: grid;
+  gap: 20px;
+}
+
+.acces__bloc h2 {
+  margin-bottom: 4px;
+}
+
+.acces__explication {
+  color: var(--encre-douce);
+  max-width: 72ch;
+  margin: 0 0 16px;
+}
+
+.acces__formulaire {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  background: var(--creux);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.acces__formulaire .bouton {
+  justify-self: start;
+}
+
+.acces__champ {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.acces__champ input {
+  font: inherit;
+  font-weight: 400;
+  padding: 9px 12px;
+  border: 1px solid var(--filet);
+  border-radius: 10px;
+  background: var(--carte);
+  color: var(--encre);
+}
+
+.acces__choix {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.acces__choix legend {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.acces__liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.acces__ligne {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--filet);
+  border-radius: 12px;
+}
+
+.acces__ligne strong {
+  overflow-wrap: anywhere;
+}
+
+.acces__ligne--eteinte {
+  opacity: 0.6;
+}
+
+.acces__detail {
+  color: var(--encre-douce);
+  font-size: 14px;
+  margin: 4px 0 0;
+}
+
+.acces__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.acces__livraisons {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  font-size: 13px;
+  display: grid;
+  gap: 4px;
+}
+
+.acces__livraisons li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--encre-douce);
+}
+
+.acces__livraisons li[data-etat='livree'] span:last-child {
+  color: var(--vert);
+}
+
+.acces__livraisons li[data-etat='abandonnee'] span:last-child {
+  color: var(--rouge);
+}
+
+.acces__livraisons li[data-etat='en_attente'] span:last-child {
+  color: var(--orange-fonce);
+}
+
+.secret {
+  padding: 16px;
+  border: 2px solid var(--bleu);
+  border-radius: 12px;
+  background: var(--bleu-pale);
+}
+
+.secret__titre {
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.secret__valeur {
+  display: block;
+  padding: 10px 12px;
+  background: var(--carte);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.secret__note {
+  color: var(--bleu-fonce);
+  margin: 8px 0 12px;
+}
+
+.secret__actions {
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .acces__ligne {
+    flex-direction: column;
+  }
+}

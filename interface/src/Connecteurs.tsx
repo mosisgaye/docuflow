@@ -4,8 +4,9 @@ import type { Connecteur, FicheConnecteur, Statistiques, StatutConnecteur } from
 import { heure, jourEtHeure } from './format'
 import { INITIALES, LOGOS } from './logos'
 import { ServicesIntegres } from './Pages'
+import { AccesDeveloppeurs } from './AccesDeveloppeurs'
 
-type Onglet = 'mes' | 'decouvrir' | 'integres'
+type Onglet = 'mes' | 'decouvrir' | 'integres' | 'developpeurs'
 
 const LIBELLE_STATUT: Record<StatutConnecteur, string> = {
   disponible: 'Disponible',
@@ -295,8 +296,11 @@ export function Connecteurs({ auteur, messageInitial, statistiques, surChangemen
           <button role="tab" aria-selected={onglet === 'integres'} onClick={() => setOnglet('integres')}>
             Intégrés à DocuFlow
           </button>
+          <button role="tab" aria-selected={onglet === 'developpeurs'} onClick={() => setOnglet('developpeurs')}>
+            Accès développeurs
+          </button>
         </div>
-        {onglet !== 'integres' && (
+        {(onglet === 'mes' || onglet === 'decouvrir') && (
           <input className="connecteurs__recherche" type="search" value={recherche} onChange={(evenement) => setRecherche(evenement.target.value)} placeholder="Rechercher un outil" aria-label="Rechercher un connecteur" />
         )}
       </div>
@@ -307,7 +311,9 @@ export function Connecteurs({ auteur, messageInitial, statistiques, surChangemen
         </p>
       )}
 
-      {onglet === 'integres' ? (
+      {onglet === 'developpeurs' ? (
+        <AccesDeveloppeurs auteur={auteur} surSansAuteur={surSansAuteur} />
+      ) : onglet === 'integres' ? (
         <ServicesIntegres statistiques={statistiques} />
       ) : liste === null ? (
         <p className="page__note">Chargement des connecteurs…</p>

@@ -204,3 +204,47 @@ export const debrancher = (id: string) => appeler<Connecteur>(`/connecteurs/${id
 export const commencerConnexion = (id: string, auteur: string) => appeler<{ adresse: string }>(`/connecteurs/${id}/oauth`, enJson({ auteur }))
 export const autoriserOutils = (id: string, autorises: string[] | null) =>
   appeler<Connecteur>(`/connecteurs/${id}/outils`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autorises }) })
+
+// ───────── Accès développeurs : clés de l'API publique et événements sortants ─────────
+
+export interface CleApi {
+  id: string
+  nom: string
+  debut: string
+  droits: string[]
+  creee_par: string
+  creee_le: string
+  utilisee_le: string | null
+  revoquee_le: string | null
+}
+
+export interface LivraisonSortante {
+  id: string
+  evenement: string
+  etat: 'en_attente' | 'livree' | 'abandonnee'
+  tentatives: number
+  reponse: string | null
+  cree_le: string
+  prochain_essai_le: string | null
+}
+
+export interface AbonnementSortant {
+  id: string
+  url: string
+  evenements: string[]
+  actif: boolean
+  cree_par: string
+  cree_le: string
+  livraisons: LivraisonSortante[]
+}
+
+const supprimer: RequestInit = { method: 'DELETE' }
+
+export const clesApi = () => appeler<{ droits: Record<string, string>; cles: CleApi[] }>('/cles-api')
+export const creerCle = (nom: string, droits: string[], auteur: string) => appeler<CleApi & { cle: string }>('/cles-api', enJson({ nom, droits, auteur }))
+export const revoquerCle = (id: string) => appeler<CleApi>(`/cles-api/${id}`, supprimer)
+export const abonnements = () => appeler<{ evenements: Record<string, string>; abonnements: AbonnementSortant[] }>('/abonnements')
+export const creerAbonnement = (url: string, evenements: string[], auteur: string) =>
+  appeler<AbonnementSortant & { secret: string }>('/abonnements', enJson({ url, evenements, auteur }))
+export const essayerAbonnement = (id: string) => appeler<AbonnementSortant>(`/abonnements/${id}/essai`, { method: 'POST' })
+export const arreterAbonnement = (id: string) => appeler<{ id: string }>(`/abonnements/${id}`, supprimer)
