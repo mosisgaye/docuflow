@@ -49,9 +49,9 @@ from moteur.agent import converser, flux_openai
 from moteur.agent import version_consigne as consigne_assistant
 from moteur.consignes import enregistrer as enregistrer_consigne
 from moteur.base import Etat, EtatTache, Evenement, FactureEnBase, Tache, creer_moteur, verifier_schema
-from moteur.extraction_llm import ResultatExtraction, extraire
+from moteur.extraction_llm import ResultatExtraction, extraire, extraire_images
 from moteur.export import ErreurEnvoi, ErreurExport
-from moteur.lecture_pdf import lire_pdf
+from moteur.lecture_pdf import image_en_pdf, lire_pdf
 from moteur.odoo import Odoo, depuis_configuration
 from moteur.base import AppelConnecteur, ConnecteurBranche
 from moteur import oauth
@@ -156,6 +156,7 @@ def creer_application(
     fabrique_session: Callable[[], Session] | None = None,
     extracteur: Callable[[str], ResultatExtraction] = extraire,
     dossier_fichiers: pathlib.Path | None = None,
+    extracteur_images: Callable[[list[bytes]], ResultatExtraction] = extraire_images,
     llm_agent: Callable = flux_openai,
     dossier_exports: pathlib.Path | None = None,
     client_export=None,
@@ -237,17 +238,21 @@ def creer_application(
         contenu = fichier.file.read(TAILLE_MAX_OCTETS + 1)
         if len(contenu) > TAILLE_MAX_OCTETS:
             raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Fichier trop volumineux (10 Mo au maximum).")
+        nom = pathlib.Path(fichier.filename or "facture.pdf").name
         if not contenu.startswith(b"%PDF-"):
-            raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Seuls les fichiers PDF sont acceptés.")
+            # Une photo de facture (JPEG, PNG, WebP…) est mise dans un PDF : le reste du circuit est le même.
+            pdf = image_en_pdf(contenu)
+            if pdf is None:
+                raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Seuls les PDF et les photos (JPEG, PNG) sont acceptés.")
+            contenu, nom = pdf, f"{pathlib.Path(nom).stem or 'photo'}.pdf"
         try:
             lire_pdf(contenu)  # vérifie que le PDF s'ouvre
         except PyPdfError as erreur:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ce fichier PDF est illisible.") from erreur
         # Le fichier est écrit AVANT la tâche : le travailleur ne peut jamais chercher un fichier absent.
         ranger_fichier(dossier, contenu)
-        nom = pathlib.Path(fichier.filename or "facture.pdf").name
         if traiter_tout_de_suite:
-            resultat = traiter(session, contenu, nom, extracteur, odoo=odoo)
+            resultat = traiter(session, contenu, nom, extracteur, odoo=odoo, extracteur_images=extracteur_images)
             reponse.status_code = status.HTTP_201_CREATED
         else:
             resultat = recevoir(session, contenu, nom)

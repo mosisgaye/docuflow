@@ -30,11 +30,11 @@ from sqlalchemy.orm import Session
 from moteur.base import Etat, EtatTache, Evenement, FactureEnBase, Tache
 from moteur.controles import Anomalie, Gravite, controler, est_validable, iban_normalise, iban_valide
 from moteur.export import ErreurExport, ecriture, en_csv, en_json, envoyer_au_logiciel, nom_fichier
-from moteur.extraction_llm import ErreurExtraction, ResultatExtraction, extraire
+from moteur.extraction_llm import ErreurExtraction, ResultatExtraction, extraire, extraire_images
 from moteur.consignes import enregistrer as enregistrer_consigne
 from moteur.facturx import LECTEUR as LECTEUR_FACTURX
 from moteur.facturx import FacturXInvalide, lire_facturx
-from moteur.lecture_pdf import lire_pdf
+from moteur.lecture_pdf import lire_pdf, pages_en_images
 from moteur.modeles import Facture
 from moteur.odoo import ErreurOdoo, Odoo
 from moteur.approbation import LIBELLES, ApprobationRefusee, approuver, circuit, niveau_attendu, version_en_vigueur
@@ -128,6 +128,7 @@ def lire_et_controler(
     aujourd_hui: date | None = None,
     echec_si_passagere: bool = True,
     odoo: Odoo | None = None,
+    extracteur_images: Callable[[list[bytes]], ResultatExtraction] = extraire_images,
 ) -> None:
     """Lit la facture (Factur-X ou IA) puis la contrôle.
 
@@ -150,20 +151,31 @@ def lire_et_controler(
         detail = {"source": "factur-x", "lecteur": LECTEUR_FACTURX, "duree_s": round(time.monotonic() - debut, 4)}
 
     # 2. Sinon, PDF ordinaire : on lit son texte et on le confie à l'IA.
+    #    Un scan ou une photo n'a pas de texte : l'IA lit alors les images de ses pages.
     if donnees is None:
         lu = lire_pdf(contenu)
+        images = []
         if not lu.a_du_texte:
-            _passer(session, facture, Etat.ECHEC, "LECTURE_IMPOSSIBLE", MOTEUR, {"raison": "Le PDF ne contient pas de texte (scan ou photo)."})
-            return
+            try:
+                images = pages_en_images(contenu)
+            except Exception:  # noqa: BLE001 - un PDF que même le rendu ne sait pas ouvrir
+                images = []
+            if not images:
+                _passer(session, facture, Etat.ECHEC, "LECTURE_IMPOSSIBLE", MOTEUR, {"raison": "Le PDF ne contient ni texte ni page lisible."})
+                return
         try:
-            resultat = extracteur(lu.texte)
+            resultat = extracteur_images(images) if images else extracteur(lu.texte)
         except ErreurExtraction as erreur:
             if erreur.passagere and not echec_si_passagere:
                 raise
             _passer(session, facture, Etat.ECHEC, "EXTRACTION_ECHOUEE", MOTEUR, {"raison": str(erreur)})
             return
         donnees = resultat.facture
-        detail = {"source": "ia", "fournisseur_llm": resultat.fournisseur, "modele": resultat.modele, "duree_s": round(resultat.duree_s, 2)}
+        detail = {"source": "ia-image" if images else "ia", "fournisseur_llm": resultat.fournisseur, "modele": resultat.modele, "duree_s": round(resultat.duree_s, 2)}
+        if images:
+            detail |= {"pages_lues": len(images), "pages_total": lu.nb_pages}
+        if resultat.jetons:
+            detail["jetons"] = resultat.jetons  # le coût réel de cette lecture, compté par le fournisseur d'IA
         if resultat.consigne is not None:
             detail["consigne"] = enregistrer_consigne(session, resultat.consigne)
         if resultat.tentatives > 1:
@@ -345,6 +357,7 @@ def traiter(
     extracteur: Callable[[str], ResultatExtraction] = extraire,
     aujourd_hui: date | None = None,
     odoo: Odoo | None = None,
+    extracteur_images: Callable[[list[bytes]], ResultatExtraction] = extraire_images,
 ) -> ResultatTraitement:
     """Reçoit un PDF et le lit tout de suite : utilisé par les outils et les tests.
 
@@ -353,7 +366,7 @@ def traiter(
     resultat = recevoir(session, contenu, nom_fichier)
     if resultat.tache is not None:
         resultat.tache.tentatives += 1
-        lire_et_controler(session, resultat.facture, contenu, extracteur, aujourd_hui, odoo=odoo)
+        lire_et_controler(session, resultat.facture, contenu, extracteur, aujourd_hui, odoo=odoo, extracteur_images=extracteur_images)
         resultat.tache.etat = (EtatTache.ABANDONNEE if resultat.facture.etat == Etat.ECHEC.value else EtatTache.TERMINEE).value
         session.flush()
     return resultat

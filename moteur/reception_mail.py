@@ -37,7 +37,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from moteur.base import MailRecu
-from moteur.lecture_pdf import lire_pdf
+from moteur.lecture_pdf import image_en_pdf, lire_pdf
 from moteur.workflow import ranger_fichier, recevoir
 
 TOLERANCE_HORLOGE_S = 300
@@ -54,6 +54,7 @@ class PieceJointe:
     nom: str
     type_mime: str
     contenu: bytes
+    jointe: bool = True  # vraie pièce jointe ; faux pour une image affichée dans le corps du mail (logo, signature)
 
 
 @dataclass(frozen=True)
@@ -139,8 +140,27 @@ def lire_mail_brut(brut: bytes) -> MailEntrant:
             contenu = partie.get_payload(decode=True) or b""
         except (binascii.Error, ValueError):
             contenu = b""
-        pieces.append(PieceJointe(nom or "piece-jointe", partie.get_content_type(), contenu))
+        pieces.append(PieceJointe(nom or "piece-jointe", partie.get_content_type(), contenu, partie.get_content_disposition() == "attachment"))
     return MailEntrant(message_id[:998], _expediteur(mail), str(mail.get("Subject", "")).strip()[:2000], pieces)
+
+
+TAILLE_MIN_PHOTO_OCTETS = 30 * 1024  # en dessous, une image de mail est un logo ou une icône, pas une facture
+
+
+def _en_pdf(piece: PieceJointe) -> tuple[PieceJointe | None, str | None]:
+    """La pièce sous forme de PDF, ou la raison pour laquelle elle n'est pas une facture.
+
+    Une photo de facture jointe au mail est mise dans un PDF. Une image affichée dans le corps
+    du mail, ou trop petite, est un logo ou une signature : elle est ignorée.
+    """
+    if piece.contenu.startswith(b"%PDF-"):
+        return piece, None
+    pdf = image_en_pdf(piece.contenu)
+    if pdf is None:
+        return None, "Ce n'est pas un PDF."  # ni PDF ni image : document Word, archive…
+    if not piece.jointe or len(piece.contenu) < TAILLE_MIN_PHOTO_OCTETS:
+        return None, "Image dans le corps du mail ou trop petite : probablement un logo, ignorée."
+    return PieceJointe(f"{pathlib.Path(piece.nom).stem or 'photo'}.pdf", "application/pdf", pdf), None
 
 
 def _examiner(piece: PieceJointe) -> str | None:
@@ -174,12 +194,13 @@ def recevoir_mail(session: Session, mail: MailEntrant, dossier: pathlib.Path) ->
     origine = {"source": "mail", "mail_id": str(nouvel_id), "expediteur": mail.expediteur, "objet": mail.objet}
     pieces = []
     for piece in mail.pieces[:PIECES_MAX]:
-        raison = _examiner(piece)
+        piece_pdf, raison = _en_pdf(piece)
+        raison = raison or _examiner(piece_pdf)
         if raison:
             pieces.append({"nom": piece.nom, "resultat": "ignoree", "raison": raison})
             continue
-        ranger_fichier(dossier, piece.contenu)
-        resultat = recevoir(session, piece.contenu, pathlib.Path(piece.nom).name or "facture.pdf", origine)
+        ranger_fichier(dossier, piece_pdf.contenu)
+        resultat = recevoir(session, piece_pdf.contenu, pathlib.Path(piece_pdf.nom).name or "facture.pdf", origine)
         pieces.append({"nom": piece.nom, "resultat": "deja_recue" if resultat.deja_vue else "facture", "facture_id": str(resultat.facture.id)})
     for piece in mail.pieces[PIECES_MAX:]:
         pieces.append({"nom": piece.nom, "resultat": "ignoree", "raison": f"Plus de {PIECES_MAX} pièces jointes dans le mail."})

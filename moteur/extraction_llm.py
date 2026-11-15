@@ -17,6 +17,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+import base64
+
 import httpx
 
 from moteur import config
@@ -41,6 +43,14 @@ Texte de la facture :
 ---------------
 {texte}
 ---------------"""
+
+# Pour un scan ou une photo : la même consigne, mais l'IA lit les images des pages au lieu du texte.
+CONSIGNE_IMAGE = (
+    CONSIGNE.split("Texte de la facture :")[0].rstrip()
+    .replace("à partir de son texte", "à partir des images de ses pages (scan ou photo)")
+    .replace("N'utilise que le texte fourni.", "N'utilise que ce qui est écrit sur les images.")
+    + "\n- Lis chaque chiffre avec soin. Si un chiffre est illisible, mets null plutôt que de deviner.\n"
+)
 
 # Les champs demandés au LLM, décrits une seule fois pour tous les fournisseurs.
 CHAMPS_TEXTE = [
@@ -78,6 +88,8 @@ class ResultatExtraction:
     modele: str
     consigne: VersionConsigne | None = None  # la consigne exacte qui a produit ces données
     tentatives: int = 1  # nombre d'appels qu'il a fallu
+    jetons: dict | None = None  # jetons consommés (entrée, sortie), tels que comptés par le fournisseur : le coût réel
+    pages_images: int = 0  # pages lues sur image (scan, photo) ; 0 pour une lecture du texte
 
 
 def valider(texte_json: str) -> Facture:
@@ -114,10 +126,11 @@ class Gemini:
             "required": [*CHAMPS_TEXTE, "lignes", *CHAMPS_NOMBRE],
         }
 
-    def requete(self, modele: str, cle: str, consigne: str) -> tuple[str, dict, dict]:
+    def requete(self, modele: str, cle: str, consigne: str, images: list[bytes] = ()) -> tuple[str, dict, dict]:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{modele}:generateContent"
+        parties = [{"text": consigne}, *({"inline_data": {"mime_type": "image/png", "data": base64.b64encode(image).decode()}} for image in images)]
         charge = {
-            "contents": [{"parts": [{"text": consigne}]}],
+            "contents": [{"parts": parties}],
             "generationConfig": {"responseMimeType": "application/json", "responseSchema": self.schema()},
         }
         return url, {"x-goog-api-key": cle}, charge
@@ -125,6 +138,11 @@ class Gemini:
     @staticmethod
     def texte_reponse(corps: dict) -> str:
         return corps["candidates"][0]["content"]["parts"][0]["text"]
+
+    @staticmethod
+    def jetons(corps: dict) -> dict | None:
+        usage = corps.get("usageMetadata") or {}
+        return {"entree": usage.get("promptTokenCount"), "sortie": usage.get("candidatesTokenCount")} if usage else None
 
 
 class OpenAI:
@@ -154,10 +172,14 @@ class OpenAI:
             "additionalProperties": False,
         }
 
-    def requete(self, modele: str, cle: str, consigne: str) -> tuple[str, dict, dict]:
+    def requete(self, modele: str, cle: str, consigne: str, images: list[bytes] = ()) -> tuple[str, dict, dict]:
+        contenu = (
+            [{"type": "text", "text": consigne}, *({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64.b64encode(image).decode()}"}} for image in images)]
+            if images else consigne
+        )
         charge = {
             "model": modele,
-            "messages": [{"role": "user", "content": consigne}],
+            "messages": [{"role": "user", "content": contenu}],
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {"name": "facture", "strict": True, "schema": self.schema()},
@@ -169,12 +191,19 @@ class OpenAI:
     def texte_reponse(corps: dict) -> str:
         return corps["choices"][0]["message"]["content"]
 
+    @staticmethod
+    def jetons(corps: dict) -> dict | None:
+        usage = corps.get("usage") or {}
+        return {"entree": usage.get("prompt_tokens"), "sortie": usage.get("completion_tokens")} if usage else None
+
 
 FOURNISSEURS = {fournisseur.nom: fournisseur for fournisseur in (Gemini, OpenAI)}
 
 
-def version_consigne(fournisseur) -> VersionConsigne:
+def version_consigne(fournisseur, images: bool = False) -> VersionConsigne:
     """La consigne d'extraction telle qu'envoyée à ce fournisseur : texte et format de réponse."""
+    if images:
+        return VersionConsigne(usage="extraction-image", texte=CONSIGNE_IMAGE, schema=fournisseur.schema())
     return VersionConsigne(usage="extraction", texte=CONSIGNE, schema=fournisseur.schema())
 
 
@@ -202,21 +231,34 @@ def _appeler(client: httpx.Client, url: str, charge: dict, entetes: dict, attend
 
 def extraire(texte: str, client: httpx.Client | None = None, attendre: Callable[[float], None] = time.sleep) -> ResultatExtraction:
     """Envoie le texte de la facture au LLM configuré et renvoie la facture extraite."""
+    return _extraire(CONSIGNE.format(texte=texte), [], client, attendre)
+
+
+def extraire_images(images: list[bytes], client: httpx.Client | None = None, attendre: Callable[[float], None] = time.sleep) -> ResultatExtraction:
+    """Envoie les images des pages (scan, photo) au LLM configuré et renvoie la facture extraite."""
+    if not images:
+        raise ErreurExtraction("Aucune page à lire.")
+    return _extraire(CONSIGNE_IMAGE, images, client, attendre)
+
+
+def _extraire(consigne: str, images: list[bytes], client: httpx.Client | None, attendre: Callable[[float], None]) -> ResultatExtraction:
     nom = config.lire("LLM_FOURNISSEUR", "openai")
     if nom not in FOURNISSEURS:
         raise ErreurExtraction(f"Fournisseur de LLM inconnu : {nom}")
     fournisseur = FOURNISSEURS[nom]()
     modele = config.lire("LLM_MODELE", fournisseur.modele_par_defaut)
-    url, entetes, charge = fournisseur.requete(modele, config.lire(fournisseur.variable_cle), CONSIGNE.format(texte=texte))
+    url, entetes, charge = fournisseur.requete(modele, config.lire(fournisseur.variable_cle), consigne, images)
 
     client = client or httpx.Client(timeout=60)
     debut = time.monotonic()
     reponse, appels = _appeler(client, url, charge, entetes, attendre)
     duree = time.monotonic() - debut
     try:
-        texte_json = fournisseur.texte_reponse(reponse.json())
+        corps = reponse.json()
+        texte_json = fournisseur.texte_reponse(corps)
     except (KeyError, IndexError, TypeError, ValueError) as erreur:
         raise ErreurExtraction(f"Réponse du LLM inexploitable : {erreur!r}") from erreur
     return ResultatExtraction(
-        facture=valider(texte_json), duree_s=duree, fournisseur=nom, modele=modele, consigne=version_consigne(fournisseur), tentatives=appels
+        facture=valider(texte_json), duree_s=duree, fournisseur=nom, modele=modele, consigne=version_consigne(fournisseur, bool(images)),
+        tentatives=appels, jetons=fournisseur.jetons(corps), pages_images=len(images),
     )

@@ -1,13 +1,16 @@
 """Lecture du texte d'un PDF, sur place, sans service distant.
 
 Un PDF produit par un logiciel contient du vrai texte : on le lit directement.
-Un scan ou une photo n'en contient pas : il faudra un lecteur d'images (OCR).
+Un scan ou une photo n'en contient pas : on transforme alors ses pages en images, que l'IA lit.
+Une photo (JPEG, PNG, WebP) est d'abord mise dans un PDF : tout le reste du circuit est le même.
 """
 
 import hashlib
 import io
 from dataclasses import dataclass
 
+import pypdfium2
+from PIL import Image, ImageOps, UnidentifiedImageError
 from pypdf import PdfReader
 
 # En dessous de ce nombre de caractères par page, on considère que le PDF
@@ -36,3 +39,38 @@ def lire_pdf(contenu: bytes) -> TexteLu:
         nb_pages=len(pages),
         empreinte=hashlib.sha256(contenu).hexdigest(),
     )
+
+
+PAGES_IMAGES_MAX = 3  # au-delà, une facture scannée n'est lue que sur ses 3 premières pages
+RESOLUTION_DPI = 150  # assez pour lire un chiffre de 8 points, sans alourdir l'envoi
+
+
+def pages_en_images(contenu: bytes, pages_max: int = PAGES_IMAGES_MAX) -> list[bytes]:
+    """Les premières pages du PDF, en images PNG en niveaux de gris, pour une lecture par l'IA."""
+    document = pypdfium2.PdfDocument(contenu)
+    try:
+        images = []
+        for rang in range(min(len(document), pages_max)):
+            tampon = io.BytesIO()
+            document[rang].render(scale=RESOLUTION_DPI / 72).to_pil().convert("L").save(tampon, "PNG", optimize=True)
+            images.append(tampon.getvalue())
+        return images
+    finally:
+        document.close()
+
+
+def image_en_pdf(contenu: bytes) -> bytes | None:
+    """Met une photo (JPEG, PNG, WebP…) dans un PDF d'une page. None si ce n'est pas une image.
+
+    L'orientation enregistrée par le téléphone est appliquée : une photo prise en portrait
+    ne se retrouve pas couchée.
+    """
+    try:
+        image = Image.open(io.BytesIO(contenu))
+        image.load()
+    except (UnidentifiedImageError, OSError):
+        return None
+    image = ImageOps.exif_transpose(image).convert("RGB")
+    tampon = io.BytesIO()
+    image.save(tampon, "PDF", resolution=RESOLUTION_DPI)
+    return tampon.getvalue()

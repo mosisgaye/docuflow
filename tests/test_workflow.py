@@ -131,18 +131,23 @@ def test_une_facture_en_echec_est_retentee_au_renvoi_du_fichier(session):
     assert types_evenements(seconde.facture) == ["RECEPTION", "EXTRACTION_ECHOUEE", "NOUVEL_ESSAI", "EXTRACTION", "CONTROLE"]
 
 
-def test_un_scan_sans_texte_est_mis_en_echec_sans_appeler_le_llm(session):
+def test_un_scan_sans_texte_est_lu_sur_image_et_pas_sur_texte(session):
     ecrivain = PdfWriter()
     ecrivain.add_blank_page(width=595, height=842)
     tampon = io.BytesIO()
     ecrivain.write(tampon)
     extracteur = FauxExtracteur("facture-F26-1193.pdf")
+    images_recues = []
 
-    facture = traiter(session, tampon.getvalue(), "scan.pdf", extracteur, AUJOURD_HUI).facture
+    def extracteur_images(images):
+        images_recues.append(images)
+        return FauxExtracteur("facture-F26-1193.pdf")("")
 
-    assert facture.etat == Etat.ECHEC
-    assert extracteur.appels == 0
-    assert types_evenements(facture) == ["RECEPTION", "LECTURE_IMPOSSIBLE"]
+    facture = traiter(session, tampon.getvalue(), "scan.pdf", extracteur, AUJOURD_HUI, extracteur_images=extracteur_images).facture
+
+    assert extracteur.appels == 0  # pas de texte : la lecture du texte n'est pas appelée
+    assert len(images_recues) == 1 and images_recues[0][0].startswith(b"\x89PNG")  # une page, en image
+    assert next(e for e in facture.evenements if e.type == "EXTRACTION").detail["source"] == "ia-image"
 
 
 def test_une_personne_valide_une_facture_a_valider(session):

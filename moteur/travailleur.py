@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from moteur import config
 from moteur.base import Etat, EtatTache, FactureEnBase, Tache, creer_moteur, verifier_schema
-from moteur.extraction_llm import ErreurExtraction, ResultatExtraction, extraire
+from moteur.extraction_llm import ErreurExtraction, ResultatExtraction, extraire, extraire_images
 from moteur.odoo import Odoo, depuis_configuration
 from moteur.notifications import envoyer_en_attente
 from moteur.workflow import MOTEUR, _journaliser, _passer, lire_et_controler
@@ -76,6 +76,7 @@ def traiter_une_tache(
     extracteur: Callable[[str], ResultatExtraction] = extraire,
     aujourd_hui: date | None = None,
     odoo: Odoo | None = None,
+    extracteur_images: Callable[[list[bytes]], ResultatExtraction] = extraire_images,
 ) -> CompteRendu | None:
     """Prend une tâche et la mène au bout. Ne valide pas la transaction : c'est à l'appelant de le faire.
 
@@ -93,7 +94,7 @@ def traiter_une_tache(
         return _abandonner(session, tache, facture, "Le fichier PDF de la facture est introuvable sur le serveur.")
 
     try:
-        lire_et_controler(session, facture, contenu, extracteur, aujourd_hui, echec_si_passagere=False, odoo=odoo)
+        lire_et_controler(session, facture, contenu, extracteur, aujourd_hui, echec_si_passagere=False, odoo=odoo, extracteur_images=extracteur_images)
     except ErreurExtraction as erreur:
         if tache.tentatives >= TENTATIVES_MAX:
             return _abandonner(session, tache, facture, f"{erreur} ; abandon après {tache.tentatives} tentatives.")

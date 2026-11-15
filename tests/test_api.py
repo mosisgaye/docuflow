@@ -95,7 +95,7 @@ def test_un_fichier_qui_n_est_pas_un_pdf_est_refuse(client, llm):
     reponse = deposer(client, "notes.txt", b"Bonjour, ceci est un texte.")
 
     assert reponse.status_code == 415
-    assert reponse.json()["detail"] == "Seuls les fichiers PDF sont acceptés."
+    assert reponse.json()["detail"] == "Seuls les PDF et les photos (JPEG, PNG) sont acceptés."
     assert llm.appels == 0
 
 
