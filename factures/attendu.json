@@ -43,7 +43,7 @@
       "fournisseur_nom": "Papeterie Durand & Fils",
       "fournisseur_siret": "40322198900045",
       "fournisseur_tva": "FR28403221989",
-      "client_nom": "Cabinet Morel Expertise",
+      "client_nom": "Transports Lemaire SAS",
       "lignes": [
         {
           "designation": "Ramettes papier A4 80 g",
@@ -79,7 +79,7 @@
       "fournisseur_nom": "Garage Central Bertin",
       "fournisseur_siret": "52987431500029",
       "fournisseur_tva": "FR52529874315",
-      "client_nom": "Boulangerie Petit Jean",
+      "client_nom": "Transports Lemaire SAS",
       "lignes": [
         {
           "designation": "Vidange et filtre à huile",
@@ -147,7 +147,7 @@
       "fournisseur_nom": "Papeterie Durand & Fils",
       "fournisseur_siret": "40322198900054",
       "fournisseur_tva": "FR28403221989",
-      "client_nom": "Cabinet Morel Expertise",
+      "client_nom": "Transports Lemaire SAS",
       "lignes": [
         {
           "designation": "Enveloppes C4 (boîte de 250)",
@@ -209,7 +209,7 @@
       "fournisseur_nom": "DIOP Mouhamadou (MD Plomberie)",
       "fournisseur_siret": "90856344800012",
       "fournisseur_tva": null,
-      "client_nom": "Cabinet Morel Expertise",
+      "client_nom": "Transports Lemaire SAS",
       "lignes": [
         {
           "designation": "Remplacement chauffe-eau électrique 200 L",

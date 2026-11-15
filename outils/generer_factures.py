@@ -15,6 +15,9 @@ from decimal import ROUND_HALF_UP, Decimal
 
 FACTURES = pathlib.Path(__file__).resolve().parent.parent / "factures"
 TAUX = Decimal("20")
+# Toutes les factures sont adressées à la même entreprise : celle de l'Odoo de démonstration
+# (outils/odoo_installer.py). Ce sont SES factures fournisseurs que DocuFlow traite.
+CLIENT = ("Transports Lemaire SAS", "Zone d'activité des Pins, 30900 Nîmes")
 
 STYLES = {
     "bleu": "body{font-family:Helvetica,Arial,sans-serif;color:#222} h1{color:#1d4e89} th{background:#1d4e89;color:#fff}",
@@ -28,7 +31,7 @@ MODELES = [
         "fichier": "facture-FA-2026-0412.pdf", "style": "bleu", "numero": "FA-2026-0412",
         "date": "2026-11-03", "echeance": "2026-12-03",
         "fournisseur": ("Atelier Numérique du Midi SARL", "14 rue des Tanneurs, 34000 Montpellier", "81234567600017", "FR19812345676"),
-        "client": ("Transports Lemaire SAS", "Zone d'activité des Pins, 30900 Nîmes"),
+        "client": CLIENT,
         "lignes": [("Maintenance applicative (jours)", "5", "450.00"), ("Hébergement serveur, novembre 2026", "1", "120.00"), ("Licence logiciel de suivi", "3", "89.50")],
         "anomalies": [],
     },
@@ -36,7 +39,7 @@ MODELES = [
         "fichier": "facture-2026-11-087.pdf", "style": "classique", "numero": "2026-11-087",
         "date": "2026-11-07", "echeance": "2026-11-22",
         "fournisseur": ("Papeterie Durand & Fils", "8 avenue de la Gare, 69003 Lyon", "40322198900045", "FR28403221989"),
-        "client": ("Cabinet Morel Expertise", "27 quai Saint-Antoine, 69002 Lyon"),
+        "client": CLIENT,
         "lignes": [("Ramettes papier A4 80 g", "40", "4.90"), ("Cartouches toner noir", "6", "62.00"), ("Classeurs à levier", "25", "3.20")],
         "anomalies": [],
     },
@@ -44,7 +47,7 @@ MODELES = [
         "fichier": "facture-F26-1193.pdf", "style": "rouge", "numero": "F26-1193",
         "date": "2026-11-10", "echeance": "2026-12-10",
         "fournisseur": ("Garage Central Bertin", "52 route de Paris, 45000 Orléans", "52987431500029", "FR52529874315"),
-        "client": ("Boulangerie Petit Jean", "3 place du Marché, 45100 Orléans"),
+        "client": CLIENT,
         "lignes": [("Vidange et filtre à huile", "1", "145.00"), ("Plaquettes de frein avant", "1", "98.40"), ("Main-d'œuvre (heures)", "2.5", "62.00")],
         "anomalies": [],
     },
@@ -53,7 +56,7 @@ MODELES = [
         "fichier": "facture-erreur-total.pdf", "style": "bleu", "numero": "FA-2026-0431",
         "date": "2026-11-12", "echeance": "2026-12-12",
         "fournisseur": ("Atelier Numérique du Midi SARL", "14 rue des Tanneurs, 34000 Montpellier", "81234567600017", "FR19812345676"),
-        "client": ("Transports Lemaire SAS", "Zone d'activité des Pins, 30900 Nîmes"),
+        "client": CLIENT,
         "lignes": [("Développement d'un module d'export", "2", "500.00"), ("Formation des utilisateurs (demi-journée)", "1", "250.00")],
         "ttc_imprime": "1600.00",
         "anomalies": ["TOTAL_TTC_INCOHERENT"],
@@ -63,7 +66,7 @@ MODELES = [
         "fichier": "facture-erreur-siret.pdf", "style": "classique", "numero": "2026-11-093",
         "date": "2026-11-13", "echeance": "2026-11-28",
         "fournisseur": ("Papeterie Durand & Fils", "8 avenue de la Gare, 69003 Lyon", "40322198900054", "FR28403221989"),
-        "client": ("Cabinet Morel Expertise", "27 quai Saint-Antoine, 69002 Lyon"),
+        "client": CLIENT,
         "lignes": [("Enveloppes C4 (boîte de 250)", "4", "18.50"), ("Stylos bille bleus (lot de 50)", "3", "12.00")],
         "anomalies": ["SIRET_INVALIDE"],
     },
@@ -72,7 +75,7 @@ MODELES = [
         "fichier": "facture-facturx-FX-2026-0057.pdf", "style": "bleu", "numero": "FX-2026-0057",
         "date": "2026-11-12", "echeance": "2026-12-12",
         "fournisseur": ("Imprimerie Lumière SAS", "6 rue des Arts, 31000 Toulouse", "73815042400039", "FR66738150424"),
-        "client": ("Transports Lemaire SAS", "Zone d'activité des Pins, 30900 Nîmes"),
+        "client": CLIENT,
         "lignes": [("Flyers A5 quadri (lot de 1000)", "3", "86.00"), ("Cartes de visite (boîte de 500)", "4", "24.50")],
         "anomalies": [],
         "facturx": True,
@@ -84,7 +87,7 @@ MODELES = [
         "fichier": "facture-md-plomberie-2026-118.pdf", "style": "classique", "numero": "2026-118",
         "date": "2026-11-13", "echeance": "2026-11-28",
         "fournisseur": ("DIOP Mouhamadou (MD Plomberie)", "5 rue Maurice Berteaux, 75020 Paris", "90856344800012", None),
-        "client": ("Cabinet Morel Expertise", "27 quai Saint-Antoine, 69002 Lyon"),
+        "client": CLIENT,
         "lignes": [("Remplacement chauffe-eau électrique 200 L", "1", "890.00"), ("Main-d'œuvre (heures)", "3", "55.00"), ("Déplacement", "1", "35.00")],
         "anomalies": [],
         "franchise_tva": True,

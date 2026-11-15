@@ -189,6 +189,20 @@ Points couverts, entre autres : chaque contrôle métier, chaque transition inte
 | Le logiciel de comptabilité refuse un envoi | La facture reste « Validée », l'échec est au journal. Relancer l'envoi |
 | Retrouver ce qui est arrivé à une facture | Son journal, dans l'interface ou par `GET /factures/{id}` |
 
+## Odoo de démonstration
+
+DocuFlow se branche sur Odoo, qui joue le « logiciel existant du client » : une entreprise fictive, Transports Lemaire SAS, avec ses fournisseurs, ses bons de commande, ses clients et son CRM. Tout se recrée à l'identique :
+
+```bash
+docker compose -f odoo/compose.yaml up -d      # Odoo Community 20 sur http://127.0.0.1:8069
+uv run python -m outils.odoo_installer         # société française, plan comptable, modules
+uv run python -m outils.odoo_remplir           # fournisseurs, bons de commande, clients, utilisateur docuflow
+```
+
+- Les fournisseurs sont ceux des factures d'exemple, avec SIRET, TVA, contact comptable et IBAN. Les bons de commande correspondent aux factures, sauf un écart de prix volontaire (garage) et un achat sans commande.
+- DocuFlow a son propre utilisateur Odoo, `docuflow`, limité à la facturation, aux achats et aux contacts. Sa clé d'API (portée `rpc`, valable un an) est rangée dans `donnees/odoo-cle-api`, jamais affichée ni versionnée.
+- DocuFlow utilise l'API JSON-2 d'Odoo : XML-RPC et JSON-RPC sont dépréciés depuis Odoo 19 et seront supprimés dans Odoo 22.
+
 ## Configuration
 
 Toutes les valeurs se règlent dans `.env` (voir `.env.example`).
