@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, memo, useEffect, useRef, useState } from 'react'
 import { duree } from './format'
 import { Icone } from './Icones'
 
@@ -63,7 +63,8 @@ function enLigne(texte: string, motif: RegExp | null, numeros: Map<string, strin
 }
 
 /** La réponse de l'assistant : paragraphes et listes, à partir de son texte brut. */
-function TexteAssistant({ texte, numeros = new Map(), surOuverture }: { texte: string; numeros?: Map<string, string>; surOuverture: (id: string) => void }) {
+// memo : la réponse n'est redessinée que si elle change, pas à chaque lettre tapée dans la question.
+const TexteAssistant = memo(function TexteAssistant({ texte, numeros = new Map(), surOuverture }: { texte: string; numeros?: Map<string, string>; surOuverture: (id: string) => void }) {
   const connus = [...numeros.keys()].sort((a, b) => b.length - a.length).map((numero) => numero.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
   const motif = connus.length ? new RegExp(`(?<![\\w-])(${connus.join('|')})(?![\\w-])`, 'g') : null
   const blocs: ReactNode[] = []
@@ -105,7 +106,7 @@ function TexteAssistant({ texte, numeros = new Map(), surOuverture }: { texte: s
   }
   vider()
   return <div className="tour__texte">{blocs}</div>
-}
+})
 
 const SUGGESTIONS = [
   'Quelles factures posent problème, et pourquoi ?',

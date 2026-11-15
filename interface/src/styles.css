@@ -1001,6 +1001,37 @@ kbd {
   min-width: 0;
   overflow-y: auto;
   padding: 1.25rem 1.5rem 2rem;
+  /* La liste s'adapte à la place réelle (fiche ouverte ou non), pas à la largeur de l'écran. */
+  container: page / inline-size;
+}
+
+/* Fiche ouverte ou écran étroit : on retire d'abord les colonnes secondaires, jamais le fournisseur. */
+@container page (max-width: 1000px) {
+  /* Les colonnes masquées ne doivent plus réserver leur place : le fournisseur prend le reste. */
+  .page .liste {
+    table-layout: auto;
+  }
+
+  .page .liste col {
+    width: auto !important;
+  }
+
+  .page .liste td:first-child {
+    max-width: 0;
+    width: 100%;
+  }
+
+  .page .liste__col-recue,
+  .page .liste__col-anomalies {
+    display: none;
+  }
+}
+
+@container page (max-width: 760px) {
+  .page .liste__col-numero,
+  .page .liste__col-echeance {
+    display: none;
+  }
 }
 
 .page--pleine {
