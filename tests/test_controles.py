@@ -131,3 +131,25 @@ def test_le_siret_de_la_poste_suit_sa_propre_regle():
 
     assert siret_correct("35600000000010")  # somme des chiffres : 15, divisible par 5
     assert not siret_correct("35600000000011")
+
+
+@pytest.mark.parametrize(
+    ("iban", "valide"),
+    [
+        ("FR7618206004006500012398765", True),
+        ("FR76 1820 6004 0065 0001 2398 765", True),  # avec espaces, comme imprimé
+        ("fr7618206004006500012398765", True),
+        ("FR7618206004006500012398766", False),  # un chiffre changé : la clé ne tombe plus juste
+        ("FR761820600400650001239876", False),  # un chiffre en moins
+        ("DE89370400440532013000", True),  # un IBAN allemand valide
+        ("pas un iban", False),
+    ],
+)
+def test_la_cle_de_l_iban_est_verifiee(iban, valide):
+    from moteur.controles import iban_valide
+
+    assert iban_valide(iban) is valide
+
+
+def test_un_iban_a_la_cle_fausse_bloque_la_facture():
+    assert codes({"fournisseur_iban": "FR7618206004006500012398766"}) == ["IBAN_INVALIDE"]

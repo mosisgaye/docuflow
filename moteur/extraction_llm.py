@@ -32,6 +32,7 @@ Règles :
   Renvoie-les au format AAAA-MM-JJ.
 - Les montants sont des nombres avec un point décimal, sans symbole de monnaie ni espace.
 - fournisseur_siret : 14 chiffres, sans espace. fournisseur_tva : sans espace.
+- fournisseur_iban : l'IBAN du compte où payer le fournisseur, en majuscules et sans espace. null s'il n'est pas écrit.
 - taux_tva : en pourcentage (20 pour 20 %).
 - Si la facture indique que la TVA n'est pas applicable (franchise en base, article 293 B du CGI), mets taux_tva à 0 et total_tva à 0, et total_ttc égal au total HT.
 - Le fournisseur est l'entreprise qui émet la facture, le client celle qui la reçoit.
@@ -49,6 +50,7 @@ CHAMPS_TEXTE = [
     "fournisseur_nom",
     "fournisseur_siret",
     "fournisseur_tva",
+    "fournisseur_iban",
     "client_nom",
 ]
 CHAMPS_NOMBRE = ["total_ht", "taux_tva", "total_tva", "total_ttc"]

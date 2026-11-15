@@ -21,7 +21,7 @@ import subprocess
 import sys
 
 from moteur.controles import cle_de_luhn_valide, siret_correct
-from outils.generer_factures import CLIENT, MODELES
+from outils.generer_factures import CLIENT, IBANS, MODELES, iban_francais
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent
 COMPOSE = ["docker", "compose", "-f", str(RACINE / "odoo" / "compose.yaml")]  # Compose charge odoo/.env tout seul
@@ -39,7 +39,7 @@ COMPLEMENTS = {
 
 # Bons de commande : ce que Transports Lemaire avait commandé. Une seule différence volontaire.
 ECARTS = {"F26-1193": {"Plaquettes de frein avant": "85.00"}}  # devis à 85,00 €, facturé 98,40 €
-SANS_COMMANDE = {"FA-2026-0431"}  # achat fait sans bon de commande
+SANS_COMMANDE = {"FA-2026-0431", "F26-1240"}  # achat sans commande, et la facture frauduleuse (jamais commandée)
 
 SERVICES = ("Maintenance", "Hébergement", "Licence", "Main-d", "Formation", "Développement", "Déplacement", "Vidange", "Remplacement")
 
@@ -76,15 +76,6 @@ def siret_fictif(rang: int) -> str:
     return _completer_luhn(siren + "0001")
 
 
-def iban_francais(banque: str, guichet: str, compte: str) -> str:
-    """IBAN français valide (clé RIB et clé IBAN calculées). Coordonnées fictives."""
-    chiffres = compte.upper().translate(str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "12345678912345678923456789"))
-    cle_rib = 97 - (89 * int(banque) + 15 * int(guichet) + 3 * int(chiffres)) % 97
-    bban = f"{banque}{guichet}{compte}{cle_rib:02d}"
-    numerique = "".join(str(int(c, 36)) for c in bban + "FR00")
-    return f"FR{98 - int(numerique) % 97:02d}{bban}"
-
-
 def adresse(texte: str) -> tuple[str, str, str]:
     rue, _, reste = texte.rpartition(", ")
     code_postal, _, ville = reste.partition(" ")
@@ -102,7 +93,7 @@ def donnees(nouvelle_cle: bool) -> dict:
         fournisseurs[siret] = {
             "nom": nom, "rue": rue, "code_postal": code_postal, "ville": ville, "siret": siret, "tva": tva,
             "contact": {"nom": complement["contact"][0], "email": complement["contact"][1]} if "contact" in complement else None,
-            "iban": iban_francais(*complement["banque"]) if "banque" in complement else None,
+            "iban": IBANS.get(nom),  # le même que celui imprimé sur ses factures
             "note": complement.get("note"),
         }
         lignes = []

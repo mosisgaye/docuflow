@@ -19,6 +19,31 @@ TAUX = Decimal("20")
 # (outils/odoo_installer.py). Ce sont SES factures fournisseurs que DocuFlow traite.
 CLIENT = ("Transports Lemaire SAS", "Zone d'activité des Pins, 30900 Nîmes")
 
+
+def iban_francais(banque: str, guichet: str, compte: str) -> str:
+    """IBAN français valide (clé RIB et clé IBAN calculées). Coordonnées fictives."""
+    chiffres = compte.upper().translate(str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "12345678912345678923456789"))
+    cle_rib = 97 - (89 * int(banque) + 15 * int(guichet) + 3 * int(chiffres)) % 97
+    bban = f"{banque}{guichet}{compte}{cle_rib:02d}"
+    numerique = "".join(str(int(c, 36)) for c in bban + "FR00")
+    return f"FR{98 - int(numerique) % 97:02d}{bban}"
+
+
+# Le compte où chaque fournisseur se fait payer : imprimé sur ses factures et connu dans Odoo.
+# MD Plomberie, fournisseur réel, n'a pas d'IBAN inventé.
+IBANS = {
+    "Atelier Numérique du Midi SARL": iban_francais("30004", "01234", "00012345678"),
+    "Papeterie Durand & Fils": iban_francais("10278", "07311", "00020184501"),
+    "Garage Central Bertin": iban_francais("18206", "00400", "65000123987"),
+    "Imprimerie Lumière SAS": iban_francais("20041", "01005", "05123456K01"),
+}
+# L'IBAN d'un escroc qui se fait passer pour le garage : valide, mais pas celui du garage.
+IBAN_FRAUDE = iban_francais("16958", "00001", "87654321098")
+
+
+def iban_affiche(iban: str) -> str:
+    return " ".join(iban[rang:rang + 4] for rang in range(0, len(iban), 4))
+
 STYLES = {
     "bleu": "body{font-family:Helvetica,Arial,sans-serif;color:#222} h1{color:#1d4e89} th{background:#1d4e89;color:#fff}",
     "classique": "body{font-family:Georgia,serif;color:#111} h1{letter-spacing:4px;border-bottom:3px solid #111} th{border-bottom:2px solid #111}",
@@ -93,6 +118,18 @@ MODELES = [
         "franchise_tva": True,
         "specimen": True,
     },
+    {
+        # FRAUDE AU CHANGEMENT D'IBAN : en-têtes du vrai garage, mais un autre compte bancaire.
+        # Les contrôles de la facture seule ne voient rien : c'est la comparaison avec Odoo qui l'arrête.
+        "fichier": "facture-iban-modifie.pdf", "style": "rouge", "numero": "F26-1240",
+        "date": "2026-11-14", "echeance": "2026-11-21",
+        "fournisseur": ("Garage Central Bertin", "52 route de Paris, 45000 Orléans", "52987431500029", "FR52529874315"),
+        "client": CLIENT,
+        "lignes": [("Pneus été 205/55 R16 (lot de 4)", "1", "420.00"), ("Montage et équilibrage", "1", "60.00")],
+        "anomalies": [],
+        "iban": IBAN_FRAUDE,
+        "mention_paiement": "Attention : suite à un changement de banque, merci d'utiliser désormais nos nouvelles coordonnées bancaires.",
+    },
 ]
 
 
@@ -125,6 +162,7 @@ def calculer(modele: dict) -> dict:
     total_tva = arrondi(total_ht * taux / 100)
     nom, _, siret, tva = modele["fournisseur"]
     return {
+        "fournisseur_iban": modele.get("iban", IBANS.get(nom)),
         "numero_facture": modele["numero"],
         "date_facture": modele["date"],
         "date_echeance": modele["echeance"],
@@ -159,6 +197,9 @@ def html(modele: dict, donnees: dict) -> str:
     else:
         pied = "Paiement par virement à 30 jours. Document d'exemple, données fictives."
         filigrane = ""
+    if donnees.get("fournisseur_iban"):
+        mention = f"<br><b>{modele['mention_paiement']}</b>" if modele.get("mention_paiement") else ""
+        pied = f"Règlement par virement sur le compte IBAN {iban_affiche(donnees['fournisseur_iban'])}.{mention}<br>{pied}"
     rangees = "".join(
         f"<tr><td>{ligne['designation']}</td><td class=r>{ligne['quantite'].replace('.', ',')}</td>"
         f"<td class=r>{euros(Decimal(ligne['prix_unitaire_ht']))}</td><td class=r>{euros(Decimal(ligne['montant_ht']))}</td></tr>"
@@ -192,6 +233,13 @@ def cii_xml(modele: dict, donnees: dict) -> bytes:
                 f"<ram:CityName>{escape(commune)}</ram:CityName><ram:CountryID>FR</ram:CountryID></ram:PostalTradeAddress>")
 
     nom, adresse_vendeur, siret, tva = modele["fournisseur"]
+    # Moyen de paiement : virement (code 58) sur l'IBAN du fournisseur.
+    paiement = (
+        "\n      <ram:SpecifiedTradeSettlementPaymentMeans><ram:TypeCode>58</ram:TypeCode>"
+        f"<ram:PayeePartyCreditorFinancialAccount><ram:IBANID>{donnees['fournisseur_iban']}</ram:IBANID></ram:PayeePartyCreditorFinancialAccount>"
+        "</ram:SpecifiedTradeSettlementPaymentMeans>"
+        if donnees.get("fournisseur_iban") else ""
+    )
     taxe = '<ram:TypeCode>VAT</ram:TypeCode><ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>20</ram:RateApplicablePercent>'
     lignes = "".join(
         f"""<ram:IncludedSupplyChainTradeLineItem>
@@ -232,7 +280,7 @@ def cii_xml(modele: dict, donnees: dict) -> bytes:
     </ram:ApplicableHeaderTradeAgreement>
     <ram:ApplicableHeaderTradeDelivery/>
     <ram:ApplicableHeaderTradeSettlement>
-      <ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>
+      <ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>{paiement}
       <ram:ApplicableTradeTax>
         <ram:CalculatedAmount>{donnees["total_tva"]}</ram:CalculatedAmount><ram:TypeCode>VAT</ram:TypeCode>
         <ram:BasisAmount>{donnees["total_ht"]}</ram:BasisAmount><ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>20</ram:RateApplicablePercent>

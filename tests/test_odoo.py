@@ -36,6 +36,8 @@ class FauxOdoo:
             {"id": 40, "name": "DIOP Mouhamadou (MD Plomberie)", "l10n_fr_siret": "90856344800012", "vat": False, "bank_ids": []},
         ]
         self.taxes = [{"id": 1, "name": "20% G", "amount": 20.0}, {"id": 21, "name": "20% S", "amount": 20.0}]
+        # Le compte bancaire connu du garage (le même que sur ses vraies factures).
+        self.comptes = {36: ["FR76 1820 6004 0065 0001 2398 765"]}
         # Le bon de commande du garage : les plaquettes avaient été commandées à 85,00 €.
         self.commandes = [{"id": 15, "name": "P00015", "partner_id": 36, "amount_total": 462.0}]
         self.lignes_commandes = [
@@ -61,6 +63,8 @@ class FauxOdoo:
     def repondre(self, cible: str, corps: dict):
         if cible == "res.partner.search_read":
             return self.partenaires
+        if cible == "res.partner.bank.search_read":
+            return [{"account_number": numero} for numero in self.comptes.get(corps["domain"][0][2], [])]
         if cible == "account.tax.search_read":
             return [taxe for taxe in self.taxes if taxe["amount"] == corps["domain"][1][2]]
         if cible == "purchase.order.search_read":
@@ -109,6 +113,7 @@ def test_le_fournisseur_est_retrouve_par_son_siret(odoo):
     fournisseur = odoo.trouver_fournisseur("52987431500029")
 
     assert (fournisseur.id, fournisseur.nom, fournisseur.nb_comptes_bancaires) == (36, "Garage Central Bertin", 1)
+    assert fournisseur.ibans == ("FR7618206004006500012398765",)  # sans espace, pour comparer
 
 
 def test_a_defaut_de_siret_le_numero_de_tva_suffit(odoo):
@@ -228,7 +233,9 @@ def test_a_la_lecture_le_fournisseur_reconnu_est_note_au_journal(session, odoo):
     facture = traiter(session, (FACTURES / GARAGE).read_bytes(), GARAGE, extracteur(GARAGE), AUJOURD_HUI, odoo=odoo).facture
 
     assert [e.type for e in facture.evenements] == ["RECEPTION", "EXTRACTION", "FOURNISSEUR_ODOO", "COMMANDE_ODOO", "CONTROLE"]
-    assert facture.evenements[2].detail == {"trouve": True, "id": 36, "nom": "Garage Central Bertin", "adresse": "http://odoo.test/odoo/res.partner/36"}
+    assert facture.evenements[2].detail == {
+        "trouve": True, "id": 36, "nom": "Garage Central Bertin", "adresse": "http://odoo.test/odoo/res.partner/36", "iban": "conforme",
+    }
     assert facture.evenements[3].detail["commande"] == "P00015"
     assert facture.evenements[3].detail["adresse"] == "http://odoo.test/odoo/purchase.order/15"
     # L'écart de prix est un avertissement : la personne le voit, la facture reste validable.
@@ -341,3 +348,53 @@ def test_un_achat_sans_commande_donne_un_avertissement_a_la_lecture(session, odo
 
     assert [(a["code"], a["gravite"]) for a in facture.anomalies] == [("SANS_COMMANDE", "avertissement")]
     assert facture.etat == "a_valider"
+
+
+# ───────── IBAN : la fraude au changement de coordonnées bancaires ─────────
+
+FRAUDE = "facture-iban-modifie.pdf"  # le garage, mais un autre IBAN : « suite à un changement de banque »
+
+
+def test_la_facture_frauduleuse_est_signalee(session, odoo):
+    facture = traiter(session, (FACTURES / FRAUDE).read_bytes(), FRAUDE, extracteur(FRAUDE), AUJOURD_HUI, odoo=odoo).facture
+
+    codes = {a["code"]: a for a in facture.anomalies}
+    assert codes["IBAN_DIFFERENT"]["gravite"] == "avertissement"
+    message = codes["IBAN_DIFFERENT"]["message"]
+    assert "…9894" in message and "…8765" in message  # l'IBAN reçu et celui connu, masqués
+    assert "FR7616958" not in message  # jamais l'IBAN en entier
+    assert "jamais à celui écrit sur la facture" in message
+    assert next(e for e in facture.evenements if e.type == "FOURNISSEUR_ODOO").detail["iban"] == "different"
+
+
+def test_avec_les_regles_la_fraude_exige_le_directeur_financier(session, odoo):
+    from moteur.approbation import REGLES_DEMO, publier
+
+    publier(session, REGLES_DEMO, "Moussa")
+    facture = traiter(session, (FACTURES / FRAUDE).read_bytes(), FRAUDE, extracteur(FRAUDE), AUJOURD_HUI, odoo=odoo).facture
+
+    niveaux = {n["niveau"]: n["raisons"] for n in facture.circuit["niveaux"]}
+    assert "IBAN différent de celui connu, ou jamais vu" in niveaux["directeur_financier"]
+
+
+def test_le_bon_iban_ne_dit_rien(session, odoo):
+    facture = traiter(session, (FACTURES / GARAGE).read_bytes(), GARAGE, extracteur(GARAGE), AUJOURD_HUI, odoo=odoo).facture
+
+    assert "IBAN_DIFFERENT" not in {a["code"] for a in facture.anomalies}
+
+
+def test_un_fournisseur_sans_iban_connu_demande_une_verification(session, odoo, faux):
+    faux.comptes = {}
+
+    facture = traiter(session, (FACTURES / GARAGE).read_bytes(), GARAGE, extracteur(GARAGE), AUJOURD_HUI, odoo=odoo).facture
+
+    assert ("IBAN_NOUVEAU", "avertissement") in {(a["code"], a["gravite"]) for a in facture.anomalies}
+
+
+def test_une_facture_sans_iban_ne_declenche_rien(session, odoo):
+    sans = donnees(GARAGE).model_copy(update={"fournisseur_iban": None})
+
+    facture = traiter(session, (FACTURES / GARAGE).read_bytes(), GARAGE, lambda texte: ResultatExtraction(sans, 0.1, "test", "faux"), AUJOURD_HUI, odoo=odoo).facture
+
+    assert not {"IBAN_DIFFERENT", "IBAN_NOUVEAU"} & {a["code"] for a in facture.anomalies}
+    assert next(e for e in facture.evenements if e.type == "FOURNISSEUR_ODOO").detail["iban"] == "absent"

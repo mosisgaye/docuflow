@@ -72,6 +72,20 @@ def cle_de_luhn_valide(chiffres: str) -> bool:
 SIREN_LA_POSTE = "356000000"
 
 
+def iban_normalise(iban: str) -> str:
+    return "".join(iban.split()).upper()
+
+
+def iban_valide(iban: str) -> bool:
+    """Structure et clé de contrôle d'un IBAN (norme ISO 13616 : le reste de la division par 97 vaut 1)."""
+    iban = iban_normalise(iban)
+    if not (15 <= len(iban) <= 34 and iban[:2].isalpha() and iban[2:4].isdigit() and iban.isalnum()):
+        return False
+    if iban.startswith("FR") and len(iban) != 27:
+        return False
+    return int("".join(str(int(caractere, 36)) for caractere in iban[4:] + iban[:4])) % 97 == 1
+
+
 def siret_correct(siret: str) -> bool:
     """14 chiffres, clé du SIRET ET clé du SIREN (ses 9 premiers chiffres) justes.
 
@@ -206,6 +220,15 @@ def identifiants(facture: Facture) -> list[Anomalie]:
                     "fournisseur_tva",
                 )
             )
+    if facture.fournisseur_iban and not iban_valide(facture.fournisseur_iban):
+        anomalies.append(
+            Anomalie(
+                "IBAN_INVALIDE",
+                Gravite.BLOQUANTE,
+                f"L'IBAN {facture.fournisseur_iban} est invalide : sa clé de contrôle ne tombe pas juste. Ne payez pas sur ce compte.",
+                "fournisseur_iban",
+            )
+        )
     return anomalies
 
 

@@ -38,6 +38,8 @@ class Facture(BaseModel):
     fournisseur_nom: str | None
     fournisseur_siret: str | None
     fournisseur_tva: str | None
+    # Le compte où payer. Valeur par défaut : les factures lues avant l'ajout de ce champ restent valables.
+    fournisseur_iban: str | None = None
     client_nom: str | None
     lignes: list[Ligne]
     total_ht: Montant | None

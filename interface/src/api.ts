@@ -16,6 +16,7 @@ export interface Donnees {
   fournisseur_nom: string | null
   fournisseur_siret: string | null
   fournisseur_tva: string | null
+  fournisseur_iban?: string | null
   client_nom: string | null
   lignes: Ligne[]
   total_ht: string | null

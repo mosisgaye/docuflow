@@ -62,7 +62,7 @@ def test_chaque_publication_cree_une_nouvelle_version(session):
     seconde = publier(session, REGLES_DEMO[:1], "Moussa")
 
     assert (premiere.version, seconde.version) == (1, 2)
-    assert len(premiere.regles) == 5  # la première version n'a pas bougé
+    assert len(premiere.regles) == len(REGLES_DEMO)  # la première version n'a pas bougé
 
 
 # ───────── Le circuit ─────────

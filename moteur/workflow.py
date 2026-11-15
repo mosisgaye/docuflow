@@ -28,7 +28,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from moteur.base import Etat, EtatTache, Evenement, FactureEnBase, Tache
-from moteur.controles import Anomalie, Gravite, controler, est_validable
+from moteur.controles import Anomalie, Gravite, controler, est_validable, iban_normalise, iban_valide
 from moteur.export import ErreurExport, ecriture, en_csv, en_json, envoyer_au_logiciel, nom_fichier
 from moteur.extraction_llm import ErreurExtraction, ResultatExtraction, extraire
 from moteur.consignes import enregistrer as enregistrer_consigne
@@ -208,11 +208,52 @@ def _fournisseur_dans_odoo(session: Session, facture: FactureEnBase, donnees: Fa
                 "fournisseur_nom",
             )
         ]
+    verdict, anomalies_iban = _iban_face_a_odoo(donnees, fournisseur.ibans)
     _journaliser(
         session, facture, "FOURNISSEUR_ODOO", MOTEUR,
-        {"trouve": True, "id": fournisseur.id, "nom": fournisseur.nom, "adresse": odoo.adresse_fiche("res.partner", fournisseur.id)},
+        {"trouve": True, "id": fournisseur.id, "nom": fournisseur.nom, "adresse": odoo.adresse_fiche("res.partner", fournisseur.id), "iban": verdict},
     )
-    return _commande_dans_odoo(session, facture, donnees, odoo, fournisseur.id)
+    return anomalies_iban + _commande_dans_odoo(session, facture, donnees, odoo, fournisseur.id)
+
+
+def _masque(iban: str) -> str:
+    return f"…{iban[-4:]}"
+
+
+def _iban_face_a_odoo(donnees: Facture, connus: tuple[str, ...]) -> tuple[str, list[Anomalie]]:
+    """Compare l'IBAN imprimé sur la facture à ceux connus dans Odoo pour ce fournisseur.
+
+    C'est la parade à la fraude au changement de coordonnées bancaires : un escroc se fait passer
+    pour un vrai fournisseur et donne « ses nouvelles coordonnées ». La facture n'est pas refusée
+    (un vrai changement de banque existe) : elle est signalée, et les règles d'approbation
+    exigent alors l'accord du directeur financier, après vérification par téléphone.
+    """
+    if not donnees.fournisseur_iban:
+        return "absent", []
+    iban = iban_normalise(donnees.fournisseur_iban)
+    if not iban_valide(iban):
+        return "invalide", []  # déjà signalé par les contrôles (IBAN_INVALIDE, bloquant)
+    if not connus:
+        return "inconnu", [
+            Anomalie(
+                "IBAN_NOUVEAU",
+                Gravite.AVERTISSEMENT,
+                f"Aucun IBAN n'est connu dans Odoo pour ce fournisseur : vérifiez celui de la facture ({_masque(iban)}) avant le premier paiement.",
+                "fournisseur_iban",
+            )
+        ]
+    if iban in connus:
+        return "conforme", []
+    return "different", [
+        Anomalie(
+            "IBAN_DIFFERENT",
+            Gravite.AVERTISSEMENT,
+            f"L'IBAN de cette facture ({_masque(iban)}) n'est pas celui connu dans Odoo pour ce fournisseur "
+            f"({', '.join(_masque(connu) for connu in connus)}). Risque de fraude au changement de coordonnées bancaires : "
+            "appelez le fournisseur au numéro habituel, jamais à celui écrit sur la facture, avant tout paiement.",
+            "fournisseur_iban",
+        )
+    ]
 
 
 def _commande_dans_odoo(session: Session, facture: FactureEnBase, donnees: Facture, odoo: Odoo, fournisseur_id: int) -> list[Anomalie]:

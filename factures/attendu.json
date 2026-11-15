@@ -1,6 +1,7 @@
 {
   "facture-FA-2026-0412.pdf": {
     "facture": {
+      "fournisseur_iban": "FR7630004012340001234567862",
       "numero_facture": "FA-2026-0412",
       "date_facture": "2026-11-03",
       "date_echeance": "2026-12-03",
@@ -37,6 +38,7 @@
   },
   "facture-2026-11-087.pdf": {
     "facture": {
+      "fournisseur_iban": "FR7610278073110002018450118",
       "numero_facture": "2026-11-087",
       "date_facture": "2026-11-07",
       "date_echeance": "2026-11-22",
@@ -73,6 +75,7 @@
   },
   "facture-F26-1193.pdf": {
     "facture": {
+      "fournisseur_iban": "FR7618206004006500012398765",
       "numero_facture": "F26-1193",
       "date_facture": "2026-11-10",
       "date_echeance": "2026-12-10",
@@ -109,6 +112,7 @@
   },
   "facture-erreur-total.pdf": {
     "facture": {
+      "fournisseur_iban": "FR7630004012340001234567862",
       "numero_facture": "FA-2026-0431",
       "date_facture": "2026-11-12",
       "date_echeance": "2026-12-12",
@@ -141,6 +145,7 @@
   },
   "facture-erreur-siret.pdf": {
     "facture": {
+      "fournisseur_iban": "FR7610278073110002018450118",
       "numero_facture": "2026-11-093",
       "date_facture": "2026-11-13",
       "date_echeance": "2026-11-28",
@@ -173,6 +178,7 @@
   },
   "facture-facturx-FX-2026-0057.pdf": {
     "facture": {
+      "fournisseur_iban": "FR86200410100505123456K0117",
       "numero_facture": "FX-2026-0057",
       "date_facture": "2026-11-12",
       "date_echeance": "2026-12-12",
@@ -203,6 +209,7 @@
   },
   "facture-md-plomberie-2026-118.pdf": {
     "facture": {
+      "fournisseur_iban": null,
       "numero_facture": "2026-118",
       "date_facture": "2026-11-13",
       "date_echeance": "2026-11-28",
@@ -234,6 +241,37 @@
       "taux_tva": "0",
       "total_tva": "0.00",
       "total_ttc": "1090.00"
+    },
+    "anomalies": []
+  },
+  "facture-iban-modifie.pdf": {
+    "facture": {
+      "fournisseur_iban": "FR7616958000018765432109894",
+      "numero_facture": "F26-1240",
+      "date_facture": "2026-11-14",
+      "date_echeance": "2026-11-21",
+      "fournisseur_nom": "Garage Central Bertin",
+      "fournisseur_siret": "52987431500029",
+      "fournisseur_tva": "FR52529874315",
+      "client_nom": "Transports Lemaire SAS",
+      "lignes": [
+        {
+          "designation": "Pneus été 205/55 R16 (lot de 4)",
+          "quantite": "1",
+          "prix_unitaire_ht": "420.00",
+          "montant_ht": "420.00"
+        },
+        {
+          "designation": "Montage et équilibrage",
+          "quantite": "1",
+          "prix_unitaire_ht": "60.00",
+          "montant_ht": "60.00"
+        }
+      ],
+      "total_ht": "480.00",
+      "taux_tva": "20",
+      "total_tva": "96.00",
+      "total_ttc": "576.00"
     },
     "anomalies": []
   }

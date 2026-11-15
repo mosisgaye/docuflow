@@ -61,6 +61,13 @@ function Ecriture({ facture }: { facture: FactureDetail }) {
 function Odoo({ facture }: { facture: FactureDetail }) {
   const fournisseur = [...facture.evenements].reverse().find((evenement) => evenement.type === 'FOURNISSEUR_ODOO')
   const commande = [...facture.evenements].reverse().find((evenement) => evenement.type === 'COMMANDE_ODOO')
+  // Ce que dit la comparaison de l'IBAN de la facture avec ceux connus dans Odoo.
+  const VERDICTS_IBAN: Record<string, string> = {
+    conforme: 'IBAN conforme à celui connu dans Odoo',
+    different: 'IBAN différent de celui connu dans Odoo : appelez le fournisseur au numéro habituel avant de payer',
+    inconnu: 'Aucun IBAN connu dans Odoo pour ce fournisseur : à vérifier avant de payer',
+  }
+  const verdictIban = fournisseur?.detail.trouve ? VERDICTS_IBAN[String(fournisseur.detail.iban)] : undefined
   const envoi = [...facture.evenements].reverse().find((evenement) => evenement.type === 'EXPORT')?.detail.logiciel as
     | { logiciel?: string; adresse?: string; total_odoo?: string; ecart_total?: string | null }
     | undefined
@@ -77,6 +84,12 @@ function Odoo({ facture }: { facture: FactureDetail }) {
       ) : fournisseur ? (
         'Fournisseur absent d’Odoo'
       ) : null}
+      {verdictIban && (
+        <>
+          <br />
+          <span className={fournisseur?.detail.iban === 'different' ? 'odoo__alerte' : undefined}>{verdictIban}</span>
+        </>
+      )}
       {commande && (
         <>
           <br />
@@ -229,6 +242,10 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
             <div className={marque('fournisseur_tva')}>
               <dt>N° de TVA</dt>
               <dd>{donnees.fournisseur_tva ?? 'Absent'}</dd>
+            </div>
+            <div className={marque('fournisseur_iban')}>
+              <dt>IBAN</dt>
+              <dd>{donnees.fournisseur_iban ? donnees.fournisseur_iban.replace(/(.{4})/g, '$1 ').trim() : 'Absent'}</dd>
             </div>
             <div>
               <dt>Client</dt>

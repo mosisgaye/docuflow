@@ -88,7 +88,7 @@ Mesures faites le 14 novembre 2026 sur les factures du dossier `factures/`, avec
 
 | Exactitude de l'extraction | Résultat |
 |---|---|
-| `gpt-5.4-mini`, 7 factures, dont une sans TVA | 149 valeurs justes sur 149 |
+| `gpt-5.4-mini`, 8 factures, dont une sans TVA et une frauduleuse (IBAN modifié) | 176 valeurs justes sur 176, IBAN compris |
 | `gpt-5.4-mini`, 3 factures | 69 sur 69 |
 | `gpt-4.1-mini`, 3 factures | 69 sur 69 |
 | `gpt-5.4-nano`, 3 factures | 68 sur 69 |

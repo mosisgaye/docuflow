@@ -90,6 +90,7 @@ REGLES_DEMO = [
     {"nom": "Plus de 1 000 € TTC", "si": {"champ": "total_ttc", "superieur_a": "1000"}, "exige": ["directeur_financier"]},
     {"nom": "Plus de 5 000 € TTC", "si": {"champ": "total_ttc", "superieur_a": "5000"}, "exige": ["gerant"]},
     {"nom": "Écart avec le bon de commande, ou achat sans commande", "si": {"anomalie": ["ECART_COMMANDE", "SANS_COMMANDE"]}, "exige": ["directeur_financier"]},
+    {"nom": "IBAN différent de celui connu, ou jamais vu", "si": {"anomalie": ["IBAN_DIFFERENT", "IBAN_NOUVEAU"]}, "exige": ["directeur_financier"]},
     {"nom": "Fournisseur inconnu dans Odoo", "si": {"anomalie": ["FOURNISSEUR_INCONNU"]}, "bloque": "Créez d'abord le fournisseur dans Odoo."},
 ]
 

@@ -2107,3 +2107,8 @@ a.bouton {
   color: var(--encre-douce);
   font-size: 13px;
 }
+
+.odoo__alerte {
+  color: var(--rouge);
+  font-weight: 700;
+}

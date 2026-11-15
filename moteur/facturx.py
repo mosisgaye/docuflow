@@ -123,6 +123,7 @@ def lire_xml(xml: bytes) -> Facture:
         fournisseur_nom=_texte(racine, f"{vendeur}/ram:Name"),
         fournisseur_siret=siret,
         fournisseur_tva=numero_tva,
+        fournisseur_iban=(_texte(racine, f"{reglement}/ram:SpecifiedTradeSettlementPaymentMeans/ram:PayeePartyCreditorFinancialAccount/ram:IBANID") or "").replace(" ", "").upper() or None,
         client_nom=_texte(racine, f"{transaction}/ram:ApplicableHeaderTradeAgreement/ram:BuyerTradeParty/ram:Name"),
         lignes=lignes,
         total_ht=_montant(racine, f"{totaux}/ram:TaxBasisTotalAmount"),

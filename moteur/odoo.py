@@ -50,6 +50,7 @@ class FournisseurOdoo:
     siret: str | None
     tva: str | None
     nb_comptes_bancaires: int
+    ibans: tuple[str, ...] = ()  # les IBAN connus dans Odoo pour ce fournisseur, sans espace
 
 
 @dataclass(frozen=True)
@@ -128,7 +129,13 @@ class Odoo:
         trouve = trouve or next((fiche for fiche in fiches if tva and fiche.get("vat") == tva), None)
         if trouve is None:
             return None
-        return FournisseurOdoo(trouve["id"], trouve["name"], trouve.get("l10n_fr_siret") or None, trouve.get("vat") or None, len(trouve.get("bank_ids") or []))
+        ibans: tuple[str, ...] = ()
+        if trouve.get("bank_ids"):
+            comptes = self.appeler("res.partner.bank", "search_read", domain=[["partner_id", "=", trouve["id"]]], fields=["account_number"])
+            ibans = tuple("".join((compte.get("account_number") or "").split()).upper() for compte in comptes if compte.get("account_number"))
+        return FournisseurOdoo(
+            trouve["id"], trouve["name"], trouve.get("l10n_fr_siret") or None, trouve.get("vat") or None, len(trouve.get("bank_ids") or []), ibans
+        )
 
     # ───────── Bons de commande ─────────
 

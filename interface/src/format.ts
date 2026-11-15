@@ -65,6 +65,10 @@ export function raconter(evenement: Evenement): string {
     case 'EXTRACTION_ECHOUEE':
     case 'LECTURE_IMPOSSIBLE':
       return String(detail.raison ?? 'Lecture impossible')
+    case 'NOTIFICATION':
+      return `Demande d’approbation envoyée par mail (${LIBELLE_NIVEAU[String(detail.niveau)]?.toLowerCase() ?? 'approbateur'})`
+    case 'NOTIFICATION_ECHOUEE':
+      return `Mail d’approbation non envoyé : ${String(detail.raison)}`
     case 'APPROBATION':
       return `Approuvée par ${evenement.auteur} (${LIBELLE_NIVEAU[String(detail.niveau)]?.toLowerCase() ?? 'niveau'}) : au niveau suivant`
     case 'VALIDATION':
