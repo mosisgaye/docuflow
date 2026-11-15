@@ -221,6 +221,7 @@ DocuFlow branche les logiciels de l'entreprise par le protocole MCP, comme les c
 - **Odoo** : Odoo n'a de serveur MCP qu'avec son application IA, absente de la version Community. DocuFlow expose donc son propre connecteur testé (`moteur/mcp_odoo.py`), en lecture seule. Il se lance aussi seul : `uv run python -m moteur.mcp_odoo`.
 - **Garde-fous** : l'assistant ne reçoit que les outils déclarés en lecture par leur serveur, et l'entreprise peut en restreindre la liste ; une écriture n'est jamais autorisée. Chaque appel est journalisé (outil, arguments, résultat, durée). Les réponses sont transmises comme des données, avec leur source, jamais comme des consignes. Les IBAN ne sont jamais montrés en entier.
 - **Le circuit de la facture** (créer dans Odoo, valider, payer) reste du code testé : l'assistant cherche et propose, il n'exécute rien.
+- **Connexion par compte (OAuth 2.1 + PKCE)** pour les serveurs des éditeurs (HubSpot d'abord) : les adresses OAuth sont lues dans les métadonnées publiées par le serveur MCP, les jetons sont rangés chiffrés (clé `CONNECTEURS_CLE_CHIFFREMENT`) et renouvelés tout seuls, un refus 401 déclenche un renouvellement puis un nouvel essai. Identifiants de l'éditeur : `HUBSPOT_CLIENT_ID` et `HUBSPOT_CLIENT_SECRET` ; adresse de retour à déclarer chez lui : `http://localhost:5180/api/oauth/retour` (réglable par `OAUTH_RETOUR`).
 
 ## Configuration
 

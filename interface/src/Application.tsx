@@ -32,8 +32,20 @@ const tourVide = (role: Tour['role'], champs: Partial<Tour> = {}): Tour => ({
   ...champs,
 })
 
+/** Au retour d'une connexion par compte (OAuth), l'éditeur renvoie ici avec le résultat dans l'adresse. */
+function retourConnexion(): string | null {
+  const parametres = new URLSearchParams(window.location.search)
+  const resultat = parametres.get('oauth')
+  if (!resultat) return null
+  window.history.replaceState(null, '', window.location.pathname)
+  if (resultat === 'ok') return `Compte connecté : ${parametres.get('connecteur') ?? 'le connecteur'} est branché, l’assistant peut y chercher.`
+  if (resultat === 'refuse') return 'Connexion annulée : rien n’a été branché.'
+  return 'La connexion du compte a échoué. Réessayez ; le détail est dans le journal du serveur.'
+}
+
 export function Application() {
-  const [page, setPage] = useState<Page>('tableau')
+  const [messageConnexion] = useState(retourConnexion)
+  const [page, setPage] = useState<Page>(messageConnexion ? 'connecteurs' : 'tableau')
   const [factures, setFactures] = useState<FactureResume[]>([])
   const [statistiques, setStatistiques] = useState<Statistiques | null>(null)
   const [vedette, setVedette] = useState<FactureDetail | null>(null)
@@ -429,7 +441,7 @@ export function Application() {
             />
           )}
           {page === 'connecteurs' && (
-            <Connecteurs auteur={auteur} statistiques={statistiques} surChangement={rechargerConnecteurs} surSansAuteur={() => champAuteur.current?.focus()} />
+            <Connecteurs auteur={auteur} messageInitial={messageConnexion} statistiques={statistiques} surChangement={rechargerConnecteurs} surSansAuteur={() => champAuteur.current?.focus()} />
           )}
         </div>
       </div>

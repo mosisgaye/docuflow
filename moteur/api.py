@@ -14,6 +14,8 @@
     POST /connecteurs/{id}/branchement   brancher un connecteur (son serveur MCP doit répondre)
     DELETE /connecteurs/{id}/branchement débrancher
     PUT  /connecteurs/{id}/outils     choisir les outils de lecture autorisés
+    POST /connecteurs/{id}/oauth      commencer la connexion d'un compte (renvoie l'adresse de l'éditeur)
+    GET  /oauth/retour                l'éditeur y renvoie le navigateur après la connexion
     POST /agent                       parler à l'assistant (réponse envoyée au fil de l'eau)
     GET  /statistiques                les chiffres du tableau de bord
     GET  /sante                       l'API et la base répondent-elles ? où en est la file de tâches ?
@@ -23,13 +25,15 @@ La lecture des factures est faite par un processus à part : uv run python -m mo
 """
 
 import json
+import logging
 import pathlib
 import uuid
 from collections.abc import Callable, Iterator
 from datetime import datetime
 
+import httpx
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, Response, UploadFile, status
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from pypdf.errors import PyPdfError
 from sqlalchemy import func, select, text
@@ -45,7 +49,8 @@ from moteur.export import ErreurEnvoi, ErreurExport
 from moteur.lecture_pdf import lire_pdf
 from moteur.odoo import Odoo, depuis_configuration
 from moteur.base import AppelConnecteur, ConnecteurBranche
-from moteur.connecteurs import CATALOGUE, ErreurConnecteur, Passerelle, fiche_catalogue
+from moteur import oauth
+from moteur.connecteurs import CATALOGUE, ErreurConnecteur, Passerelle, adresse_serveur, fiche_catalogue
 from moteur.reception_mail import SignatureInvalide, cles_publiques, lire_mail_brut, recevoir_mail, verifier_signature
 from moteur.workflow import FactureIntrouvable, TransitionInterdite, exporter, ranger_fichier, recevoir, rejeter, traiter, valider
 
@@ -142,6 +147,7 @@ def creer_application(
     cles_mail: list | None = None,
     odoo: Odoo | None | str = "configuration",
     passerelle: Passerelle | None = None,
+    client_oauth: httpx.Client | None = None,
 ) -> FastAPI:
     """Construit l'application. Les paramètres servent aux tests ; en service, tout vient de .env.
 
@@ -364,6 +370,8 @@ def creer_application(
             "outils_autorises": branche.outils_autorises if branche else None,
             "branche_par": branche.branche_par if branche else None,
             "branche_le": branche.branche_le if branche else None,
+            # Pour une connexion par compte : DocuFlow a-t-il ce qu'il faut (identifiants de l'éditeur, clé) ?
+            "connexion_prete": entree["connexion"] != "oauth" or oauth.pret(entree["id"]),
         }
 
     @application.get("/connecteurs")
@@ -405,10 +413,14 @@ def creer_application(
         entree = connecteur_ou_404(identifiant)
         if entree["statut"] not in ("disponible", "preversion"):
             raise HTTPException(status.HTTP_409_CONFLICT, f"{entree['nom']} n'est pas encore disponible.")
-        if passerelle.cible(identifiant) is None:
+        try:
+            joignable = passerelle.cible(identifiant) is not None
+        except ErreurConnecteur as erreur:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(erreur)) from erreur
+        if not joignable:
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
-                "La connexion OAuth n'est pas encore disponible." if entree["connexion"] == "oauth" else f"{entree['nom']} n'est pas configuré sur ce serveur.",
+                f"Connectez d'abord un compte {entree['nom']}." if entree["connexion"] == "oauth" else f"{entree['nom']} n'est pas configuré sur ce serveur.",
             )
         # On ne branche qu'un serveur qui répond : on lui demande ses outils.
         passerelle.oublier(identifiant)
@@ -428,8 +440,42 @@ def creer_application(
         branche = session.get(ConnecteurBranche, identifiant)
         if branche:
             branche.actif = False  # la ligne reste : le journal des appels garde son sens
+        oauth.oublier(session, identifiant)  # les jetons d'un compte connecté sont effacés
         passerelle.oublier(identifiant)
         return vue_connecteur(entree, branche)
+
+    @application.post("/connecteurs/{identifiant}/oauth")
+    def commencer_oauth(identifiant: str, demande: Branchement, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        entree = connecteur_ou_404(identifiant)
+        adresse = adresse_serveur(identifiant)
+        if entree["connexion"] != "oauth" or adresse is None or entree["statut"] not in ("disponible", "preversion"):
+            raise HTTPException(status.HTTP_409_CONFLICT, f"{entree['nom']} ne se connecte pas par compte.")
+        try:
+            return {"adresse": oauth.commencer(session, identifiant, adresse, demande.auteur, client_oauth)}
+        except oauth.ErreurOAuth as erreur:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(erreur)) from erreur
+
+    @application.get("/oauth/retour")
+    def retour_oauth(
+        state: str = "", code: str = "", error: str = "", session: Session = Depends(session_de_requete, scope="function")
+    ) -> RedirectResponse:
+        """L'éditeur renvoie ici le navigateur. On termine la connexion, puis on revient à la page Connecteurs."""
+        interface = oauth.adresse_retour().split("/api/")[0]
+        if error or not code:
+            return RedirectResponse(f"{interface}/?oauth=refuse", status.HTTP_303_SEE_OTHER)
+        try:
+            demande = oauth.terminer(session, state, code, {e["id"]: adresse_serveur(e["id"]) for e in CATALOGUE if adresse_serveur(e["id"])}, client_oauth)
+            session.commit()  # les jetons sont gardés même si la vérification qui suit échoue
+            passerelle.oublier(demande.connecteur)
+            passerelle.outils_du_serveur(demande.connecteur)  # le serveur répond-il avec ce compte ?
+        except (oauth.ErreurOAuth, ErreurConnecteur) as erreur:
+            # Le détail reste dans le journal du serveur : l'adresse ne transporte ni secret ni message d'erreur.
+            logging.getLogger("moteur.api").warning("Connexion OAuth échouée : %s", erreur)
+            return RedirectResponse(f"{interface}/?oauth=echec", status.HTTP_303_SEE_OTHER)
+        branche = session.get(ConnecteurBranche, demande.connecteur) or ConnecteurBranche(id=demande.connecteur, branche_par=demande.auteur)
+        branche.actif, branche.branche_par, branche.branche_le = True, demande.auteur, func.now()
+        session.add(branche)
+        return RedirectResponse(f"{interface}/?oauth=ok&connecteur={demande.connecteur}", status.HTTP_303_SEE_OTHER)
 
     class Autorisation(BaseModel):
         autorises: list[str] | None  # None : tous les outils de lecture

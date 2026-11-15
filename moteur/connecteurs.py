@@ -28,11 +28,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+import httpx2
 from mcp import Client, StdioServerParameters
+from mcp.client.streamable_http import streamable_http_client
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from moteur import config
+from moteur import config, oauth
 from moteur.base import AppelConnecteur, ConnecteurBranche
 
 CATALOGUE = json.loads((pathlib.Path(__file__).with_name("catalogue_connecteurs.json")).read_text(encoding="utf-8"))
@@ -64,15 +66,27 @@ def fiche_catalogue(identifiant: str) -> dict | None:
     return next((entree for entree in CATALOGUE if entree["id"] == identifiant), None)
 
 
-def cible_par_defaut(entree: dict) -> Any:
-    """Comment joindre le serveur MCP d'un connecteur, d'après le catalogue. None : pas encore joignable."""
+def adresse_serveur(identifiant: str) -> str | None:
+    entree = fiche_catalogue(identifiant) or {}
     transport = entree.get("transport") or {}
-    if transport.get("type") == "stdio":
-        if entree["id"] == "odoo" and not pathlib.Path(config.lire("ODOO_CLE_FICHIER", str(config.RACINE / "donnees" / "odoo-cle-api"))).exists():
-            return None
-        return StdioServerParameters(command=sys.executable, args=["-m", transport["module"]], cwd=str(config.RACINE))
-    # Les serveurs distants (HubSpot, Google) demandent une connexion OAuth : prévue, pas encore construite.
-    return None
+    return transport.get("url") if transport.get("type") == "http" else None
+
+
+class _JetonOAuth(httpx2.Auth):
+    """Joint le jeton OAuth à chaque requête ; sur un refus (401), le renouvelle une fois et réessaie."""
+
+    def __init__(self, fabrique_session: Callable[[], Session], connecteur: str, adresse: str, acces: str):
+        self._fabrique_session, self._connecteur, self._adresse, self._acces = fabrique_session, connecteur, adresse, acces
+
+    def auth_flow(self, requete):
+        requete.headers["Authorization"] = f"Bearer {self._acces}"
+        reponse = yield requete
+        if reponse.status_code == 401:
+            with self._fabrique_session() as session:
+                self._acces = oauth.jeton(session, self._connecteur, self._adresse, forcer=True) or self._acces
+                session.commit()
+            requete.headers["Authorization"] = f"Bearer {self._acces}"
+            yield requete
 
 
 class _Boucle:
@@ -144,11 +158,28 @@ class Passerelle:
         self._verrou = threading.Lock()
 
     def cible(self, identifiant: str) -> Any:
+        """Comment joindre le serveur MCP du connecteur. None : pas joignable pour l'instant."""
         if self._cibles is not None:
             fabrique = self._cibles.get(identifiant)
             return fabrique() if fabrique else None
-        entree = fiche_catalogue(identifiant)
-        return cible_par_defaut(entree) if entree else None
+        transport = (fiche_catalogue(identifiant) or {}).get("transport") or {}
+        if transport.get("type") == "stdio":
+            if identifiant == "odoo" and not pathlib.Path(config.lire("ODOO_CLE_FICHIER", str(config.RACINE / "donnees" / "odoo-cle-api"))).exists():
+                return None
+            return StdioServerParameters(command=sys.executable, args=["-m", transport["module"]], cwd=str(config.RACINE))
+        if transport.get("type") == "http":
+            # Serveur distant d'un éditeur : il faut un compte connecté (OAuth).
+            try:
+                with self._fabrique_session() as session:
+                    acces = oauth.jeton(session, identifiant, transport["url"])
+                    session.commit()
+            except oauth.ErreurOAuth as erreur:
+                raise ErreurConnecteur(str(erreur)) from erreur
+            if acces is None:
+                return None
+            client = httpx2.AsyncClient(auth=_JetonOAuth(self._fabrique_session, identifiant, transport["url"], acces), timeout=30)
+            return streamable_http_client(transport["url"], http_client=client)
+        return None
 
     def _connexion(self, identifiant: str) -> _Connexion:
         with self._verrou:
@@ -180,8 +211,14 @@ class Passerelle:
 
     def outils_du_serveur(self, identifiant: str) -> list[OutilConnecteur]:
         """Tous les outils que le serveur du connecteur déclare, en lecture ou non."""
+        # Lecture : déclarée par le serveur (read_only_hint), ou vérifiée par nous dans la documentation
+        # de l'éditeur quand son serveur ne le déclare pas (liste « lecture_verifiee » du catalogue).
+        verifiees = set((fiche_catalogue(identifiant) or {}).get("lecture_verifiee", []))
         return [
-            OutilConnecteur(identifiant, outil.name, outil.description or "", outil.input_schema, bool(outil.annotations and outil.annotations.read_only_hint))
+            OutilConnecteur(
+                identifiant, outil.name, outil.description or "", outil.input_schema,
+                bool(outil.annotations and outil.annotations.read_only_hint) or outil.name in verifiees,
+            )
             for outil in self._connexion(identifiant).outils
         ]
 

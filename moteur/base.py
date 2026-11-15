@@ -6,7 +6,8 @@ Les tables :
 - consignes  : le texte exact de chaque version des consignes données à l'IA ;
 - taches     : la file des lectures à faire, prises par le travailleur (moteur/travailleur.py) ;
 - mails_recus : chaque mail reçu à l'adresse de dépôt, et ce qu'on a fait de ses pièces jointes ;
-- connecteurs et appels_connecteurs : les logiciels branchés (MCP) et le journal de leurs appels.
+- connecteurs et appels_connecteurs : les logiciels branchés (MCP) et le journal de leurs appels ;
+- demandes_oauth et jetons_connecteurs : les connexions par compte (OAuth), jetons chiffrés.
 
 Toute modification de ces modèles demande une migration (dossier migrations/).
 """
@@ -152,6 +153,30 @@ class AppelConnecteur(Base):
     detail: Mapped[str | None] = mapped_column(Text)
     duree_ms: Mapped[int | None] = mapped_column(Integer)
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.clock_timestamp())
+
+
+class DemandeOAuth(Base):
+    """Une connexion OAuth commencée : le navigateur est parti chez l'éditeur et doit revenir avec ce « state »."""
+
+    __tablename__ = "demandes_oauth"
+
+    etat: Mapped[str] = mapped_column(String(64), primary_key=True)  # le « state » OAuth, aléatoire
+    connecteur: Mapped[str] = mapped_column(String(40))
+    verificateur: Mapped[str] = mapped_column(Text)  # code_verifier PKCE, chiffré
+    auteur: Mapped[str] = mapped_column(String(100))
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class JetonConnecteur(Base):
+    """Les jetons OAuth d'un connecteur, toujours chiffrés : la base seule ne permet pas de s'en servir."""
+
+    __tablename__ = "jetons_connecteurs"
+
+    connecteur: Mapped[str] = mapped_column(String(40), primary_key=True)
+    acces: Mapped[str] = mapped_column(Text)
+    renouvellement: Mapped[str | None] = mapped_column(Text)
+    expire_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    modifie_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 def creer_moteur(url: str | None = None) -> Engine:

@@ -159,6 +159,7 @@ export interface Connecteur {
   outils_autorises: string[] | null
   branche_par: string | null
   branche_le: string | null
+  connexion_prete: boolean
 }
 
 export interface OutilConnecteur {
@@ -187,5 +188,6 @@ export const connecteurs = () => appeler<Connecteur[]>('/connecteurs')
 export const ficheConnecteur = (id: string) => appeler<FicheConnecteur>(`/connecteurs/${id}`)
 export const brancher = (id: string, auteur: string) => appeler<Connecteur>(`/connecteurs/${id}/branchement`, enJson({ auteur }))
 export const debrancher = (id: string) => appeler<Connecteur>(`/connecteurs/${id}/branchement`, { method: 'DELETE' })
+export const commencerConnexion = (id: string, auteur: string) => appeler<{ adresse: string }>(`/connecteurs/${id}/oauth`, enJson({ auteur }))
 export const autoriserOutils = (id: string, autorises: string[] | null) =>
   appeler<Connecteur>(`/connecteurs/${id}/outils`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autorises }) })

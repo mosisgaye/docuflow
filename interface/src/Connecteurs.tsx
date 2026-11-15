@@ -35,8 +35,8 @@ function Logo({ connecteur, taille = 44 }: { connecteur: Pick<Connecteur, 'id' |
 function etat(connecteur: Connecteur): string | null {
   if (connecteur.branche) return null
   if (connecteur.statut === 'bientot' || connecteur.statut === 'a_confirmer') return LIBELLE_STATUT[connecteur.statut]
-  // Serveur officiel prêt, mais la connexion par compte (OAuth) n'est pas encore construite dans DocuFlow.
-  if (connecteur.connexion === 'oauth') return 'Connexion par compte bientôt'
+  // Connexion par compte : il faut d'abord les identifiants fournis par l'éditeur.
+  if (connecteur.connexion === 'oauth' && !connecteur.connexion_prete) return 'Identifiants à configurer'
   return null
 }
 
@@ -51,7 +51,7 @@ function Action({ connecteur, occupe, surBrancher, surOuvrir }: { connecteur: Co
   if (etat(connecteur)) return null
   return (
     <button className="bouton bouton--plein carte-connecteur__brancher" onClick={surBrancher} disabled={occupe}>
-      {occupe ? 'Connexion…' : 'Brancher'}
+      {occupe ? 'Connexion…' : connecteur.connexion === 'oauth' ? 'Connecter mon compte' : 'Brancher'}
     </button>
   )
 }
@@ -188,9 +188,9 @@ function Fiche({
           <a className="bouton" href={fiche.documentation} target="_blank" rel="noreferrer">
             Documentation
           </a>
-          {(fiche.statut === 'disponible' || fiche.statut === 'preversion') && fiche.connexion === 'cle_api' && (
+          {(fiche.statut === 'disponible' || fiche.statut === 'preversion') && fiche.connexion_prete && (
             <button className="bouton bouton--plein" onClick={surBrancher} disabled={occupe}>
-              Brancher
+              {fiche.connexion === 'oauth' ? `Connecter mon compte ${fiche.nom}` : 'Brancher'}
             </button>
           )}
         </div>
@@ -201,19 +201,20 @@ function Fiche({
 
 interface Props {
   auteur: string
+  messageInitial: string | null  // au retour d'une connexion par compte
   statistiques: Statistiques | null
   surChangement: () => void
   surSansAuteur: () => void
 }
 
-export function Connecteurs({ auteur, statistiques, surChangement, surSansAuteur }: Props) {
+export function Connecteurs({ auteur, messageInitial, statistiques, surChangement, surSansAuteur }: Props) {
   const [liste, setListe] = useState<Connecteur[] | null>(null)
   const [onglet, setOnglet] = useState<Onglet | null>(null)
   const [recherche, setRecherche] = useState('')
   const [ouvert, setOuvert] = useState<string | null>(null)
   const [fiche, setFiche] = useState<FicheConnecteur | null>(null)
   const [occupe, setOccupe] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(messageInitial)
 
   const recharger = useCallback(async () => {
     const nouvelle = await api.connecteurs()
@@ -254,6 +255,18 @@ export function Connecteurs({ auteur, statistiques, surChangement, surSansAuteur
     if (!auteur.trim()) {
       setMessage('Indiquez votre nom en haut à droite : le branchement est inscrit à votre nom.')
       return surSansAuteur()
+    }
+    if (connecteur.connexion === 'oauth') {
+      // Connexion par compte : le navigateur part chez l'éditeur, puis revient ici.
+      setOccupe(connecteur.id)
+      api.commencerConnexion(connecteur.id, auteur.trim()).then(
+        ({ adresse }) => window.location.assign(adresse),
+        (erreur: Error) => {
+          setOccupe(null)
+          setMessage(erreur.message)
+        },
+      )
+      return
     }
     agir(connecteur.id, () => api.brancher(connecteur.id, auteur.trim()), `${connecteur.nom} est branché : l’assistant peut maintenant y chercher.`)
   }
