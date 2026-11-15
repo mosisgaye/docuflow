@@ -1,0 +1,14 @@
+.env
+**/.env
+.git
+.venv
+.pytest_cache
+**/__pycache__
+donnees
+interface
+vercel.json
+.vercelignore
+tests
+factures
+reception-mail
+deploiement

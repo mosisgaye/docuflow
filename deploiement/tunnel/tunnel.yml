@@ -1,0 +1,12 @@
+# Tunnel Cloudflare « docuflow » sur le serveur de démonstration.
+# L'identifiant du tunnel n'est pas secret ; son fichier d'identifiants (<id>.json) l'est :
+# il est copié à la main dans deploiement/tunnel/ et n'est jamais versionné.
+tunnel: afe1df1d-5eea-4735-9e61-22ef1242463b
+credentials-file: /etc/cloudflared/afe1df1d-5eea-4735-9e61-22ef1242463b.json
+
+ingress:
+  # Le moteur : l'interface Vercel y renvoie /api/…, le Worker y envoie les mails.
+  # Tout y est protégé : code d'accès, signature ou clé selon le chemin.
+  - hostname: api-docuflow.moussagaye.com
+    service: http://api:8010
+  - service: http_status:404

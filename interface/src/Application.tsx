@@ -8,6 +8,7 @@ import { A_TRAITER, LIBELLE_ETAT, ORDRE_ETATS, euros, initiales, raconter, teint
 import { Icone, type NomIcone } from './Icones'
 import { Connecteurs, type OngletConnecteurs } from './Connecteurs'
 import { Documents } from './Pages'
+import { EcranAcces } from './EcranAcces'
 import { TableauDeBord } from './TableauDeBord'
 import { type Theme, retenirTheme } from './theme'
 
@@ -78,6 +79,8 @@ export function Application() {
   const [ongletConnecteurs, setOngletConnecteurs] = useState<OngletConnecteurs | null>(null)
   const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'))
   const [laterale, setLaterale] = useState(() => lire('docuflow.laterale') !== 'repliee')
+  // null : on ne sait pas encore ; vrai : le code d'accès de la démonstration est demandé.
+  const [verrouille, setVerrouille] = useState<boolean | null>(null)
   const champRecherche = useRef<HTMLInputElement>(null)
   const [tours, setTours] = useState<Tour[]>([])
   const [recherche, setRecherche] = useState('')
@@ -96,9 +99,6 @@ export function Application() {
       () => setBranches([]),
     )
   }, [])
-  useEffect(() => {
-    rechargerConnecteurs()
-  }, [rechargerConnecteurs])
   const champAuteur = useRef<HTMLInputElement>(null)
   const champFichier = useRef<HTMLInputElement>(null)
   const toursActuels = useRef(tours)
@@ -125,8 +125,22 @@ export function Application() {
   }, [])
 
   useEffect(() => {
-    recharger()
-  }, [recharger])
+    api.etatAcces().then(
+      (etat) => setVerrouille(etat.requis && !etat.ouvert),
+      () => setVerrouille(false), // moteur injoignable : l'écran normal le dira
+    )
+    const fermer = () => setVerrouille(true)
+    window.addEventListener(api.EVENEMENT_ACCES, fermer)
+    return () => window.removeEventListener(api.EVENEMENT_ACCES, fermer)
+  }, [])
+
+  useEffect(() => {
+    if (verrouille === false) {
+      setErreur(null)
+      recharger()
+      rechargerConnecteurs()
+    }
+  }, [verrouille, recharger, rechargerConnecteurs])
 
   useEffect(() => {
     ecrire(CLE_AUTEUR, auteur)
@@ -438,6 +452,9 @@ export function Application() {
 
   // La fiche s'ouvre à côté des listes et de l'assistant ; l'accueil et les connecteurs gardent toute la largeur.
   const panneauFacture = detail && page !== 'connecteurs' && page !== 'tableau'
+
+  if (verrouille === null) return null
+  if (verrouille) return <EcranAcces surOuverture={() => setVerrouille(false)} />
   const enSaisieNom = !auteur.trim()
 
   return (

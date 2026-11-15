@@ -2966,3 +2966,60 @@ kbd {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ───────── Code d'accès de la démonstration ───────── */
+
+.acces-ecran {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 16px;
+  background:
+    radial-gradient(60% 50% at 50% 0%, var(--vert-pale), transparent 70%),
+    var(--fond);
+}
+
+.acces-ecran__carte {
+  display: grid;
+  gap: 12px;
+  width: min(380px, 100%);
+  padding: 28px 24px 24px;
+  border: var(--trait) solid var(--bordure);
+  border-radius: 12px;
+  background: var(--carte);
+  box-shadow: var(--ombre-forte);
+  animation: monte 0.3s var(--courbe);
+}
+
+.acces-ecran__marque {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+}
+
+.acces-ecran h1 {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.acces-ecran p {
+  color: var(--texte-2);
+}
+
+.acces-ecran__champ {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.acces-ecran__erreur {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--rouge) !important;
+}
+
+.acces-ecran__bouton {
+  height: 34px;
+}

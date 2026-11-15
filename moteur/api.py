@@ -38,7 +38,7 @@ from datetime import datetime
 
 import httpx
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pypdf.errors import PyPdfError
 from sqlalchemy import func, select, text
@@ -56,7 +56,7 @@ from moteur.odoo import Odoo, depuis_configuration
 from moteur.base import AppelConnecteur, ConnecteurBranche
 from moteur import oauth
 from moteur.approbation import LIBELLES, approbations_valides, empreinte, niveau_attendu, publier, version_en_vigueur
-from moteur import cles_api, evenements_sortants, notifications
+from moteur import acces, cles_api, evenements_sortants, notifications
 from moteur.base import Abonnement, CleApi, Livraison
 from moteur.connecteurs import CATALOGUE, ErreurConnecteur, Passerelle, adresse_serveur, fiche_catalogue
 from moteur.reception_mail import SignatureInvalide, cles_publiques, lire_mail_brut, recevoir_mail, verifier_signature
@@ -122,6 +122,10 @@ class DemandeAgent(BaseModel):
     messages: list[MessageAgent] = Field(min_length=1, max_length=40)
     facture_id: uuid.UUID | None = None  # la facture affichée à l'écran, s'il y en a une
     auteur: str | None = Field(default=None, max_length=100)  # la personne connectée, pour signer les courriels
+
+
+class CodeAcces(BaseModel):
+    code: str = Field(min_length=1, max_length=200)
 
 
 class NouvelleCle(BaseModel):
@@ -239,6 +243,56 @@ def creer_application(
         session.commit()
 
     application = FastAPI(title="Moteur de factures", version="0.1.0")
+    tentatives = acces.Tentatives()
+    # Toutes adresses confondues : derrière Vercel, l'adresse vue peut être partagée ou falsifiée.
+    tentatives_toutes = acces.Tentatives(maximum=acces.ESSAIS_MAX_TOTAL)
+
+    @application.middleware("http")
+    async def code_d_acces(requete: Request, suite):
+        # Sans code configuré (développement), tout passe. Sinon, le cookie du code est exigé.
+        if not acces.autorise(requete.url.path, requete.cookies.get(acces.COOKIE)):
+            return JSONResponse({"detail": "Code d’accès requis.", "acces": True}, status_code=status.HTTP_401_UNAUTHORIZED)
+        return await suite(requete)
+
+    def adresse_client(requete: Request) -> str:
+        # Vercel → Cloudflare → tunnel : le visiteur est le premier de X-Forwarded-For (posé par Vercel),
+        # sinon CF-Connecting-IP (accès direct), sinon l'adresse de la connexion.
+        premier = requete.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        return premier or requete.headers.get("cf-connecting-ip") or (requete.client.host if requete.client else "inconnue")
+
+    @application.get("/acces")
+    def etat_acces(requete: Request) -> dict:
+        requis = bool(acces.code())
+        return {"requis": requis, "ouvert": acces.autorise("/", requete.cookies.get(acces.COOKIE))}
+
+    @application.post("/acces")
+    def entrer(demande: CodeAcces, requete: Request, reponse: Response) -> dict:
+        if not acces.code():
+            return {"requis": False, "ouvert": True}
+        adresse = adresse_client(requete)
+        if tentatives.bloquee(adresse) or tentatives_toutes.bloquee("*"):
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Trop d’essais. Réessayez dans un quart d’heure.")
+        if not acces.code_correct(demande.code):
+            tentatives.noter_echec(adresse)
+            tentatives_toutes.noter_echec("*")
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Code incorrect.")
+        securise = requete.url.scheme == "https" or requete.headers.get("x-forwarded-proto") == "https"
+        reponse.set_cookie(
+            acces.COOKIE, acces.jeton(acces.code()), max_age=acces.DUREE_COOKIE_S, httponly=True, secure=securise, samesite="lax", path="/"
+        )
+        return {"requis": True, "ouvert": True}
+
+    @application.delete("/acces")
+    def sortir(reponse: Response) -> dict:
+        reponse.delete_cookie(acces.COOKIE, path="/")
+        return {"requis": bool(acces.code()), "ouvert": not acces.code()}
+
+    def refuser_si_quota(session: Session) -> None:
+        if acces.quota_atteint(session):
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                f"Limite de la démonstration atteinte : {acces.depots_par_jour()} factures par jour. Réessayez demain.",
+            )
 
     def session_de_requete() -> Iterator[Session]:
         # Une transaction par requête : tout est enregistré, ou rien.
@@ -301,6 +355,7 @@ def creer_application(
 
     @application.post("/factures", response_model=FactureDeposee, status_code=status.HTTP_202_ACCEPTED)
     def deposer(reponse: Response, fichier: UploadFile = File(...), session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        refuser_si_quota(session)
         contenu, nom = fichier_en_pdf(fichier)
         if traiter_tout_de_suite:
             resultat = traiter(session, contenu, nom, extracteur, odoo=odoo, extracteur_images=extracteur_images)
@@ -337,6 +392,7 @@ def creer_application(
         # Le corps est le mail brut, lu à la main (et non par FastAPI) : la signature porte sur ses octets exacts.
         if not corps.strip():
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Mail vide.")
+        refuser_si_quota(session)  # le Worker rejette alors le mail : l'expéditeur est prévenu
         compte_rendu = recevoir_mail(session, lire_mail_brut(corps), dossier)
         if compte_rendu.deja_vu:
             reponse.status_code = status.HTTP_200_OK
@@ -670,7 +726,7 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
 
     # ───────── API publique (/v1) : pour les autres logiciels, avec une clé ─────────
 
-    def acces(droit: str) -> Callable:
+    def acces_cle(droit: str) -> Callable:
         def verifier(authorization: str | None = Header(default=None), session: Session = Depends(session_de_requete, scope="function")) -> CleApi:
             try:
                 return cles_api.verifier(session, authorization, droit)
@@ -682,7 +738,7 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
 
     @application.get("/v1/factures", tags=["API publique"])
     def v1_lister(
-        etat: Etat | None = None, limite: int = 50, cle: CleApi = Depends(acces("factures:lire")),
+        etat: Etat | None = None, limite: int = 50, cle: CleApi = Depends(acces_cle("factures:lire")),
         session: Session = Depends(session_de_requete, scope="function"),
     ) -> dict:
         """Les factures, des plus récentes aux plus anciennes (200 au plus), filtrables par état."""
@@ -693,18 +749,19 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
 
     @application.get("/v1/factures/{facture_id}", tags=["API publique"])
     def v1_detailler(
-        facture_id: uuid.UUID, cle: CleApi = Depends(acces("factures:lire")), session: Session = Depends(session_de_requete, scope="function")
+        facture_id: uuid.UUID, cle: CleApi = Depends(acces_cle("factures:lire")), session: Session = Depends(session_de_requete, scope="function")
     ) -> dict:
         """Une facture, avec toutes ses données lues et son journal."""
         return _publique(facture_ou_404(session, facture_id), complete=True)
 
     @application.post("/v1/factures", tags=["API publique"], status_code=status.HTTP_202_ACCEPTED)
     def v1_deposer(
-        reponse: Response, fichier: UploadFile = File(...), cle: CleApi = Depends(acces("factures:deposer")),
+        reponse: Response, fichier: UploadFile = File(...), cle: CleApi = Depends(acces_cle("factures:deposer")),
         session: Session = Depends(session_de_requete, scope="function"),
     ) -> dict:
         """Dépose une facture (PDF ou photo). Elle est lue dans les secondes qui suivent : suivez son état,
         ou abonnez-vous à « facture.a_valider »."""
+        refuser_si_quota(session)
         contenu, nom = fichier_en_pdf(fichier)
         resultat = recevoir(session, contenu, nom, {"source": "api", "cle_api": f"dfk_{cle.prefixe}", "cle_nom": cle.nom})
         if resultat.deja_vue:

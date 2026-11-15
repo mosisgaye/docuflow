@@ -95,6 +95,8 @@ export interface Statistiques {
   activite: Activite[]
 }
 
+export const EVENEMENT_ACCES = 'docuflow:acces-requis'
+
 async function appeler<T>(chemin: string, options?: RequestInit): Promise<T> {
   let reponse: Response
   try {
@@ -106,6 +108,8 @@ async function appeler<T>(chemin: string, options?: RequestInit): Promise<T> {
     let message = `Le moteur a répondu ${reponse.status}.`
     try {
       const corps = await reponse.json()
+      // Code d'accès de la démonstration absent ou périmé : l'application affiche l'écran d'entrée.
+      if (reponse.status === 401 && corps.acces) window.dispatchEvent(new Event(EVENEMENT_ACCES))
       if (typeof corps.detail === 'string') message = corps.detail
     } catch {
       // Réponse sans JSON : on garde le message par défaut.
@@ -249,3 +253,14 @@ export const creerAbonnement = (url: string, evenements: string[], auteur: strin
   appeler<AbonnementSortant & { secret: string }>('/abonnements', enJson({ url, evenements, auteur }))
 export const essayerAbonnement = (id: string) => appeler<AbonnementSortant>(`/abonnements/${id}/essai`, { method: 'POST' })
 export const arreterAbonnement = (id: string) => appeler<{ id: string }>(`/abonnements/${id}`, supprimer)
+
+// ───────── Code d'accès de la démonstration ─────────
+
+export interface EtatAcces {
+  requis: boolean
+  ouvert: boolean
+}
+
+export const etatAcces = () => appeler<EtatAcces>('/acces')
+export const entrer = (code: string) => appeler<EtatAcces>('/acces', enJson({ code }))
+export const sortir = () => appeler<EtatAcces>('/acces', { method: 'DELETE' })

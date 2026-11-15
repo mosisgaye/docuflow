@@ -1,0 +1,88 @@
+# Moteur DocuFlow en démonstration sur un serveur : rien n'est ouvert sur Internet.
+# L'interface est sur Vercel (vercel.json), qui renvoie /api/… vers ce moteur.
+# Le moteur sort par le tunnel Cloudflare (HTTPS fourni par Cloudflare) :
+#   api-docuflow.moussagaye.com → l'API, derrière le code d'accès
+#   (libres : /reception/mail signé, /approbation/… signé, /v1/… par clé, /sante)
+#
+# Prérequis sur le serveur (voir deploiement/README.md) :
+#   .env               les réglages et secrets (jamais versionné)
+#   deploiement/tunnel les identifiants du tunnel (jamais versionnés) + tunnel.yml
+#   Odoo de démonstration lancé avec odoo/compose.yaml (réseau odoo-demo_default)
+#
+#   docker compose -f compose.prod.yaml up -d --build
+name: docuflow
+
+x-moteur: &moteur
+  build: .
+  image: docuflow-moteur
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://factures:${POSTGRES_PASSWORD:?à définir dans .env}@base:5432/factures
+    ODOO_URL: http://odoo:8069
+  volumes:
+    - ./donnees:/app/donnees
+  networks: [interne, odoo]
+
+services:
+  base:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: factures
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?à définir dans .env}
+      POSTGRES_DB: factures
+    volumes:
+      - base:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U factures -d factures"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [interne]
+
+  # Met le schéma à jour avant le démarrage : étape explicite, jamais faite par l'API elle-même.
+  migration:
+    <<: *moteur
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      base:
+        condition: service_healthy
+
+  api:
+    <<: *moteur
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/sante', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  travailleur:
+    <<: *moteur
+    command: ["python", "-m", "moteur.travailleur"]
+    stop_grace_period: 60s
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.7
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/tunnel.yml", "run"]
+    volumes:
+      - ./deploiement/tunnel:/etc/cloudflared:ro
+    depends_on: [api]
+    networks: [interne]
+
+volumes:
+  base:
+
+networks:
+  interne:
+  odoo:
+    name: odoo-demo_default
+    external: true
