@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from moteur import config
 from moteur.base import Etat, EtatTache, FactureEnBase, Tache, creer_moteur, verifier_schema
 from moteur.extraction_llm import ErreurExtraction, ResultatExtraction, extraire
+from moteur.odoo import Odoo, depuis_configuration
 from moteur.workflow import MOTEUR, _journaliser, _passer, lire_et_controler
 
 # Délais avant chaque nouvel essai d'une tâche : 30 s, 2 min, 10 min, 30 min, 2 h.
@@ -73,6 +74,7 @@ def traiter_une_tache(
     dossier: pathlib.Path,
     extracteur: Callable[[str], ResultatExtraction] = extraire,
     aujourd_hui: date | None = None,
+    odoo: Odoo | None = None,
 ) -> CompteRendu | None:
     """Prend une tâche et la mène au bout. Ne valide pas la transaction : c'est à l'appelant de le faire.
 
@@ -90,7 +92,7 @@ def traiter_une_tache(
         return _abandonner(session, tache, facture, "Le fichier PDF de la facture est introuvable sur le serveur.")
 
     try:
-        lire_et_controler(session, facture, contenu, extracteur, aujourd_hui, echec_si_passagere=False)
+        lire_et_controler(session, facture, contenu, extracteur, aujourd_hui, echec_si_passagere=False, odoo=odoo)
     except ErreurExtraction as erreur:
         if tache.tentatives >= TENTATIVES_MAX:
             return _abandonner(session, tache, facture, f"{erreur} ; abandon après {tache.tentatives} tentatives.")
@@ -111,13 +113,13 @@ def traiter_une_tache(
     return CompteRendu(str(tache.id), str(facture.id), "lue", facture.etat)
 
 
-def boucle(arret: threading.Event, fabrique_session: Callable[[], Session], dossier: pathlib.Path, extracteur=extraire) -> None:
+def boucle(arret: threading.Event, fabrique_session: Callable[[], Session], dossier: pathlib.Path, extracteur=extraire, odoo: Odoo | None = None) -> None:
     """Traite les tâches tant qu'on ne demande pas l'arrêt. Une tâche commencée est toujours terminée."""
     while not arret.is_set():
         debut = time.monotonic()
         try:
             with fabrique_session() as session:
-                compte_rendu = traiter_une_tache(session, dossier, extracteur)
+                compte_rendu = traiter_une_tache(session, dossier, extracteur, odoo=odoo)
                 session.commit()
         except Exception:  # noqa: BLE001 - le travailleur ne doit jamais mourir sur une erreur imprévue
             journal.exception("Erreur imprévue : la tâche est relâchée et sera reprise.")
@@ -146,8 +148,9 @@ def main() -> None:
     signal.signal(signal.SIGTERM, demander_arret)
     signal.signal(signal.SIGINT, demander_arret)
     dossier = config.dossier_fichiers()
-    journal.info("Travailleur démarré : fichiers dans %s", dossier)
-    boucle(arret, lambda: Session(moteur), dossier)
+    odoo = depuis_configuration()
+    journal.info("Travailleur démarré : fichiers dans %s ; Odoo : %s", dossier, odoo or "non branché")
+    boucle(arret, lambda: Session(moteur), dossier, odoo=odoo)
     moteur.dispose()
     journal.info("Travailleur arrêté.")
 

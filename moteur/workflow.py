@@ -35,6 +35,7 @@ from moteur.facturx import LECTEUR as LECTEUR_FACTURX
 from moteur.facturx import FacturXInvalide, lire_facturx
 from moteur.lecture_pdf import lire_pdf
 from moteur.modeles import Facture
+from moteur.odoo import ErreurOdoo, Odoo
 
 MOTEUR = "moteur"
 
@@ -122,8 +123,12 @@ def lire_et_controler(
     extracteur: Callable[[str], ResultatExtraction] = extraire,
     aujourd_hui: date | None = None,
     echec_si_passagere: bool = True,
+    odoo: Odoo | None = None,
 ) -> None:
     """Lit la facture (Factur-X ou IA) puis la contrôle.
+
+    Avec odoo, le fournisseur est aussi cherché dans le logiciel du client : inconnu, il donne
+    un avertissement ; si Odoo ne répond pas, la lecture continue et le journal le dit.
 
     Avec echec_si_passagere=False, une panne passagère de l'IA n'est pas traitée ici :
     ErreurExtraction est relancée, la facture reste « reçue », et c'est la file de tâches
@@ -165,10 +170,36 @@ def lire_et_controler(
     facture.numero_facture = donnees.numero_facture
     _passer(session, facture, Etat.EXTRAITE, "EXTRACTION", MOTEUR, detail)
 
-    anomalies = [*controler(donnees, aujourd_hui), *_doublon_metier(session, facture)]
+    anomalies = [*controler(donnees, aujourd_hui), *_doublon_metier(session, facture), *_fournisseur_dans_odoo(session, facture, donnees, odoo)]
     facture.anomalies = [asdict(anomalie) for anomalie in anomalies]
     etat = Etat.A_VALIDER if est_validable(anomalies) else Etat.EN_ANOMALIE
     _passer(session, facture, etat, "CONTROLE", MOTEUR, {"anomalies": [anomalie.code for anomalie in anomalies]})
+
+
+def _fournisseur_dans_odoo(session: Session, facture: FactureEnBase, donnees: Facture, odoo: Odoo | None) -> list[Anomalie]:
+    if odoo is None or not (donnees.fournisseur_siret or donnees.fournisseur_tva):
+        return []
+    try:
+        fournisseur = odoo.trouver_fournisseur(donnees.fournisseur_siret, donnees.fournisseur_tva)
+    except ErreurOdoo as erreur:
+        # Odoo indisponible n'empêche pas de lire la facture : on le note, sans inventer d'anomalie.
+        _journaliser(session, facture, "ODOO_INDISPONIBLE", MOTEUR, {"raison": str(erreur)})
+        return []
+    if fournisseur is None:
+        _journaliser(session, facture, "FOURNISSEUR_ODOO", MOTEUR, {"trouve": False})
+        return [
+            Anomalie(
+                "FOURNISSEUR_INCONNU",
+                Gravite.AVERTISSEMENT,
+                f"Le fournisseur « {donnees.fournisseur_nom or donnees.fournisseur_siret} » n'existe pas dans Odoo : il faudra le créer avant l'envoi en comptabilité.",
+                "fournisseur_nom",
+            )
+        ]
+    _journaliser(
+        session, facture, "FOURNISSEUR_ODOO", MOTEUR,
+        {"trouve": True, "id": fournisseur.id, "nom": fournisseur.nom, "adresse": odoo.adresse_fiche("res.partner", fournisseur.id)},
+    )
+    return []
 
 
 def _mettre_en_file(session: Session, facture: FactureEnBase) -> Tache | None:
@@ -237,6 +268,7 @@ def traiter(
     nom_fichier: str,
     extracteur: Callable[[str], ResultatExtraction] = extraire,
     aujourd_hui: date | None = None,
+    odoo: Odoo | None = None,
 ) -> ResultatTraitement:
     """Reçoit un PDF et le lit tout de suite : utilisé par les outils et les tests.
 
@@ -245,7 +277,7 @@ def traiter(
     resultat = recevoir(session, contenu, nom_fichier)
     if resultat.tache is not None:
         resultat.tache.tentatives += 1
-        lire_et_controler(session, resultat.facture, contenu, extracteur, aujourd_hui)
+        lire_et_controler(session, resultat.facture, contenu, extracteur, aujourd_hui, odoo=odoo)
         resultat.tache.etat = (EtatTache.ABANDONNEE if resultat.facture.etat == Etat.ECHEC.value else EtatTache.TERMINEE).value
         session.flush()
     return resultat
@@ -271,8 +303,19 @@ def rejeter(session: Session, facture_id: uuid.UUID, auteur: str, motif: str) ->
     return facture
 
 
-def exporter(session: Session, facture_id: uuid.UUID, auteur: str, dossier: pathlib.Path, client=None) -> FactureEnBase:
+def exporter(
+    session: Session,
+    facture_id: uuid.UUID,
+    auteur: str,
+    dossier: pathlib.Path,
+    client=None,
+    odoo: Odoo | None = None,
+    dossier_fichiers: pathlib.Path | None = None,
+) -> FactureEnBase:
     """Envoie une facture validée à la comptabilité. Sans effet si elle est déjà exportée.
+
+    Le fichier CSV de l'écriture est toujours produit. Avec odoo, la facture fournisseur est
+    créée dans Odoo, PDF joint ; sinon, l'écriture part vers EXPORT_WEBHOOK_URL s'il est réglé.
 
     En cas d'échec, la facture reste « validée », l'échec est inscrit au journal et
     ErreurExport est levée : il suffit de relancer l'export.
@@ -292,7 +335,11 @@ def exporter(session: Session, facture_id: uuid.UUID, auteur: str, dossier: path
         provisoire = chemin.with_suffix(".tmp")
         provisoire.write_text(en_csv(lignes), encoding="utf-8", newline="")
         provisoire.replace(chemin)  # le fichier apparaît d'un coup, jamais à moitié écrit
-        envoi = envoyer_au_logiciel(str(facture.id), lignes, client)
+        if odoo is not None:
+            pdf = (dossier_fichiers / f"{facture.empreinte}.pdf") if dossier_fichiers else None
+            envoi = odoo.envoyer_facture(donnees, pdf.read_bytes() if pdf and pdf.exists() else None, facture.nom_fichier)
+        else:
+            envoi = envoyer_au_logiciel(str(facture.id), lignes, client)
     except ErreurExport as erreur:
         _journaliser(session, facture, "EXPORT_ECHOUE", auteur, {"raison": str(erreur)})
         raise

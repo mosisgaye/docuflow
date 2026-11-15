@@ -1317,6 +1317,20 @@ button {
   font-weight: 600;
 }
 
+.odoo {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--violet-pale);
+  color: var(--violet-fonce);
+  font-size: 14px;
+}
+
+.odoo a {
+  color: inherit;
+  font-weight: 600;
+}
+
 .origine {
   margin-top: 8px;
   color: var(--encre-douce);

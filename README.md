@@ -203,6 +203,15 @@ uv run python -m outils.odoo_remplir           # fournisseurs, bons de commande,
 - DocuFlow a son propre utilisateur Odoo, `docuflow`, limité à la facturation, aux achats et aux contacts. Sa clé d'API (portée `rpc`, valable un an) est rangée dans `donnees/odoo-cle-api`, jamais affichée ni versionnée.
 - DocuFlow utilise l'API JSON-2 d'Odoo : XML-RPC et JSON-RPC sont dépréciés depuis Odoo 19 et seront supprimés dans Odoo 22.
 
+Ce que fait le connecteur (`moteur/odoo.py`), actif dès que la clé existe :
+
+| Moment | Ce qui se passe |
+|---|---|
+| Lecture d'une facture | le fournisseur est cherché dans Odoo par son SIRET, ou à défaut par son numéro de TVA. Inconnu : avertissement « à créer avant l'envoi ». Odoo en panne : la lecture continue, le journal le dit |
+| Envoi en comptabilité | la facture fournisseur est créée dans Odoo en brouillon, avec ses lignes, la TVA française au bon taux (aucune pour un fournisseur en franchise), ses dates et le PDF d'origine joint. Le CSV de l'écriture est toujours produit |
+| Nouvel essai | même fournisseur et même numéro : rien n'est recréé ; un envoi interrompu avant le PDF est complété |
+| Contrôle | le total recalculé par Odoo est comparé à celui de la facture ; tout écart est signalé |
+
 ## Configuration
 
 Toutes les valeurs se règlent dans `.env` (voir `.env.example`).

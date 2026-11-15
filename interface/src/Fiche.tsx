@@ -57,6 +57,39 @@ function Ecriture({ facture }: { facture: FactureDetail }) {
   )
 }
 
+/** Ce qu'Odoo, le logiciel du client, sait de cette facture : le fournisseur, puis la facture créée. */
+function Odoo({ facture }: { facture: FactureDetail }) {
+  const fournisseur = [...facture.evenements].reverse().find((evenement) => evenement.type === 'FOURNISSEUR_ODOO')
+  const envoi = [...facture.evenements].reverse().find((evenement) => evenement.type === 'EXPORT')?.detail.logiciel as
+    | { logiciel?: string; adresse?: string; total_odoo?: string; ecart_total?: string | null }
+    | undefined
+  if (!fournisseur && envoi?.logiciel !== 'odoo') return null
+  return (
+    <p className="odoo">
+      {fournisseur?.detail.trouve ? (
+        <>
+          Fournisseur reconnu dans Odoo :{' '}
+          <a href={String(fournisseur.detail.adresse)} target="_blank" rel="noreferrer">
+            {String(fournisseur.detail.nom)}
+          </a>
+        </>
+      ) : fournisseur ? (
+        'Fournisseur absent d’Odoo'
+      ) : null}
+      {envoi?.logiciel === 'odoo' && envoi.adresse && (
+        <>
+          {' · '}
+          <a href={envoi.adresse} target="_blank" rel="noreferrer">
+            Voir la facture dans Odoo
+          </a>{' '}
+          ({euros(envoi.total_odoo ?? null)}
+          {envoi.ecart_total ? `, écart de ${euros(envoi.ecart_total)} avec la facture` : ', même total que la facture'})
+        </>
+      )}
+    </p>
+  )
+}
+
 function Tampon({ facture }: { facture: FactureDetail }) {
   const decision = [...facture.evenements].reverse().find((evenement) => evenement.type === 'VALIDATION' || evenement.type === 'REJET')
   if (!decision) return null
@@ -96,6 +129,7 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
             {facture.evenements[0].detail.objet ? <>, objet « {String(facture.evenements[0].detail.objet)} »</> : null}
           </p>
         )}
+        <Odoo facture={facture} />
         <Tampon facture={facture} />
       </header>
 

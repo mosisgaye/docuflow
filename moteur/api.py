@@ -38,6 +38,7 @@ from moteur.base import Etat, EtatTache, Evenement, FactureEnBase, Tache, creer_
 from moteur.extraction_llm import ResultatExtraction, extraire
 from moteur.export import ErreurEnvoi, ErreurExport
 from moteur.lecture_pdf import lire_pdf
+from moteur.odoo import Odoo, depuis_configuration
 from moteur.reception_mail import SignatureInvalide, cles_publiques, lire_mail_brut, recevoir_mail, verifier_signature
 from moteur.workflow import FactureIntrouvable, TransitionInterdite, exporter, ranger_fichier, recevoir, rejeter, traiter, valider
 
@@ -132,12 +133,14 @@ def creer_application(
     client_export=None,
     traiter_tout_de_suite: bool = False,
     cles_mail: list | None = None,
+    odoo: Odoo | None | str = "configuration",
 ) -> FastAPI:
     """Construit l'application. Les paramètres servent aux tests ; en service, tout vient de .env.
 
     traiter_tout_de_suite : lire la facture pendant la requête au lieu de la confier au travailleur.
     Utile aux tests et aux démonstrations sans travailleur ; jamais en service.
     cles_mail : clés publiques des adaptateurs de messagerie. Sans elles, la réception par mail est fermée.
+    odoo : le connecteur Odoo ; par défaut, celui de la configuration (None s'il n'y a pas de clé).
     """
     if fabrique_session is None:
         moteur_base = creer_moteur()
@@ -146,6 +149,7 @@ def creer_application(
     dossier = dossier_fichiers or config.dossier_fichiers()
     dossier.mkdir(parents=True, exist_ok=True)
     cles_mail = cles_mail if cles_mail is not None else cles_publiques(config.lire("RECEPTION_MAIL_CLES_PUBLIQUES", ""))
+    odoo = depuis_configuration() if odoo == "configuration" else odoo
     exports = dossier_exports or pathlib.Path(config.lire("EXPORTS_DOSSIER", str(config.RACINE / "donnees" / "exports")))
 
     # L'assistant ne garde pas ses conversations : on enregistre sa consigne une fois, au démarrage,
@@ -208,7 +212,7 @@ def creer_application(
         ranger_fichier(dossier, contenu)
         nom = pathlib.Path(fichier.filename or "facture.pdf").name
         if traiter_tout_de_suite:
-            resultat = traiter(session, contenu, nom, extracteur)
+            resultat = traiter(session, contenu, nom, extracteur, odoo=odoo)
             reponse.status_code = status.HTTP_201_CREATED
         else:
             resultat = recevoir(session, contenu, nom)
@@ -286,7 +290,7 @@ def creer_application(
     @application.post("/factures/{facture_id}/export", response_model=FactureDetail)
     def exporter_facture(facture_id: uuid.UUID, demande: Validation, session: Session = Depends(session_de_requete, scope="function")) -> dict:
         try:
-            return decider(lambda: exporter(session, facture_id, demande.auteur, exports, client_export))
+            return decider(lambda: exporter(session, facture_id, demande.auteur, exports, client_export, odoo=odoo, dossier_fichiers=dossier))
         except ErreurExport as erreur:
             # L'échec est inscrit au journal : on l'enregistre avant de répondre par une erreur.
             session.commit()

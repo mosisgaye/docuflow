@@ -66,8 +66,18 @@ export function raconter(evenement: Evenement): string {
       return `Validée par ${evenement.auteur}`
     case 'REJET':
       return `Rejetée par ${evenement.auteur} : ${String(detail.motif)}`
-    case 'EXPORT':
+    case 'EXPORT': {
+      const envoi = detail.logiciel as { logiciel?: string; deja_envoyee?: boolean } | null
+      if (envoi?.logiciel === 'odoo')
+        return envoi.deja_envoyee
+          ? `Déjà présente dans Odoo : rien n’a été recréé (${evenement.auteur})`
+          : `Facture fournisseur créée dans Odoo par ${evenement.auteur}, PDF joint`
       return `Envoyée à la comptabilité par ${evenement.auteur}`
+    }
+    case 'FOURNISSEUR_ODOO':
+      return detail.trouve ? `Fournisseur reconnu dans Odoo : ${String(detail.nom)}` : 'Fournisseur absent d’Odoo'
+    case 'ODOO_INDISPONIBLE':
+      return `Odoo n’a pas répondu, fournisseur non vérifié : ${String(detail.raison)}`
     case 'EXPORT_ECHOUE':
       return `Envoi à la comptabilité échoué : ${String(detail.raison)}`
     default:

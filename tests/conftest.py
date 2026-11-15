@@ -59,3 +59,12 @@ def connexion(moteur_base):
 def session(connexion):
     with Session(bind=connexion, join_transaction_mode="create_savepoint") as session:
         yield session
+
+
+@pytest.fixture(autouse=True)
+def sans_odoo(monkeypatch, tmp_path_factory):
+    """Aucun test ne parle au vrai Odoo de la machine : la clé pointe vers un fichier absent.
+
+    Les tests du connecteur fournissent leur propre faux Odoo (tests/test_odoo.py).
+    """
+    monkeypatch.setenv("ODOO_CLE_FICHIER", str(tmp_path_factory.getbasetemp() / "pas-de-cle-odoo"))
