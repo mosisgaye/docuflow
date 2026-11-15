@@ -42,7 +42,7 @@ class LLMLent:
 def base_propre(moteur_base):
     yield moteur_base
     with moteur_base.begin() as connexion:
-        connexion.execute(text("truncate taches, evenements, factures"))
+        connexion.execute(text("truncate approbations, taches, evenements, factures"))
 
 
 def deposer_en_parallele(moteur_base, depots: list[tuple[bytes, str]], extracteur) -> tuple[list, list]:

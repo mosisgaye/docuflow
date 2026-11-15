@@ -262,4 +262,4 @@ def test_le_meme_mail_recu_deux_fois_en_meme_temps(moteur_base, tmp_path):
             assert session.scalar(select(func.count()).select_from(FactureEnBase)) == 1
     finally:
         with moteur_base.begin() as connexion:
-            connexion.execute(text("truncate mails_recus, taches, evenements, factures"))
+            connexion.execute(text("truncate mails_recus, approbations, taches, evenements, factures"))

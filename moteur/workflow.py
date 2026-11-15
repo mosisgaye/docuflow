@@ -1,8 +1,9 @@
 """Le workflow d'une facture : de la réception à la validation.
 
-    recue ──> extraite ──> a_valider ──> validee ──> exportee
+    recue ──> extraite ──> a_valider ──(en_approbation)──> validee ──> exportee
       │           │            │
       │           └──> en_anomalie ──> rejetee
+Le passage de a_valider à validee suit le circuit d'approbation (moteur/approbation.py).
       └──> echec (nouvel essai possible)
 
 Chaque changement d'état passe par _passer(), qui refuse les transitions
@@ -36,6 +37,7 @@ from moteur.facturx import FacturXInvalide, lire_facturx
 from moteur.lecture_pdf import lire_pdf
 from moteur.modeles import Facture
 from moteur.odoo import ErreurOdoo, Odoo
+from moteur.approbation import LIBELLES, ApprobationRefusee, approuver, circuit, version_en_vigueur
 
 MOTEUR = "moteur"
 
@@ -43,7 +45,8 @@ TRANSITIONS: dict[Etat, set[Etat]] = {
     Etat.RECUE: {Etat.EXTRAITE, Etat.ECHEC},
     Etat.ECHEC: {Etat.EXTRAITE, Etat.ECHEC},
     Etat.EXTRAITE: {Etat.A_VALIDER, Etat.EN_ANOMALIE},
-    Etat.A_VALIDER: {Etat.VALIDEE, Etat.REJETEE},
+    Etat.A_VALIDER: {Etat.VALIDEE, Etat.REJETEE, Etat.EN_APPROBATION},
+    Etat.EN_APPROBATION: {Etat.VALIDEE, Etat.REJETEE},
     Etat.EN_ANOMALIE: {Etat.REJETEE},
     Etat.VALIDEE: {Etat.EXPORTEE},
     Etat.REJETEE: set(),
@@ -173,7 +176,14 @@ def lire_et_controler(
     anomalies = [*controler(donnees, aujourd_hui), *_doublon_metier(session, facture), *_fournisseur_dans_odoo(session, facture, donnees, odoo)]
     facture.anomalies = [asdict(anomalie) for anomalie in anomalies]
     etat = Etat.A_VALIDER if est_validable(anomalies) else Etat.EN_ANOMALIE
-    _passer(session, facture, etat, "CONTROLE", MOTEUR, {"anomalies": [anomalie.code for anomalie in anomalies]})
+    detail = {"anomalies": [anomalie.code for anomalie in anomalies]}
+    if etat == Etat.A_VALIDER:
+        # Qui doit approuver, selon les règles en vigueur : calculé une fois, gardé avec la facture.
+        facture.circuit = circuit(facture.donnees, facture.anomalies, version_en_vigueur(session))
+        detail["circuit"] = [niveau["niveau"] for niveau in facture.circuit["niveaux"]]
+        if facture.circuit["bloque"]:
+            detail["bloque"] = facture.circuit["bloque"]
+    _passer(session, facture, etat, "CONTROLE", MOTEUR, detail)
 
 
 def _fournisseur_dans_odoo(session: Session, facture: FactureEnBase, donnees: Facture, odoo: Odoo | None) -> list[Anomalie]:
@@ -313,9 +323,27 @@ def _charger(session: Session, facture_id: uuid.UUID) -> FactureEnBase:
 
 
 def valider(session: Session, facture_id: uuid.UUID, auteur: str) -> FactureEnBase:
-    """Validation par une personne. Impossible si un contrôle bloquant a échoué."""
-    facture = _charger(session, facture_id)
-    _passer(session, facture, Etat.VALIDEE, "VALIDATION", auteur)
+    """Approbation par une personne, au niveau attendu du circuit. Impossible si un contrôle bloquant a échoué.
+
+    La facture devient « validée » quand tous les niveaux du circuit ont approuvé ; avant, elle est
+    « en approbation ». Deux approbations simultanées passent l'une après l'autre.
+    """
+    facture = session.get(FactureEnBase, facture_id, with_for_update=True)
+    if facture is None:
+        raise FactureIntrouvable(str(facture_id))
+    if facture.etat not in (Etat.A_VALIDER.value, Etat.EN_APPROBATION.value):
+        raise TransitionInterdite(f"Passage interdit de « {facture.etat} » à « {Etat.VALIDEE.value} ».")
+    try:
+        approbation, termine = approuver(session, facture, auteur)
+    except ApprobationRefusee as erreur:
+        raise TransitionInterdite(str(erreur)) from erreur
+    detail = {"niveau": approbation.niveau, "libelle": LIBELLES[approbation.niveau]}
+    if termine:
+        _passer(session, facture, Etat.VALIDEE, "VALIDATION", auteur, detail)
+    elif facture.etat == Etat.A_VALIDER.value:
+        _passer(session, facture, Etat.EN_APPROBATION, "APPROBATION", auteur, detail)
+    else:
+        _journaliser(session, facture, "APPROBATION", auteur, detail)
     return facture
 
 

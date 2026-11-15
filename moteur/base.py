@@ -7,7 +7,8 @@ Les tables :
 - taches     : la file des lectures à faire, prises par le travailleur (moteur/travailleur.py) ;
 - mails_recus : chaque mail reçu à l'adresse de dépôt, et ce qu'on a fait de ses pièces jointes ;
 - connecteurs et appels_connecteurs : les logiciels branchés (MCP) et le journal de leurs appels ;
-- demandes_oauth et jetons_connecteurs : les connexions par compte (OAuth), jetons chiffrés.
+- demandes_oauth et jetons_connecteurs : les connexions par compte (OAuth), jetons chiffrés ;
+- regles_approbation et approbations : qui doit approuver une facture, et qui l'a fait.
 
 Toute modification de ces modèles demande une migration (dossier migrations/).
 """
@@ -16,7 +17,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, create_engine, func, text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, create_engine, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -28,6 +29,7 @@ class Etat(StrEnum):
     RECUE = "recue"  # le fichier est arrivé
     EXTRAITE = "extraite"  # le LLM a rendu des données valides
     A_VALIDER = "a_valider"  # contrôles passés, une personne doit valider
+    EN_APPROBATION = "en_approbation"  # approuvée à un niveau, d'autres niveaux doivent encore approuver
     EN_ANOMALIE = "en_anomalie"  # un contrôle bloquant a échoué
     VALIDEE = "validee"  # une personne a validé
     REJETEE = "rejetee"  # une personne a rejeté
@@ -58,6 +60,8 @@ class FactureEnBase(Base):
     # Recopiés depuis les données pour retrouver vite un doublon.
     fournisseur_siret: Mapped[str | None] = mapped_column(String(14))
     numero_facture: Mapped[str | None] = mapped_column(String(100))
+    # Qui doit approuver et pourquoi, calculé par les règles à la fin des contrôles (moteur/approbation.py).
+    circuit: Mapped[dict | None] = mapped_column(JSONB)
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     modifie_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -177,6 +181,33 @@ class JetonConnecteur(Base):
     renouvellement: Mapped[str | None] = mapped_column(Text)
     expire_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     modifie_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ReglesApprobation(Base):
+    """Une version des règles d'approbation. Jamais modifiée : changer les règles publie une nouvelle version."""
+
+    __tablename__ = "regles_approbation"
+
+    version: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    regles: Mapped[list] = mapped_column(JSONB)
+    publie_par: Mapped[str] = mapped_column(String(100))
+    publie_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Approbation(Base):
+    """L'approbation d'une facture à un niveau, par une personne, sur des données précises."""
+
+    __tablename__ = "approbations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    facture_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("factures.id"), index=True)
+    niveau: Mapped[str] = mapped_column(String(40))
+    personne: Mapped[str] = mapped_column(String(100))
+    # Empreinte des données approuvées : si elles changent ensuite, l'approbation ne vaut plus.
+    empreinte_donnees: Mapped[str] = mapped_column(String(64))
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.clock_timestamp())
+
+    __table_args__ = (UniqueConstraint("facture_id", "niveau", name="uq_approbations_facture_niveau"),)
 
 
 def creer_moteur(url: str | None = None) -> Engine:

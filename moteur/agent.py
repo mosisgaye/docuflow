@@ -135,7 +135,7 @@ def _trouver(session: Session, reference: str) -> FactureEnBase | None:
     ).first()
 
 
-DECIDABLES = {Etat.A_VALIDER.value, Etat.EN_ANOMALIE.value}
+DECIDABLES = {Etat.A_VALIDER.value, Etat.EN_APPROBATION.value, Etat.EN_ANOMALIE.value}
 
 
 def executer_outil(
@@ -172,7 +172,7 @@ def executer_outil(
         decision = arguments.get("decision")
         if facture.etat not in DECIDABLES:
             return {"erreur": f"Cette facture est déjà « {facture.etat} » : il n'y a plus de décision à prendre."}, [vue]
-        if decision == "valider" and facture.etat != Etat.A_VALIDER.value:
+        if decision == "valider" and facture.etat not in (Etat.A_VALIDER.value, Etat.EN_APPROBATION.value):
             return {"erreur": f"Cette facture est « {facture.etat} » : elle ne peut pas être validée."}, [vue]
         if str(facture.id) not in consultees:
             return {"erreur": "Consulte d'abord la facture avec consulter_facture, puis appuie ta proposition sur ce qu'elle contient."}, []

@@ -180,7 +180,7 @@ def test_un_fichier_introuvable_abandonne_la_tache(session, tmp_path):
 def base_propre(moteur_base):
     yield moteur_base
     with moteur_base.begin() as connexion:
-        connexion.execute(text("truncate taches, evenements, factures"))
+        connexion.execute(text("truncate approbations, taches, evenements, factures"))
 
 
 def test_un_travailleur_qui_plante_rend_sa_tache_a_un_autre(base_propre, dossier):
