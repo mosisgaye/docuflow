@@ -28,7 +28,7 @@ from datetime import date, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from moteur import config, evenements_sortants, relances
+from moteur import config, evenements_sortants, purge, relances
 from moteur.base import Etat, EtatTache, FactureEnBase, Tache, creer_moteur, verifier_schema
 from moteur.extraction_llm import ErreurExtraction, ResultatExtraction, extraire, extraire_images
 from moteur.odoo import Odoo, depuis_configuration
@@ -40,6 +40,7 @@ PLAN_DE_REPRISE_S = [30, 120, 600, 1800, 7200]
 TENTATIVES_MAX = len(PLAN_DE_REPRISE_S)
 ATTENTE_FILE_VIDE_S = 1.0
 RELANCES_TOUTES_LES_S = 600
+PURGE_TOUTES_LES_S = 6 * 3600  # les données techniques périmées (moteur/purge.py)
 LIVRAISONS_PAR_TOUR = 20
 
 journal = logging.getLogger("moteur.travailleur")
@@ -143,17 +144,30 @@ def faire_les_relances(fabrique_session: Callable[[], Session]) -> int:
     return nombre
 
 
+def faire_la_purge(fabrique_session: Callable[[], Session]) -> dict[str, int]:
+    with fabrique_session() as session:
+        supprimees = purge.purger(session)
+        session.commit()
+    if any(supprimees.values()):
+        journal.info("Purge : %s", ", ".join(f"{table}={nombre}" for table, nombre in supprimees.items() if nombre))
+    return supprimees
+
+
 def boucle(arret: threading.Event, fabrique_session: Callable[[], Session], dossier: pathlib.Path, extracteur=extraire, odoo: Odoo | None = None) -> None:
     """Traite les tâches tant qu'on ne demande pas l'arrêt. Une tâche commencée est toujours terminée."""
     prochaines_relances = 0.0
+    prochaine_purge = 0.0
     while not arret.is_set():
         try:
             livrer_les_evenements(fabrique_session)
             if time.monotonic() >= prochaines_relances:
                 prochaines_relances = time.monotonic() + RELANCES_TOUTES_LES_S
                 faire_les_relances(fabrique_session)
+            if time.monotonic() >= prochaine_purge:
+                prochaine_purge = time.monotonic() + PURGE_TOUTES_LES_S
+                faire_la_purge(fabrique_session)
         except Exception:  # noqa: BLE001
-            journal.exception("Erreur imprévue pendant les livraisons ou les relances.")
+            journal.exception("Erreur imprévue pendant les livraisons, les relances ou la purge.")
         debut = time.monotonic()
         try:
             with fabrique_session() as session:
