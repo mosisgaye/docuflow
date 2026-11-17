@@ -1,6 +1,7 @@
 import { type ReactNode, memo, useEffect, useRef, useState } from 'react'
 import { duree } from './format'
-import { Icone } from './Icones'
+import { Icone, type NomIcone } from './Icones'
+import { IconeAgent } from './IconeAgent'
 
 export interface Etape {
   id: string
@@ -40,7 +41,19 @@ interface Props {
   surFichiers: (fichiers: File[]) => void
   surProposition: (tourId: number, rang: number, accepter: boolean) => void
   surOuverture: (factureId: string) => void
+  /** Dans le panneau de l'agent : un accueil avec des actions rapides, à la place des suggestions. */
+  panneau?: boolean
 }
+
+/** Les actions rapides de l'agent : envoyées tout de suite, ou posées dans la saisie pour être complétées. */
+const ACTIONS: { libelle: string; icone: NomIcone; texte: string; completer: boolean }[] = [
+  { libelle: 'Trouver', icone: 'recherche', texte: 'Trouve la facture ', completer: true },
+  { libelle: 'Analyser', icone: 'alerte', texte: 'Quelles factures posent problème, et pourquoi ?', completer: false },
+  { libelle: 'À valider', icone: 'validation', texte: 'Qu’est-ce qui attend ma validation ?', completer: false },
+  { libelle: 'Créer un circuit', icone: 'workflow', texte: 'Crée un circuit de validation : ', completer: true },
+  { libelle: 'Modifier le circuit', icone: 'reglages', texte: 'Dans le circuit, ', completer: true },
+  { libelle: 'Écrire au fournisseur', icone: 'mail', texte: 'Rédige un courriel au fournisseur de la facture ', completer: true },
+]
 
 const LIGNE_DE_LISTE = /^\s*(?:[-•*]|\d+[.)])\s+/
 
@@ -138,7 +151,7 @@ function Etapes({ etapes, enCours }: { etapes: Etape[]; enCours: boolean }) {
   )
 }
 
-export function Conversation({ tours, numeros, occupe, connecteurs, surConnecteurs, surEnvoi, surFichiers, surProposition, surOuverture }: Props) {
+export function Conversation({ tours, numeros, occupe, connecteurs, surConnecteurs, surEnvoi, surFichiers, surProposition, surOuverture, panneau = false }: Props) {
   const [saisie, setSaisie] = useState('')
   const fin = useRef<HTMLDivElement>(null)
   const champFichier = useRef<HTMLInputElement>(null)
@@ -166,7 +179,29 @@ export function Conversation({ tours, numeros, occupe, connecteurs, surConnecteu
   return (
     <main className="conversation">
       <div className="conversation__fil">
-        {tours.length === 0 ? (
+        {tours.length === 0 && panneau ? (
+          <div className="accueil accueil--agent">
+            <IconeAgent taille={40} />
+            <h1>Votre agent Verifac</h1>
+            <p>Il cherche dans vos factures, les explique, écrit aux fournisseurs, et prépare vos circuits de validation. Vous décidez toujours.</p>
+            <div className="actions-agent" role="group" aria-label="Actions rapides">
+              {ACTIONS.map((action) => (
+                <button
+                  key={action.libelle}
+                  className="actions-agent__pastille"
+                  disabled={occupe}
+                  onClick={() => {
+                    if (!action.completer) return surEnvoi(action.texte)
+                    setSaisie(action.texte)
+                    zone.current?.focus()
+                  }}
+                >
+                  <Icone nom={action.icone} taille={14} /> {action.libelle}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : tours.length === 0 ? (
           <div className="accueil">
             <span className="accueil__icone">
               <Icone nom="assistant" taille={20} />

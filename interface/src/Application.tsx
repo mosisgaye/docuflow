@@ -6,6 +6,7 @@ import { Conversation, type Tour } from './Conversation'
 import { Fiche, Journal, Tampon } from './Fiche'
 import { A_TRAITER, LIBELLE_ETAT, ORDRE_ETATS, aRegler, attenteLongue, echeanceProche, euros, initiales, raconter, teinte } from './format'
 import { Icone, type NomIcone } from './Icones'
+import { IconeAgent } from './IconeAgent'
 import { Connecteurs, type OngletConnecteurs } from './Connecteurs'
 import { Documents } from './Pages'
 import { EcranAcces } from './EcranAcces'
@@ -14,7 +15,7 @@ import { TableauDeBord } from './TableauDeBord'
 import { type OngletWorkflow, Workflow } from './Workflow'
 import { type Theme, retenirTheme } from './theme'
 
-type Page = 'tableau' | 'documents' | 'assistant' | 'workflow' | 'connecteurs' | 'reglages'
+type Page = 'tableau' | 'documents' | 'workflow' | 'connecteurs' | 'reglages'
 // « À traiter » est un filtre des factures (comme « Non lus » dans une boîte mail), pas une page à part.
 type Vue = Etat | 'toutes' | 'a_traiter' | 'mon_tour' | 'a_regler' | 'echeances' | 'attente'
 
@@ -22,7 +23,6 @@ const CLE_AUTEUR = 'factures.auteur'
 const MENU: { page: Page; nom: string; icone: NomIcone }[] = [
   { page: 'tableau', nom: 'Accueil', icone: 'accueil' },
   { page: 'documents', nom: 'Factures', icone: 'document' },
-  { page: 'assistant', nom: 'Assistant', icone: 'assistant' },
   { page: 'workflow', nom: 'Workflow', icone: 'workflow' },
   { page: 'connecteurs', nom: 'Connecteurs', icone: 'integration' },
   { page: 'reglages', nom: 'Réglages', icone: 'reglages' },
@@ -101,6 +101,8 @@ export function Application() {
   const [ongletWorkflow, setOngletWorkflow] = useState<OngletWorkflow>('circuit')
   const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'))
   const [laterale, setLaterale] = useState(() => lire('docuflow.laterale') !== 'repliee')
+  // L'agent IA : un panneau à droite, ouvert depuis l'icône du haut, sur toutes les pages.
+  const [agentOuvert, setAgentOuvert] = useState(false)
   // null : on ne sait pas encore ; vrai : le code d'accès de la démonstration est demandé.
   const [verrouille, setVerrouille] = useState<boolean | null>(null)
   const champRecherche = useRef<HTMLInputElement>(null)
@@ -310,7 +312,7 @@ export function Application() {
       const pdfs = fichiers.filter((fichier) => FORMATS_ACCEPTES.test(fichier.name))
       if (pdfs.length < fichiers.length) setErreur('Seuls les PDF et les photos (JPEG, PNG, WebP) sont acceptés.')
       if (pdfs.length === 0) return
-      if (page === 'assistant') return deposerAvecAssistant(pdfs)
+      if (agentOuvert) return deposerAvecAssistant(pdfs)
       setOccupe(true)
       setPage('tableau')
       let derniere: FactureDetail | null = null
@@ -349,7 +351,7 @@ export function Application() {
         setDetail(derniere)
       }
     },
-    [page, deposerAvecAssistant, recharger],
+    [agentOuvert, deposerAvecAssistant, recharger],
   )
 
   const decider = useCallback(
@@ -399,7 +401,7 @@ export function Application() {
   )
 
   const versAssistant = (question?: string) => {
-    setPage('assistant')
+    setAgentOuvert(true)
     if (question && !occupe) envoyer(question)
   }
 
@@ -510,7 +512,7 @@ export function Application() {
 
   return (
     <div
-      className={`app${lateraleAffichee ? '' : ' app--sans-laterale'}`}
+      className={`app${lateraleAffichee ? '' : ' app--sans-laterale'}${agentOuvert ? ' app--agent' : ''}`}
       onDragOver={(evenement) => {
         evenement.preventDefault()
         setSurvol(true)
@@ -547,9 +549,15 @@ export function Application() {
         </label>
 
         <div className="haut__actions">
-          <button className="bouton bouton--plein" onClick={() => champFichier.current?.click()} disabled={occupe}>
-            <Icone nom="deposer" />
-            <span>Déposer</span>
+          <button
+            className={`bouton-agent${agentOuvert ? ' bouton-agent--ouvert' : ''}`}
+            onClick={() => setAgentOuvert(!agentOuvert)}
+            aria-pressed={agentOuvert}
+            aria-label={agentOuvert ? 'Fermer l’agent IA' : 'Ouvrir l’agent IA'}
+            title="Agent IA"
+          >
+            <IconeAgent taille={18} />
+            <span>Agent</span>
           </button>
           <label className="auteur" title="Votre nom, inscrit au journal à chaque décision">
             <span className={`avatar teinte-3`} aria-hidden="true">
@@ -644,29 +652,6 @@ export function Application() {
             </div>
             <p className="laterale__pied">Lecture seule : l’assistant cherche, il ne modifie jamais rien dans vos logiciels.</p>
           </>
-        ) : page === 'assistant' ? (
-          <>
-            <div className="laterale__tete">
-              <h2>Assistant</h2>
-              <button className="bouton bouton--fantome bouton--icone" onClick={() => setTours([])} disabled={occupe} aria-label="Nouvelle conversation" title="Nouvelle conversation" tabIndex={laterale ? 0 : -1}>
-                <Icone nom="conversation" />
-              </button>
-            </div>
-            <div className="laterale__corps">
-              <p className="laterale__section">Il cherche dans</p>
-              {['Vos factures', 'Registre des entreprises', 'Annonces légales (BODACC)', ...branches].map((source) => (
-                <p key={source} className="laterale__ligne laterale__ligne--source">
-                  <Icone nom="coche" />
-                  <span>{source}</span>
-                </p>
-              ))}
-              <button className="laterale__ligne" onClick={() => setPage('connecteurs')} tabIndex={laterale ? 0 : -1}>
-                <Icone nom="plus" />
-                <span>Brancher un logiciel</span>
-              </button>
-            </div>
-            <p className="laterale__pied">L’assistant propose, vous décidez : rien n’est validé sans votre clic.</p>
-          </>
         ) : (
           <>
             <div className="laterale__tete">
@@ -757,7 +742,7 @@ export function Application() {
               surSansAuteur={() => champAuteur.current?.focus()}
             />
           ) : (
-            <div className={`page${page === 'assistant' ? ' page--pleine' : ''}`}>
+            <div className="page">
               {page === 'tableau' &&
                 (statistiques ? (
                   <TableauDeBord
@@ -785,22 +770,12 @@ export function Application() {
                       <h1>{TITRES_VUES[vue as keyof typeof TITRES_VUES]?.[0] ?? LIBELLE_ETAT[vue as Etat]}</h1>
                       <p>{TITRES_VUES[vue as keyof typeof TITRES_VUES]?.[1] ?? 'Cliquez sur une facture pour l’ouvrir à côté de la liste.'}</p>
                     </div>
+                    <button className="bouton bouton--plein" onClick={() => champFichier.current?.click()} disabled={occupe}>
+                      <Icone nom="deposer" /> Déposer
+                    </button>
                   </header>
                   <Documents factures={listeAffichee} recherche={recherche} ouverte={detail?.id ?? null} surOuverture={ouvrir} surDepot={() => champFichier.current?.click()} />
                 </>
-              )}
-              {page === 'assistant' && (
-                <Conversation
-                  tours={tours}
-                  numeros={numeros}
-                  occupe={occupe}
-                  connecteurs={branches}
-                  surConnecteurs={() => setPage('connecteurs')}
-                  surEnvoi={envoyer}
-                  surFichiers={deposerAvecAssistant}
-                  surProposition={repondreProposition}
-                  surOuverture={ouvrir}
-                />
               )}
             </div>
           )}
@@ -866,6 +841,35 @@ export function Application() {
           )}
         </div>
       </main>
+
+      {agentOuvert && (
+        <aside className="agent" aria-label="Agent IA">
+          <header className="agent__tete">
+            <button className="bouton bouton--fantome" onClick={() => setTours([])} disabled={occupe} title="Effacer et recommencer">
+              <Icone nom="conversation" /> Nouvelle discussion
+            </button>
+            <button className="bouton bouton--fantome bouton--icone" onClick={() => setAgentOuvert(false)} aria-label="Fermer l’agent IA" title="Fermer">
+              <Icone nom="fermer" />
+            </button>
+          </header>
+          <Conversation
+            panneau
+            tours={tours}
+            numeros={numeros}
+            occupe={occupe}
+            connecteurs={branches}
+            surConnecteurs={() => setPage('connecteurs')}
+            surEnvoi={envoyer}
+            surFichiers={deposerAvecAssistant}
+            surProposition={repondreProposition}
+            surOuverture={(id) => {
+              // La facture s'ouvre dans la liste, à côté de l'agent qui reste ouvert.
+              if (page !== 'documents') allerVue('toutes')
+              ouvrir(id)
+            }}
+          />
+        </aside>
+      )}
 
       <div className="notifications" aria-live="polite">
         {erreur && (
