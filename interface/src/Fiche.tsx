@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import * as api from './api'
 import type { Evenement, FactureDetail } from './api'
 import { LIBELLE_ETAT, LIBELLE_NIVEAU, euros, heure, jour, jourEtHeure, nombre, raconter, siret } from './format'
@@ -272,6 +272,24 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
   const avecRegles = facture.circuit?.version != null
   const libelleDecision = avecRegles && facture.niveau_attendu ? `Approuver (${LIBELLE_NIVEAU[facture.niveau_attendu].toLowerCase()})` : 'Valider'
 
+  // Trier au clavier : A approuve, R ouvre le rejet (les flèches passent d'une facture à l'autre).
+  useEffect(() => {
+    const touche = (evenement: KeyboardEvent) => {
+      const cible = evenement.target as HTMLElement | null
+      if (occupe || rejetOuvert || evenement.ctrlKey || evenement.metaKey || evenement.altKey || cible?.matches?.('input, textarea, select, [contenteditable]')) return
+      const lettre = evenement.key.toLowerCase()
+      if (lettre === 'a' && approuvable) {
+        evenement.preventDefault()
+        surValidation()
+      } else if (lettre === 'r' && decidable) {
+        evenement.preventDefault()
+        setRejetOuvert(true)
+      }
+    }
+    window.addEventListener('keydown', touche)
+    return () => window.removeEventListener('keydown', touche)
+  }, [occupe, rejetOuvert, approuvable, decidable, surValidation])
+
   return (
     <article className="fiche" aria-label="Données de la facture">
       {(facture.anomalies.length > 0 || facture.etat === 'echec') && (
@@ -414,10 +432,10 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
               )}
               <div className="decision__boutons">
                 <button className="bouton bouton--danger" onClick={() => setRejetOuvert(true)} disabled={occupe}>
-                  <Icone nom="refus" /> Rejeter
+                  <Icone nom="refus" /> Rejeter <kbd className="raccourci">R</kbd>
                 </button>
                 <button className="bouton bouton--plein" onClick={surValidation} disabled={occupe || !approuvable}>
-                  <Icone nom="coche" /> {libelleDecision}
+                  <Icone nom="coche" /> {libelleDecision} <kbd className="raccourci">A</kbd>
                 </button>
               </div>
             </>

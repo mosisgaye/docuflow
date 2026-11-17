@@ -358,6 +358,14 @@ export function Application() {
     [auteur, recharger],
   )
 
+  /** Décider, puis ouvrir la facture suivante de la liste : on vide « À traiter » sans revenir à la souris. */
+  const deciderPuisSuivante = async (id: string, action: (id: string, auteur: string) => Promise<FactureDetail>) => {
+    const prochaine = page === 'documents' ? suivante?.id : undefined
+    const reussi = await decider(id, action)
+    if (reussi && prochaine) ouvrir(prochaine)
+    return reussi
+  }
+
   const repondreProposition = useCallback(
     async (tourId: number, rang: number, accepter: boolean) => {
       const proposition = toursActuels.current.find((tour) => tour.id === tourId)?.propositions[rang]
@@ -820,8 +828,8 @@ export function Application() {
                     key={detail.id + detail.etat}
                     facture={detail}
                     occupe={decision}
-                    surValidation={() => decider(detail.id, api.valider)}
-                    surRejet={(motif) => decider(detail.id, (id, nom) => api.rejeter(id, nom, motif))}
+                    surValidation={() => deciderPuisSuivante(detail.id, api.valider)}
+                    surRejet={(motif) => deciderPuisSuivante(detail.id, (id, nom) => api.rejeter(id, nom, motif))}
                     surExport={() => decider(detail.id, api.exporter)}
                   />
                 )}
