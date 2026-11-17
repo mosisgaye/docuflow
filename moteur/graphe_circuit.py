@@ -228,6 +228,25 @@ def parcourir(graphe: Graphe, donnees: dict, anomalies: list[dict]) -> dict:
     return {"niveaux": niveaux or [{"niveau": "comptable", "raisons": ["Aucune approbation sur ce chemin"]}], "bloque": bloque, "chemin": chemin}
 
 
+def etapes_lisibles(graphe: Graphe, chemin: list[dict]) -> list[dict]:
+    """Le chemin d'une facture en clair : le nom de chaque étape, la question posée et la réponse."""
+    from moteur.editeur_circuit import resume_condition  # l'éditeur s'appuie sur ce module
+
+    etapes = []
+    for pas in chemin:
+        noeud = graphe.noeud(pas["id"])
+        etapes.append({
+            "id": noeud.id,
+            "type": noeud.type,
+            "nom": _nom(noeud),
+            "sortie": pas["sortie"],
+            "condition": resume_condition(noeud.si.model_dump(mode="json", exclude_none=True)) if noeud.type == "condition" else None,
+            "niveau": noeud.niveau,
+            "message": noeud.message,
+        })
+    return etapes
+
+
 def depuis_regles(regles: list[dict]) -> dict:
     """Un graphe qui donne le même circuit que ces règles (pour ouvrir dans l'éditeur une version d'avant).
 

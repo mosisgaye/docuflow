@@ -61,6 +61,16 @@ export interface Circuit {
   version: number | null
   niveaux: { niveau: Niveau; raisons: string[] }[]
   bloque: string | null
+  /** Le chemin suivi dans le circuit dessiné, en clair (absent pour les versions d'avant l'éditeur). */
+  etapes?: {
+    id: string
+    type: 'debut' | 'condition' | 'approbation' | 'blocage' | 'fin'
+    nom: string
+    sortie: 'oui' | 'non' | null
+    condition: string | null
+    niveau: Niveau | null
+    message: string | null
+  }[]
 }
 
 export interface FactureDetail extends FactureResume {

@@ -3,6 +3,7 @@ import * as api from './api'
 import type { Evenement, FactureDetail } from './api'
 import { LIBELLE_ETAT, LIBELLE_NIVEAU, euros, heure, jour, jourEtHeure, nombre, raconter, siret } from './format'
 import { Icone } from './Icones'
+import { ICONE_ETAPE } from './SchemaCircuit'
 
 interface Props {
   facture: FactureDetail
@@ -176,6 +177,31 @@ function CircuitApprobation({ facture }: { facture: FactureDetail }) {
           <span>{circuit.bloque}</span>
         </p>
       )}
+      {circuit.etapes && circuit.etapes.length > 0 && (
+        <details className="pourquoi" open>
+          <summary>Pourquoi ce circuit ?</summary>
+          <ol className="pourquoi__chemin">
+            {circuit.etapes.map((etape) => (
+              <li key={etape.id} className={`pourquoi__etape pourquoi__etape--${etape.type}`}>
+                <span className="pourquoi__tuile" aria-hidden="true">
+                  <Icone nom={ICONE_ETAPE[etape.type]} taille={13} />
+                </span>
+                <span className="pourquoi__texte">
+                  <strong>{etape.nom}</strong>
+                  {etape.type === 'condition' && (
+                    <span>
+                      {etape.condition} :{' '}
+                      <span className={`pourquoi__reponse pourquoi__reponse--${etape.sortie}`}>{etape.sortie === 'oui' ? 'Oui' : 'Non'}</span>
+                    </span>
+                  )}
+                  {etape.type === 'blocage' && etape.message && <span>{etape.message}</span>}
+                  {etape.type === 'debut' && <span>Reçue, lue et contrôlée</span>}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
       <ol>
         {circuit.niveaux.map(({ niveau, raisons }) => {
           const faite = facture.approbations.find((approbation) => approbation.niveau === niveau)
@@ -190,13 +216,14 @@ function CircuitApprobation({ facture }: { facture: FactureDetail }) {
                 <span>
                   {faite ? `Approuvé par ${faite.personne}, le ${jourEtHeure(faite.cree_le)}` : etat === 'attendue' ? 'En attente de sa décision' : 'Après le niveau précédent'}
                 </span>
-                <small>Pourquoi : {raisons.join(' ; ')}</small>
+                {/* Avec un circuit dessiné, « Pourquoi ce circuit ? » l'explique déjà : on ne le répète pas ici. */}
+                {!circuit.etapes && <small>Pourquoi : {raisons.join(' ; ')}</small>}
               </span>
             </li>
           )
         })}
       </ol>
-      <p className="circuit__regle">Règles d’approbation, version {circuit.version}. Une même personne n’approuve jamais deux niveaux.</p>
+      <p className="circuit__regle">Circuit des factures, version {circuit.version}. Une même personne n’approuve jamais deux niveaux.</p>
     </section>
   )
 }

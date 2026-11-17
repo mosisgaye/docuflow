@@ -261,8 +261,18 @@ def circuit(donnees: dict, anomalies: list[dict], version: ReglesApprobation | N
     if getattr(version, "graphe", None):
         from moteur.graphe_circuit import Graphe, parcourir
 
-        parcours = parcourir(Graphe.model_validate(version.graphe), donnees, anomalies)
-        calcule = {"version": version.version, "niveaux": parcours["niveaux"], "bloque": parcours["bloque"], "chemin": parcours["chemin"]}
+        from moteur.graphe_circuit import etapes_lisibles
+
+        graphe = Graphe.model_validate(version.graphe)
+        parcours = parcourir(graphe, donnees, anomalies)
+        calcule = {
+            "version": version.version,
+            "niveaux": parcours["niveaux"],
+            "bloque": parcours["bloque"],
+            "chemin": parcours["chemin"],
+            # « Pourquoi ce circuit ? » : le chemin en clair, figé avec la facture (même si le circuit change ensuite).
+            "etapes": etapes_lisibles(graphe, parcours["chemin"]),
+        }
         if version.relances:
             calcule["relances"] = version.relances
         return calcule

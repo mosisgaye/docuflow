@@ -87,7 +87,7 @@ def test_retirer_une_etape(session):
 
     textes = [c["texte"] for c in editeur_circuit.differences(session)["changements"]]
 
-    assert "Étape retirée : IBAN changé." in textes and "Étape retirée : IBAN à vérifier." in textes
+    assert "Étape retirée : IBAN changé (condition)." in textes and "Étape retirée : IBAN à vérifier (blocage)." in textes
 
 
 def deplace() -> dict:
@@ -187,6 +187,7 @@ def test_par_l_api_publier_ne_touche_que_les_factures_suivantes(client):
     assert [n["niveau"] for n in apres["circuit"]["niveaux"]] == ["comptable"]  # 3 166,20 € < 5 000 €
     assert apres["circuit"]["version"] == 2
     assert {"id": "seuil", "sortie": "non"} in apres["circuit"]["chemin"]  # le chemin suivi est gardé avec la facture
+    assert [e["nom"] for e in apres["circuit"]["etapes"]] == ["Début", "Comptable", "Plus de 1 000 €", "Enregistrer dans Odoo"]  # et en clair
     assert toujours["circuit"]["version"] == 1  # la facture en cours n'a pas bougé
     assert [n["niveau"] for n in toujours["circuit"]["niveaux"]] == ["comptable", "directeur_financier"]
 

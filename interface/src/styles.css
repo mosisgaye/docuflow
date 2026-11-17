@@ -4439,3 +4439,99 @@ kbd {
     width: 100%;
   }
 }
+
+/* « Pourquoi ce circuit ? » dans la fiche : le chemin suivi par la facture, étape par étape. */
+.pourquoi {
+  margin-bottom: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border: var(--trait) solid var(--bordure);
+  border-radius: var(--rayon-panneau);
+  background: var(--carte);
+}
+
+.pourquoi summary {
+  cursor: pointer;
+  color: var(--texte-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.pourquoi__chemin {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.5rem;
+}
+
+.pourquoi__etape {
+  position: relative;
+  display: flex;
+  gap: 0.625rem;
+  padding-bottom: 0.625rem;
+}
+
+.pourquoi__etape:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 0.75rem;
+  top: 1.625rem;
+  bottom: 0.125rem;
+  width: 2px;
+  background: var(--vert-trait);
+}
+
+.pourquoi__tuile {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 0.4375rem;
+  background: var(--gris-pale);
+  color: var(--texte-2);
+}
+
+.pourquoi__etape--debut .pourquoi__tuile,
+.pourquoi__etape--fin .pourquoi__tuile {
+  background: var(--vert-pale);
+  color: var(--vert-texte);
+}
+
+.pourquoi__etape--condition .pourquoi__tuile {
+  background: var(--ambre-pale);
+  color: var(--ambre);
+}
+
+.pourquoi__etape--approbation .pourquoi__tuile {
+  background: var(--bleu-pale);
+  color: var(--bleu);
+}
+
+.pourquoi__etape--blocage .pourquoi__tuile {
+  background: var(--rouge-pale);
+  color: var(--rouge);
+}
+
+.pourquoi__texte {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 0.8125rem;
+}
+
+.pourquoi__texte > span {
+  color: var(--texte-2);
+  font-size: 0.75rem;
+}
+
+.pourquoi__reponse {
+  font-weight: 600;
+}
+
+.pourquoi__reponse--oui {
+  color: var(--vert-texte);
+}
+
+.pourquoi__reponse--non {
+  color: var(--rouge);
+}

@@ -196,6 +196,9 @@ def nom_etape(noeud: dict) -> str:
     )
 
 
+TYPES_ETAPE = {"debut": "début", "condition": "condition", "approbation": "approbation", "blocage": "blocage", "fin": "fin"}
+
+
 def resume_etape(noeud: dict) -> str:
     """Ce que fait une étape, en une phrase."""
     if noeud["type"] == "condition":
@@ -245,7 +248,8 @@ def comparer(avant: dict, apres: dict) -> list[dict]:
     nouvelles = {n["id"]: n for n in apres["graphe"]["noeuds"]}
     for identifiant, noeud in anciennes.items():
         if identifiant not in nouvelles:
-            changements.append({"genre": "retrait", "etape": identifiant, "avant": resume_etape(noeud), "apres": None, "texte": f"Étape retirée : {nom_etape(noeud)}."})
+            texte = f"Étape retirée : {nom_etape(noeud)} ({TYPES_ETAPE[noeud['type']]})."
+            changements.append({"genre": "retrait", "etape": identifiant, "avant": resume_etape(noeud), "apres": None, "texte": texte})
     for identifiant, noeud in nouvelles.items():
         if identifiant not in anciennes:
             changements.append({"genre": "ajout", "etape": identifiant, "avant": None, "apres": resume_etape(noeud), "texte": f"Étape ajoutée : {nom_etape(noeud)} ({resume_etape(noeud)})."})

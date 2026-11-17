@@ -138,3 +138,28 @@ def test_toute_forme_de_regles_se_convertit_en_graphe_valide(regles):
     converti = verifier(depuis_regles(regles))
 
     assert converti.noeud("debut") and converti.noeud("fin")
+
+
+# ───────── « Pourquoi ce circuit ? » : le chemin en clair, gardé avec la facture ─────────
+
+
+def test_le_circuit_d_une_facture_garde_son_chemin_en_clair(session):
+    version = publier(session, [], "Moussa", graphe=SIMPLE)
+
+    calcule = circuit({"total_ttc": "3166.20"}, [], version)
+
+    assert [(e["nom"], e["sortie"]) for e in calcule["etapes"]] == [
+        ("Début", None),
+        ("Comptable", None),
+        ("Plus de 1 000 €", "oui"),
+        ("Directeur financier", None),
+        ("Odoo", None),
+    ]
+    assert calcule["etapes"][2]["condition"] == "Montant TTC supérieur à 1 000 €"
+    assert calcule["etapes"][1]["niveau"] == "comptable"
+
+
+def test_une_version_en_regles_n_a_pas_de_chemin_en_clair(session):
+    version = publier(session, REGLES_DEMO, "Moussa")
+
+    assert "etapes" not in circuit({"total_ttc": "100"}, [], version)
