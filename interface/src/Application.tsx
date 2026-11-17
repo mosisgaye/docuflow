@@ -703,6 +703,18 @@ export function Application() {
           </button>
         ))}
         <div className="rail__bas">
+          {/* Toujours visible : sans lui, une colonne repliée (touche « [ ») ne se rouvrait qu'au clavier. */}
+          {page !== 'workflow' && page !== 'tableau' && page !== 'console' && (
+            <button
+              className="rail__panneau"
+              onClick={basculerLaterale}
+              aria-pressed={laterale}
+              aria-label={laterale ? 'Masquer la colonne' : 'Afficher la colonne'}
+              title={`${laterale ? 'Masquer' : 'Afficher'} la colonne ( [ )`}
+            >
+              <Icone nom="panneau" taille={18} />
+            </button>
+          )}
           <span
             className={`rail__etat${enService === false ? ' rail__etat--arret' : ''}`}
             title={enService === false ? 'Moteur injoignable' : 'Système opérationnel'}

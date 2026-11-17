@@ -25,6 +25,41 @@ function SecretUneFois({ titre, valeur, surFermer }: { titre: string; valeur: st
   )
 }
 
+/** Un exemple à copier : le texte tel quel, et un bouton Copier. */
+function BlocCode({ titre, code }: { titre: string; code: string }) {
+  const [copie, setCopie] = useState(false)
+  return (
+    <figure className="acces__code">
+      <figcaption>
+        {titre}
+        <button
+          type="button"
+          className="bouton bouton--fantome bouton--petit"
+          onClick={() =>
+            navigator.clipboard.writeText(code).then(() => {
+              setCopie(true)
+              window.setTimeout(() => setCopie(false), 2000)
+            })
+          }
+        >
+          {copie ? 'Copié' : 'Copier'}
+        </button>
+      </figcaption>
+      <pre>
+        <code>{code}</code>
+      </pre>
+    </figure>
+  )
+}
+
+const VERIFIER_SIGNATURE = `import hashlib, hmac, time
+
+def message_valide(secret: str, entetes: dict, corps: bytes) -> bool:
+    horodatage = entetes["X-Verifac-Horodatage"]
+    attendue = hmac.new(secret.encode(), horodatage.encode() + b"." + corps, hashlib.sha256).hexdigest()
+    recent = abs(time.time() - int(horodatage)) < 300  # refuser un message de plus de 5 minutes
+    return recent and hmac.compare_digest(attendue, entetes["X-Verifac-Signature"])`
+
 interface Props {
   auteur: string
   surSansAuteur: () => void
@@ -73,6 +108,28 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
   }
 
   const basculer = (liste: string[], valeur: string) => (liste.includes(valeur) ? liste.filter((v) => v !== valeur) : [...liste, valeur])
+  // Derrière Vercel comme en local, le moteur répond sous /api de l'adresse de l'interface.
+  const base = `${window.location.origin}/api/v1`
+  const actives = (cles ?? []).filter((cle) => !cle.revoquee_le)
+  const revoquees = (cles ?? []).filter((cle) => cle.revoquee_le)
+  const tousCoches = Object.keys(evenements).length > 0 && Object.keys(evenements).every((nom) => choisis.includes(nom))
+
+  const ligneCle = (cle: CleApi) => (
+    <li key={cle.id} className={cle.revoquee_le ? 'acces__ligne acces__ligne--eteinte' : 'acces__ligne'}>
+      <div>
+        <strong>{cle.nom}</strong> <code>{cle.debut}</code>
+        <p className="acces__detail">
+          {cle.droits.map((d) => droits[d] ?? d).join(' ; ')}. Créée par {cle.creee_par} le {jourEtHeure(cle.creee_le)}.{' '}
+          {cle.revoquee_le ? `Révoquée le ${jourEtHeure(cle.revoquee_le)}.` : cle.utilisee_le ? `Dernier usage le ${jourEtHeure(cle.utilisee_le)}.` : 'Jamais utilisée.'}
+        </p>
+      </div>
+      {!cle.revoquee_le && (
+        <button className="bouton bouton--danger" onClick={() => agir(() => api.revoquerCle(cle.id), `La clé « ${cle.nom} » est révoquée : elle ne marche plus.`)}>
+          Révoquer
+        </button>
+      )}
+    </li>
+  )
 
   return (
     <div className="acces">
@@ -87,8 +144,29 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
         <h2>Clés d’API</h2>
         <p className="acces__explication">
           Un autre logiciel (ERP, outil d’automatisation, script) peut déposer des factures et lire leur état avec une clé. Chaque clé a des droits précis
-          et se révoque en un clic. Documentation : <a className="lien" href="/api/docs#/API%20publique" target="_blank" rel="noreferrer">/v1 en détail</a>.
+          et se révoque en un clic.
         </p>
+        <div className="acces__demarrer">
+          <h3>Démarrer</h3>
+          <dl>
+            <dt>Adresse</dt>
+            <dd>
+              <code>{base}</code>
+            </dd>
+            <dt>Clé</dt>
+            <dd>
+              chaque appel porte l’en-tête <code>Authorization: Bearer dfk_…</code>
+            </dd>
+            <dt>Documentation</dt>
+            <dd>
+              <a className="lien" href="/api/v1/docs" target="_blank" rel="noreferrer">
+                toutes les adresses, à essayer en direct
+              </a>
+            </dd>
+          </dl>
+          <BlocCode titre="Lister les factures à valider" code={`curl -H "Authorization: Bearer $VERIFAC_CLE" \\\n  "${base}/factures?etat=a_valider"`} />
+          <BlocCode titre="Déposer une facture" code={`curl -H "Authorization: Bearer $VERIFAC_CLE" \\\n  -F "fichier=@facture.pdf" \\\n  "${base}/factures"`} />
+        </div>
         <form
           className="acces__formulaire"
           onSubmit={(evenement) => {
@@ -119,27 +197,16 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
         </form>
         {cles === null ? (
           <p className="note">Chargement…</p>
-        ) : cles.length === 0 ? (
-          <p className="note">Aucune clé pour l’instant.</p>
         ) : (
-          <ul className="acces__liste">
-            {cles.map((cle) => (
-              <li key={cle.id} className={cle.revoquee_le ? 'acces__ligne acces__ligne--eteinte' : 'acces__ligne'}>
-                <div>
-                  <strong>{cle.nom}</strong> <code>{cle.debut}</code>
-                  <p className="acces__detail">
-                    {cle.droits.map((d) => droits[d] ?? d).join(' ; ')}. Créée par {cle.creee_par} le {jourEtHeure(cle.creee_le)}.{' '}
-                    {cle.revoquee_le ? `Révoquée le ${jourEtHeure(cle.revoquee_le)}.` : cle.utilisee_le ? `Dernier usage le ${jourEtHeure(cle.utilisee_le)}.` : 'Jamais utilisée.'}
-                  </p>
-                </div>
-                {!cle.revoquee_le && (
-                  <button className="bouton bouton--danger" onClick={() => agir(() => api.revoquerCle(cle.id), `La clé « ${cle.nom} » est révoquée : elle ne marche plus.`)}>
-                    Révoquer
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
+          <>
+            {actives.length === 0 ? <p className="note">Aucune clé active.</p> : <ul className="acces__liste">{actives.map(ligneCle)}</ul>}
+            {revoquees.length > 0 && (
+              <details className="acces__revoquees">
+                <summary>Clés révoquées ({revoquees.length})</summary>
+                <ul className="acces__liste">{revoquees.map(ligneCle)}</ul>
+              </details>
+            )}
+          </>
         )}
       </section>
 
@@ -149,6 +216,15 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
           Verifac envoie un message signé à l’adresse de votre choix quand une facture change d’état. En cas d’échec, il réessaie : 30 s, 2 min, 10 min,
           1 h, 6 h.
         </p>
+        <details className="acces__signature">
+          <summary>Vérifier qu’un message vient bien de Verifac</summary>
+          <p className="acces__explication">
+            Chaque message porte <code>X-Verifac-Horodatage</code> et <code>X-Verifac-Signature</code> : le HMAC-SHA256 de « horodatage.corps » avec le
+            secret donné à la création de l’adresse. <code>X-Verifac-Livraison</code> reste le même à chaque nouvel essai : ignorez un identifiant déjà
+            traité. Pour l’instant, les mêmes en-têtes partent aussi sous l’ancien nom <code>X-DocuFlow-*</code>.
+          </p>
+          <BlocCode titre="En Python" code={VERIFIER_SIGNATURE} />
+        </details>
         <form
           className="acces__formulaire"
           onSubmit={(evenement) => {
@@ -167,6 +243,9 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
           </label>
           <fieldset className="acces__choix">
             <legend>Quand ?</legend>
+            <button type="button" className="bouton bouton--fantome bouton--petit acces__tout" onClick={() => setChoisis(tousCoches ? [] : Object.keys(evenements))}>
+              {tousCoches ? 'Tout décocher' : 'Tout cocher'}
+            </button>
             {Object.entries(evenements).map(([nom, libelle]) => (
               <label key={nom}>
                 <input type="checkbox" checked={choisis.includes(nom)} onChange={() => setChoisis(basculer(choisis, nom))} /> {libelle}

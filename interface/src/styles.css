@@ -767,6 +767,28 @@ kbd {
   gap: 0.375rem;
 }
 
+.rail__panneau {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: var(--rayon-panneau);
+  background: transparent;
+  color: var(--texte-2);
+  cursor: pointer;
+}
+
+.rail__panneau:hover {
+  background: var(--survol);
+  color: var(--texte);
+}
+
+.rail__panneau:focus-visible {
+  outline: 2px solid var(--vert-trait);
+  outline-offset: 2px;
+}
+
 .rail__etat {
   display: block;
   width: 0.5rem;
@@ -2780,6 +2802,85 @@ kbd {
   margin: 0.25rem 0 0.875rem;
   max-width: 72ch;
   color: var(--texte-2);
+}
+
+/* Démarrer : adresse, clé, documentation et exemples à copier. */
+.acces__demarrer {
+  display: grid;
+  gap: 0.625rem;
+  margin-bottom: 0.875rem;
+  padding: 0.875rem;
+  border: var(--trait) solid var(--bordure);
+  border-radius: var(--rayon-panneau);
+}
+
+.acces__demarrer h3 {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.acces__demarrer dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.3125rem 0.875rem;
+  margin: 0;
+}
+
+.acces__demarrer dt {
+  color: var(--texte-2);
+}
+
+.acces__demarrer dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.acces__code {
+  margin: 0;
+  border-radius: var(--rayon-panneau);
+  background: var(--creux);
+  overflow: hidden;
+}
+
+.acces__code figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.375rem 0.375rem 0.375rem 0.75rem;
+  color: var(--texte-2);
+  font-size: 0.75rem;
+}
+
+.acces__code pre {
+  margin: 0;
+  padding: 0 0.75rem 0.75rem;
+  overflow-x: auto;
+}
+
+.acces__revoquees,
+.acces__signature {
+  margin-top: 0.5rem;
+}
+
+.acces__revoquees summary,
+.acces__signature summary {
+  padding: 0.375rem 0;
+  color: var(--texte-2);
+  cursor: pointer;
+}
+
+.acces__signature {
+  margin: 0 0 0.875rem;
+}
+
+.acces__signature .acces__code {
+  margin-top: 0.5rem;
+}
+
+.acces__tout {
+  justify-self: start;
+  margin-bottom: 0.125rem;
 }
 
 .acces__formulaire {
