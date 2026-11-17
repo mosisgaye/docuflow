@@ -57,18 +57,25 @@ function Ligne({ facture, ouverte, surOuverture, avecEtat }: { facture: FactureR
   )
 }
 
+/** Un groupe de la liste : un état, ou les factures à risque de fraude à l'IBAN (tous états à décider confondus). */
+type Groupe = Etat | 'risque'
+
 /** Les factures en liste dense, groupées par état comme une liste de tâches. */
 export function Documents({ factures, recherche, ouverte, surOuverture, surDepot }: PropsDocuments) {
   const peut = usePeut()
   const [grouper, setGrouper] = useState(true)
   const [anomaliesSeules, setAnomaliesSeules] = useState(false)
-  const [replies, setReplies] = useState<Set<Etat>>(new Set())
+  const [replies, setReplies] = useState<Set<Groupe>>(new Set())
   const visibles = anomaliesSeules ? factures.filter((facture) => facture.nb_anomalies > 0) : factures
-  const groupes: { etat: Etat | null; factures: FactureResume[] }[] = grouper
-    ? ORDRE_ETATS.map((etat) => ({ etat, factures: visibles.filter((facture) => facture.etat === etat) })).filter((groupe) => groupe.factures.length > 0)
+  // Les risques de fraude à l'IBAN forment le premier groupe, devant tous les états : c'est ce qu'il faut voir d'abord.
+  const groupes: { etat: Groupe | null; factures: FactureResume[] }[] = grouper
+    ? [
+        { etat: 'risque' as const, factures: visibles.filter(aRisque) },
+        ...ORDRE_ETATS.map((etat) => ({ etat, factures: visibles.filter((facture) => facture.etat === etat && !aRisque(facture)) })),
+      ].filter((groupe) => groupe.factures.length > 0)
     : [{ etat: null, factures: visibles }]
 
-  const basculer = (etat: Etat) =>
+  const basculer = (etat: Groupe) =>
     setReplies((actuels) => {
       const suivants = new Set(actuels)
       if (suivants.has(etat)) suivants.delete(etat)
@@ -143,7 +150,7 @@ export function Documents({ factures, recherche, ouverte, surOuverture, surDepot
                     <th colSpan={grouper ? 6 : 7} scope="rowgroup">
                       <button aria-expanded={!replie} onClick={() => basculer(groupe.etat!)}>
                         <Icone nom="deplier" taille={14} />
-                        <span className={`etat etat--${groupe.etat}`}>{LIBELLE_ETAT[groupe.etat]}</span>
+                        <span className={`etat etat--${groupe.etat}`}>{groupe.etat === 'risque' ? 'Risque de fraude' : LIBELLE_ETAT[groupe.etat]}</span>
                         <span className="liste__groupe-compte">{groupe.factures.length}</span>
                       </button>
                     </th>

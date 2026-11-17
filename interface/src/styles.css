@@ -357,6 +357,7 @@ code {
   color: var(--ambre);
 }
 
+.etat--risque,
 .etat--echec,
 .etat--rejetee {
   background: var(--rouge-pale);
@@ -1682,7 +1683,8 @@ kbd {
 
 .activite li {
   display: grid;
-  grid-template-columns: 2.5rem minmax(0, 1fr);
+  /* Assez large pour « 15/11 14:09 » : l'heure d'un autre jour porte sa date. */
+  grid-template-columns: 4.5rem minmax(0, 1fr);
   gap: 0.5rem;
   padding: 0.4375rem 0.875rem;
 }
@@ -2097,6 +2099,24 @@ kbd {
   bottom: 0;
   width: var(--trait);
   background: var(--bordure);
+}
+
+/* Le jour, écrit une fois à chaque changement de date. */
+.journal li.journal__jour {
+  display: block;
+  padding: 0 0 0.5rem;
+  color: var(--texte-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.journal li.journal__jour:not(:first-child) {
+  padding-top: 0.25rem;
+}
+
+.journal li.journal__jour::before,
+.journal li.journal__jour::after {
+  content: none;
 }
 
 .journal time {
@@ -4690,6 +4710,35 @@ kbd {
 
 @media (max-width: 760px) {
   .a-faire {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* L'accueil suit la place réelle, pas la largeur de l'écran : avec l'agent ouvert, la page est
+   étroite sur un écran large. Mêmes replis que sur un petit écran. */
+@container page (max-width: 900px) {
+  .tableau {
+    grid-template-columns: 1fr;
+  }
+
+  .a-faire,
+  .a-faire--quatre,
+  .indicateurs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .indicateur:nth-child(3) {
+    border-left: 0;
+  }
+
+  .indicateur:nth-child(n + 3) {
+    border-top: var(--trait) solid var(--bordure);
+  }
+}
+
+@container page (max-width: 520px) {
+  .a-faire,
+  .a-faire--quatre {
     grid-template-columns: 1fr;
   }
 }

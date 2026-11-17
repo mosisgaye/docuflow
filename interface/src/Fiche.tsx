@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { Fragment, type ReactNode, useEffect, useState } from 'react'
 import { usePeut } from './droits'
 import * as api from './api'
 import type { Evenement, FactureDetail } from './api'
@@ -252,15 +252,23 @@ export function Tampon({ facture }: { facture: FactureDetail }) {
 export function Journal({ facture }: { facture: FactureDetail }) {
   return (
     <ol className="journal">
-      {facture.evenements.map((evenement) => (
-        <li key={evenement.rang}>
-          <time dateTime={evenement.cree_le}>{heure(evenement.cree_le)}</time>
-          <span>
-            {raconter(evenement)}
-            {evenement.auteur !== 'moteur' && <span className="journal__auteur"> · {evenement.auteur}</span>}
-          </span>
-        </li>
-      ))}
+      {facture.evenements.map((evenement, rang) => {
+        // Le jour est écrit à chaque changement de date : une relance partie le lendemain
+        // ne doit pas ressembler à un second envoi trois minutes plus tard.
+        const nouveauJour = rang === 0 || jour(evenement.cree_le) !== jour(facture.evenements[rang - 1].cree_le)
+        return (
+          <Fragment key={evenement.rang}>
+            {nouveauJour && <li className="journal__jour">{jour(evenement.cree_le)}</li>}
+            <li>
+              <time dateTime={evenement.cree_le}>{heure(evenement.cree_le)}</time>
+              <span>
+                {raconter(evenement)}
+                {evenement.auteur !== 'moteur' && <span className="journal__auteur"> · {evenement.auteur}</span>}
+              </span>
+            </li>
+          </Fragment>
+        )
+      })}
     </ol>
   )
 }

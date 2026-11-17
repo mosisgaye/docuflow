@@ -67,8 +67,12 @@ export function raconter(evenement: Evenement): string {
     case 'EXTRACTION_ECHOUEE':
     case 'LECTURE_IMPOSSIBLE':
       return String(detail.raison ?? 'Lecture impossible')
-    case 'NOTIFICATION':
-      return `Demande d’approbation envoyée par mail (${LIBELLE_NIVEAU[String(detail.niveau)]?.toLowerCase() ?? 'approbateur'})`
+    case 'NOTIFICATION': {
+      // Le destinataire et « relance » : sans eux, deux mails au même niveau ressemblent à un envoi en double.
+      const niveau = LIBELLE_NIVEAU[String(detail.niveau)]?.toLowerCase() ?? 'approbateur'
+      const pour = detail.destinataire ? ` à ${String(detail.destinataire)}` : ''
+      return detail.rappel ? `Relance envoyée par mail${pour} (${niveau})` : `Demande d’approbation envoyée par mail${pour} (${niveau})`
+    }
     case 'NOTIFICATION_ECHOUEE':
       return `Mail d’approbation non envoyé : ${String(detail.raison)}`
     case 'APPROBATION':
@@ -109,7 +113,15 @@ export function ilYA(iso: string, maintenant = Date.now()) {
   return JOUR.format(new Date(iso))
 }
 
-export const heureCourte = (iso: string) => new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
+const HEURE_COURTE = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' })
+const JOUR_COURT = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit' })
+
+/** « 14:09 » pour aujourd'hui, « 15/11 14:09 » pour un autre jour : sans le jour, 14:09 puis 01:00 semble à l'envers. */
+export function heureCourte(iso: string, maintenant = new Date()) {
+  const quand = new Date(iso)
+  const heure = HEURE_COURTE.format(quand)
+  return quand.toDateString() === maintenant.toDateString() ? heure : `${JOUR_COURT.format(quand)} ${heure}`
+}
 
 /** Durée lisible : 1,3 s au-dessus d'une seconde, 20 ms en dessous. */
 export function duree(secondes: number) {
