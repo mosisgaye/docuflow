@@ -421,7 +421,7 @@ export function Application() {
   useEffect(() => {
     const touche = (evenement: KeyboardEvent) => {
       const cible = evenement.target as HTMLElement
-      const enSaisie = cible.matches('input, textarea, select, [contenteditable]')
+      const enSaisie = Boolean(cible?.matches?.('input, textarea, select, [contenteditable]'))
       if ((evenement.ctrlKey || evenement.metaKey) && evenement.key.toLowerCase() === 'k') {
         evenement.preventDefault()
         champRecherche.current?.focus()
@@ -468,13 +468,16 @@ export function Application() {
   // La fiche s'ouvre à côté des listes et de l'assistant ; l'accueil et les connecteurs gardent toute la largeur.
   const panneauFacture = detail && page !== 'connecteurs' && page !== 'tableau' && page !== 'reglages' && page !== 'workflow'
 
+  // Sur la page Workflow, le canevas prend toute la place (comme n8n) : pas de barre latérale.
+  const lateraleAffichee = laterale && page !== 'workflow'
+
   if (verrouille === null) return null
   if (verrouille) return <EcranAcces surOuverture={() => setVerrouille(false)} />
   const enSaisieNom = !auteur.trim()
 
   return (
     <div
-      className={`app${laterale ? '' : ' app--sans-laterale'}`}
+      className={`app${lateraleAffichee ? '' : ' app--sans-laterale'}`}
       onDragOver={(evenement) => {
         evenement.preventDefault()
         setSurvol(true)
@@ -564,7 +567,7 @@ export function Application() {
         </div>
       </nav>
 
-      <aside className="laterale" aria-label="Navigation de la section" aria-hidden={!laterale || undefined}>
+      <aside className="laterale" aria-label="Navigation de la section" aria-hidden={!lateraleAffichee || undefined}>
         {page === 'reglages' ? (
           <>
             <div className="laterale__tete">
@@ -581,27 +584,6 @@ export function Application() {
               </button>
             </div>
             <p className="laterale__pied">Ce que vous réglez ici s’applique à toute l’entreprise.</p>
-          </>
-        ) : page === 'workflow' ? (
-          <>
-            <div className="laterale__tete">
-              <h2>Workflow</h2>
-            </div>
-            <div className="laterale__corps">
-              {ONGLETS_WORKFLOW.map((entree) => (
-                <button
-                  key={entree.onglet}
-                  className="laterale__ligne"
-                  aria-current={ongletWorkflow === entree.onglet || undefined}
-                  onClick={() => setOngletWorkflow(entree.onglet)}
-                  tabIndex={laterale ? 0 : -1}
-                >
-                  <Icone nom={entree.icone} />
-                  <span>{entree.nom}</span>
-                </button>
-              ))}
-            </div>
-            <p className="laterale__pied">Les étapes fixes protègent le paiement : elles ne se modifient pas.</p>
           </>
         ) : page === 'connecteurs' ? (
           <>
@@ -688,7 +670,7 @@ export function Application() {
       </aside>
 
       <main className="espace">
-        <div className="espace__tete">
+        <div className="espace__tete" hidden={page === 'workflow'}>
           <button className="bouton bouton--fantome bouton--icone" onClick={basculerLaterale} aria-label={laterale ? 'Replier la barre latérale' : 'Déplier la barre latérale'} title="Barre latérale ( [ )">
             <Icone nom="panneau" />
           </button>
@@ -710,6 +692,7 @@ export function Application() {
           {page === 'workflow' ? (
             <Workflow
               onglet={ongletWorkflow}
+              surOnglet={setOngletWorkflow}
               auteur={auteur}
               factures={factures}
               surSansAuteur={() => champAuteur.current?.focus()}

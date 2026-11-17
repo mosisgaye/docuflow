@@ -1,7 +1,7 @@
 // La page Circuit, comme n8n : le canevas où l'on crée et relie ses étapes, un seul panneau à droite
 // (la palette, ou les réglages de l'étape choisie), et une barre en haut pour tester et publier.
 // Chaque modification est enregistrée dans le brouillon, qu'aucune facture ne voit avant la publication.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as api from './api'
 import type { BrouillonCircuit, Catalogue, Changement, FactureResume, Graphe, NoeudGraphe, Relances, ResultatTest, TypeEtape } from './api'
 import { euros } from './format'
@@ -15,11 +15,13 @@ const LUES = new Set(['a_valider', 'en_approbation', 'en_anomalie', 'validee', '
 const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`
 
 export function Circuit({
+  onglets,
   auteur,
   factures,
   surSansAuteur,
   surInformation,
 }: {
+  onglets: ReactNode
   auteur: string
   factures: FactureResume[]
   surSansAuteur: () => void
@@ -36,6 +38,7 @@ export function Circuit({
   const [factureTest, setFactureTest] = useState('')
   const [voirChangements, setVoirChangements] = useState(false)
   const [confirmation, setConfirmation] = useState<'publier' | 'annuler' | null>(null)
+  const [palette, setPalette] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
   const [occupe, setOccupe] = useState(false)
   const minuterie = useRef<number | undefined>(undefined)
@@ -121,7 +124,11 @@ export function Circuit({
   // Échap ferme le réglage de l'étape (hors saisie).
   useEffect(() => {
     const touche = (evenement: KeyboardEvent) => {
-      if (evenement.key === 'Escape' && !(evenement.target as HTMLElement).matches('input, textarea, select')) setChoisie(null)
+      const cible = evenement.target as HTMLElement | null
+      if (evenement.key === 'Escape' && !cible?.matches?.('input, textarea, select')) {
+        setChoisie(null)
+        setPalette(false)
+      }
     }
     window.addEventListener('keydown', touche)
     return () => window.removeEventListener('keydown', touche)
@@ -145,6 +152,7 @@ export function Circuit({
     const y = Math.max(...graphe.noeuds.map((n) => n.y)) + 160
     const nouvelle = nouvelleEtape(type, catalogue, x, y)
     modifier({ ...graphe, noeuds: [...graphe.noeuds, nouvelle] }, relances)
+    setPalette(false)
     setChoisie(nouvelle.id)
   }
 
@@ -199,6 +207,7 @@ export function Circuit({
     <div className="editeur">
       <div className="editeur__principal">
         <header className="barre-circuit">
+          <div className="barre-circuit__gauche">
           <h1>Circuit des factures</h1>
           <span className="etat etat--validee">{enService ? `Version ${enService} en service` : 'Aucune version publiée'}</span>
           {brouillon.modifie && changements.length > 0 && (
@@ -208,6 +217,9 @@ export function Circuit({
             </button>
           )}
 
+          </div>
+          {onglets}
+          <div className="barre-circuit__droite">
           <label className="barre-circuit__test">
             <Icone nom="test" />
             <span className="visuellement-cache">Tester sur une facture</span>
@@ -253,6 +265,7 @@ export function Circuit({
               </>
             )}
           </div>
+          </div>
         </header>
 
         {(voirChangements || confirmation === 'publier') && changements.length > 0 && (
@@ -290,9 +303,32 @@ export function Circuit({
           </p>
         )}
 
-        <SchemaCircuit graphe={graphe} catalogue={catalogue} test={test} choisie={choisie} surGraphe={(suite) => modifier(suite, relances)} surChoix={setChoisie} />
-      </div>
-
+        <div className="editeur__canevas">
+          <SchemaCircuit
+            graphe={graphe}
+            catalogue={catalogue}
+            test={test}
+            choisie={choisie}
+            surGraphe={(suite) => modifier(suite, relances)}
+            surChoix={(id) => {
+              setChoisie(id)
+              if (id) setPalette(false)
+            }}
+          />
+          {!etape && !palette && (
+            <button className="editeur__ajouter" onClick={() => setPalette(true)} aria-label="Ajouter une étape" title="Ajouter une étape">
+              <Icone nom="plus" taille={20} />
+            </button>
+          )}
+          {statut.etat !== 'repos' && !etape && !palette && (
+            <p className={`editeur__etat editeur__etat--${statut.etat}`} role="status">
+              {statut.etat === 'enregistrement' && 'Enregistrement…'}
+              {statut.etat === 'enregistre' && 'Brouillon enregistré'}
+              {statut.etat === 'incomplet' && `À compléter : ${statut.message}`}
+              {statut.etat === 'erreur' && `Non enregistré : ${statut.message}`}
+            </p>
+          )}
+      {(etape || palette) && (
       <PanneauEtape
         key={etape?.id ?? 'palette'}
         etape={etape}
@@ -304,8 +340,15 @@ export function Circuit({
         surRelances={(suite) => modifier(graphe, suite)}
         surRetrait={retirer}
         surAjout={ajouter}
-        surFermer={() => setChoisie(null)}
+        surFermer={() => {
+          setChoisie(null)
+          setPalette(false)
+        }}
       />
+      )}
+        </div>
+      </div>
+
     </div>
   )
 }

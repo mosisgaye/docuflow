@@ -260,9 +260,16 @@ export function PanneauEtape({
             </div>
           </>
         ) : (
-          <div className="panneau__titre">
-            <h2>Ajouter une étape</h2>
-          </div>
+          <>
+            <div className="panneau__titre">
+              <h2>Ajouter une étape</h2>
+            </div>
+            <div className="panneau__boutons">
+              <button className="bouton bouton--fantome bouton--icone" onClick={surFermer} aria-label="Fermer la palette" title="Fermer (Échap)">
+                <Icone nom="fermer" />
+              </button>
+            </div>
+          </>
         )}
       </header>
 
