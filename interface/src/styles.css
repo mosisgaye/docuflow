@@ -4997,3 +4997,136 @@ button.pastille-niveau:hover:not(:disabled) {
     grid-column: 2;
   }
 }
+
+/* ───────── Console de l'opérateur ───────── */
+
+.console {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.console .page__titre {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 1rem;
+}
+
+.console__grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 1rem;
+}
+
+.console__carte,
+.console__bloc {
+  display: grid;
+  gap: 0.75rem;
+  align-content: start;
+  padding: 1rem;
+}
+
+.console h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.console dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.375rem 1rem;
+}
+
+.console dt {
+  color: var(--texte-2);
+}
+
+.console dd {
+  overflow-wrap: anywhere;
+}
+
+.console__voyant {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--vert);
+}
+
+.console__voyant--alerte {
+  background: var(--ambre);
+}
+
+.console__semaine {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.console__semaine caption {
+  margin-bottom: 0.375rem;
+  color: var(--texte-2);
+  font-size: 0.8125rem;
+  text-align: left;
+}
+
+.console__semaine th {
+  color: var(--texte-2);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.console__semaine td {
+  padding-top: 0.125rem;
+  font-weight: 600;
+}
+
+.console__etats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+}
+
+.console__etats li {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.console__incidents {
+  display: grid;
+}
+
+.console__incidents li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-top: var(--trait) solid var(--bordure);
+}
+
+.console__incidents li > span:nth-child(2) {
+  display: grid;
+}
+
+.console__incidents small,
+.console__quand {
+  color: var(--texte-2);
+  font-size: 0.75rem;
+}
+
+.console__champs {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto;
+}
+
+@media (max-width: 48rem) {
+  .console__incidents li,
+  .console__champs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

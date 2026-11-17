@@ -315,6 +315,27 @@ export const modifierCompte = (id: string, changement: { role?: Role; niveaux?: 
   appeler<Compte>(`/comptes/${id}`, { ...enJson(changement), method: 'PUT' })
 export const deconnecterCompte = (id: string) => appeler<Compte>(`/comptes/${id}/deconnexion`, { method: 'POST' })
 
+// ───────── La Console de l'opérateur Verifac ─────────
+
+export interface EtatConsole {
+  sante: { base: string; file_en_attente: number; plus_ancienne_attente_s: number | null; derniere_tache_traitee: string | null; lectures_abandonnees: number }
+  version: { code: string | null; migration: string | null }
+  usage: {
+    jours: { jour: string; factures: number }[]
+    factures_30_jours: number
+    factures_total: number
+    par_etat: Partial<Record<Etat, number>>
+    comptes_actifs: number
+    administrateurs: number
+    derniere_connexion: string | null
+  }
+  ia: { lectures_30_jours: number; modeles: Record<string, number>; jetons_entree: number; jetons_sortie: number; cout_30_jours_eur: number | null; prix_renseigne: boolean }
+  incidents: { type: 'lecture' | 'mail'; facture_id: string; message: string; le: string | null }[]
+}
+
+export const etatConsole = () => appeler<EtatConsole>('/console')
+export const premierAdministrateur = (nom: string, email: string) => appeler<Compte>('/console/premier-administrateur', enJson({ nom, email }))
+
 // ───────── Réglages : l'équipe qui approuve, et la réception des factures ─────────
 
 export interface MembreEquipe {

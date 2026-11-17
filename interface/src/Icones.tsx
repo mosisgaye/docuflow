@@ -1,5 +1,6 @@
 // Icônes au trait (Lucide) : 16 px, trait fin de 1,65 px, couleur du texte.
 import {
+  Activity,
   ArrowRight,
   Ban,
   Bot,
@@ -97,6 +98,7 @@ const ICONES = {
   refus: Ban,
   sortie: Send,
   deconnexion: LogOut,
+  console: Activity,
   reglages: Settings,
   equipe: Users,
   workflow: Workflow,

@@ -11,13 +11,14 @@ import { Connecteurs, type OngletConnecteurs } from './Connecteurs'
 import { Documents } from './Pages'
 import { EcranAcces } from './EcranAcces'
 import { EcranConnexion } from './EcranConnexion'
+import { Console } from './Console'
 import { CompteConnecte } from './droits'
 import { type OngletReglages, Reglages } from './Reglages'
 import { TableauDeBord } from './TableauDeBord'
 import { type OngletWorkflow, Workflow } from './Workflow'
 import { type Theme, retenirTheme } from './theme'
 
-type Page = 'tableau' | 'documents' | 'workflow' | 'connecteurs' | 'reglages'
+type Page = 'tableau' | 'documents' | 'workflow' | 'connecteurs' | 'reglages' | 'console'
 // « À traiter » est un filtre des factures (comme « Non lus » dans une boîte mail), pas une page à part.
 type Vue = Etat | 'toutes' | 'a_traiter' | 'mon_tour' | 'a_regler' | 'echeances' | 'attente'
 
@@ -29,6 +30,7 @@ const MENU: { page: Page; nom: string; icone: NomIcone }[] = [
   { page: 'workflow', nom: 'Workflow', icone: 'workflow' },
   { page: 'connecteurs', nom: 'Connecteurs', icone: 'integration' },
   { page: 'reglages', nom: 'Réglages', icone: 'reglages' },
+  { page: 'console', nom: 'Console', icone: 'console' },
 ]
 const ONGLETS_CONNECTEURS: { onglet: OngletConnecteurs; nom: string; icone: NomIcone }[] = [
   { onglet: 'mes', nom: 'Mes connecteurs', icone: 'integration' },
@@ -541,10 +543,10 @@ export function Application() {
   }, [information])
 
   // La fiche s'ouvre à côté des listes et de l'assistant ; l'accueil et les connecteurs gardent toute la largeur.
-  const panneauFacture = detail && page !== 'connecteurs' && page !== 'tableau' && page !== 'reglages' && page !== 'workflow'
+  const panneauFacture = detail && page !== 'connecteurs' && page !== 'tableau' && page !== 'reglages' && page !== 'workflow' && page !== 'console'
 
   // L'accueil et le Workflow prennent toute la largeur : leur contenu suffit, une barre latérale le répéterait.
-  const lateraleAffichee = laterale && page !== 'workflow' && page !== 'tableau'
+  const lateraleAffichee = laterale && page !== 'workflow' && page !== 'tableau' && page !== 'console'
 
   if (verrouille === null || compte === undefined) return null
   if (jetonLien && !compte) return <EcranConnexion jeton={jetonLien} surConnexion={connecte} />
@@ -661,7 +663,7 @@ export function Application() {
       </header>
 
       <nav className="rail" aria-label="Navigation">
-        {MENU.map((entree) => (
+        {MENU.filter((entree) => entree.page !== 'console' || compte?.droits.includes('operer')).map((entree) => (
           <button
             key={entree.page}
             className="rail__bouton"
@@ -802,6 +804,13 @@ export function Application() {
               factures={factures}
               surSansAuteur={() => champAuteur.current?.focus()}
               surInformation={setInformation}
+              surFacture={(id) => {
+                allerVue('toutes')
+                ouvrir(id)
+              }}
+            />
+          ) : page === 'console' ? (
+            <Console
               surFacture={(id) => {
                 allerVue('toutes')
                 ouvrir(id)
