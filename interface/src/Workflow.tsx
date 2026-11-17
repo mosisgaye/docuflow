@@ -1,4 +1,5 @@
 import type { FactureResume } from './api'
+import { Circuit } from './Circuit'
 
 export type OngletWorkflow = 'circuit' | 'versions' | 'executions'
 
@@ -17,7 +18,8 @@ export interface ProprietesWorkflow {
   surFacture: (id: string) => void
 }
 
-export function Workflow({ onglet }: ProprietesWorkflow) {
+export function Workflow({ onglet, auteur, factures, surSansAuteur, surInformation }: ProprietesWorkflow) {
+  if (onglet === 'circuit') return <Circuit auteur={auteur} factures={factures} surSansAuteur={surSansAuteur} surInformation={surInformation} />
   const { titre, texte } = TITRES[onglet]
   return (
     <div className="page">

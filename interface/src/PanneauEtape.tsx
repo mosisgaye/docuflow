@@ -175,6 +175,16 @@ function ConditionEditee({
   )
 }
 
+/** Une règle neuve, au nom libre : pour un niveau (une approbation), ou un blocage si niveau est null. */
+export function nouvelleRegle(regles: Regle[], catalogue: Catalogue, niveau: Niveau | null): Regle {
+  if (niveau) {
+    const libelle = catalogue.niveaux.find((n) => n.code === niveau)!.libelle
+    return { nom: nomLibre(regles, `${libelle} : nouvelle règle`), si: { lignes: [{ champ: 'total_ttc', comparaison: 'superieur_a', valeur: '1000' }], combinaison: 'une' }, exige: [niveau] }
+  }
+  const anomalie = catalogue.anomalies.find((a) => a.code === 'FOURNISSEUR_INCONNU' && a.utilisable) ?? catalogue.anomalies.find((a) => a.utilisable)!
+  return { nom: nomLibre(regles, 'Nouveau blocage'), si: { lignes: [{ champ: 'anomalie', comparaison: 'une_de', valeur: [anomalie.code] }], combinaison: 'une' }, bloque: 'À régler avant toute approbation.' }
+}
+
 export function PanneauEtape({
   selection,
   regles,
@@ -209,13 +219,7 @@ export function PanneauEtape({
     if (niveau && regle.exige && regle.exige.length > 1) return changer(rang, { ...regle, exige: regle.exige.filter((n) => n !== niveau) })
     surRegles(regles.filter((_, i) => i !== rang))
   }
-  const ajouter = () => {
-    const anomalie = catalogue.anomalies.find((a) => a.code === 'FOURNISSEUR_INCONNU' && a.utilisable) ?? catalogue.anomalies.find((a) => a.utilisable)!
-    const nouvelle: Regle = niveau
-      ? { nom: nomLibre(regles, `${libelle(niveau)} : nouvelle règle`), si: { lignes: [{ champ: 'total_ttc', comparaison: 'superieur_a', valeur: '1000' }], combinaison: 'une' }, exige: [niveau] }
-      : { nom: nomLibre(regles, 'Nouveau blocage'), si: { lignes: [{ champ: 'anomalie', comparaison: 'une_de', valeur: [anomalie.code] }], combinaison: 'une' }, bloque: 'À régler avant toute approbation.' }
-    surRegles([...regles, nouvelle])
-  }
+  const ajouter = () => surRegles([...regles, nouvelleRegle(regles, catalogue, niveau)])
   const reglage: Relance | null = niveau ? { ...Object.fromEntries(catalogue.relances.map((r) => [r.nom, r.defaut])), ...relances?.[niveau] } as Relance : null
 
   const resultatsTest = test?.regles ?? []
