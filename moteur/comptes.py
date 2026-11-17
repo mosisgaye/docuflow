@@ -345,6 +345,8 @@ REGLES_ACCES = [
     ("GET", r"/connecteurs(/.*)?", "voir"),
     ("GET", r"/reglages/(equipe|reception)", "voir"),
     ("GET", r"/comptes", "voir"),
+    ("GET", r"/console", "operer"),
+    ("POST", r"/console/premier-administrateur", "operer"),
 ]
 
 

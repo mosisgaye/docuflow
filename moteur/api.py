@@ -54,7 +54,7 @@ from pypdf.errors import PyPdfError
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, object_session, sessionmaker
 
-from moteur import comptes, config, editeur_circuit
+from moteur import comptes, config, console, editeur_circuit
 from moteur.agent import converser, flux_openai
 from moteur.agent import version_consigne as consigne_assistant
 from moteur.consignes import enregistrer as enregistrer_consigne
@@ -1077,6 +1077,23 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
         compte = compte_ou_404(session, compte_id)
         comptes.deconnecter_partout(session, compte)
         return comptes.vue(compte)
+
+    # ───────── La Console de l'opérateur Verifac ─────────
+
+    class PremierAdministrateur(BaseModel):
+        nom: str = Field(min_length=1, max_length=100)
+        email: str = Field(min_length=3, max_length=320)
+
+    @application.get("/console")
+    def lire_console(session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        return console.etat(session)
+
+    @application.post("/console/premier-administrateur", status_code=status.HTTP_201_CREATED)
+    def premier_administrateur(demande: PremierAdministrateur, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        try:
+            return comptes.vue(console.creer_premier_administrateur(session, demande.nom, demande.email, qui("")))
+        except comptes.CompteInvalide as erreur:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(erreur)) from erreur
 
     @application.get("/reglages/reception")
     def lire_reception(session: Session = Depends(session_de_requete, scope="function")) -> dict:
