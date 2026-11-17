@@ -1,6 +1,7 @@
 """Relancer la personne qui doit approuver une facture et ne l'a pas encore fait.
 
-Quand relancer :
+Quand relancer (les délais par défaut ; chaque version du circuit peut les régler par niveau,
+et une facture garde ceux de la version avec laquelle son circuit a été calculé) :
 - 48 heures après le dernier mail envoyé à ce niveau, sans décision ;
 - plus tôt (24 heures) si l'échéance de paiement tombe dans 3 jours ou moins :
   une facture payée en retard coûte des pénalités.
@@ -21,7 +22,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from moteur import notifications
-from moteur.approbation import niveau_attendu
+from moteur.approbation import RELANCES_DEFAUT, niveau_attendu
 from moteur.base import Etat, Evenement, FactureEnBase
 
 DELAI_NORMAL = timedelta(hours=48)
@@ -38,21 +39,28 @@ def _date(valeur) -> date | None:
         return None
 
 
+def reglage(facture: FactureEnBase, niveau: str) -> tuple[timedelta, timedelta, int]:
+    """Les délais (normal, urgent) et le maximum de relances de ce niveau, figés dans le circuit de la facture."""
+    propre = ((getattr(facture, "circuit", None) or {}).get("relances") or {}).get(niveau) or RELANCES_DEFAUT
+    return timedelta(hours=propre["delai_h"]), timedelta(hours=propre["delai_urgent_h"]), propre["maximum"]
+
+
 def a_relancer(facture: FactureEnBase, niveau: str, mails: list[Evenement], maintenant: datetime) -> str | None:
     """La raison de relancer ce niveau maintenant, ou None. Ne lit que ce qu'on lui donne : facile à tester."""
+    delai_normal, delai_urgent, maximum = reglage(facture, niveau)
     du_niveau = [e for e in mails if e.detail.get("niveau") == niveau]
     if not any(e.type == "NOTIFICATION" for e in du_niveau):
         return None  # le premier mail n'est jamais parti : personne n'a été prévenu par mail
     # Comptées par personne : deux personnes au même niveau reçoivent chacune leur relance.
     par_personne = Counter(e.detail.get("destinataire") for e in du_niveau if e.detail.get("rappel"))
-    if max(par_personne.values(), default=0) >= RELANCES_MAX:
+    if max(par_personne.values(), default=0) >= maximum:
         return None
     attente = maintenant - max(e.cree_le for e in du_niveau)
     echeance = _date((facture.donnees or {}).get("date_echeance"))
     jours = (echeance - maintenant.date()).days if echeance else None
-    if jours is not None and jours <= JOURS_URGENCE and attente >= DELAI_URGENT:
+    if jours is not None and jours <= JOURS_URGENCE and attente >= delai_urgent:
         return "l'échéance est dépassée." if jours < 0 else f"l'échéance de paiement tombe dans {jours} jour{'s' if jours > 1 else ''}."
-    if attente >= DELAI_NORMAL:
+    if attente >= delai_normal:
         return f"cette facture attend votre décision depuis {int(attente.total_seconds() // 3600)} heures."
     return None
 
