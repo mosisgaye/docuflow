@@ -1,6 +1,7 @@
 // La page Circuit, comme n8n : le canevas où l'on crée et relie ses étapes, un seul panneau à droite
 // (la palette, ou les réglages de l'étape choisie), et une barre en haut pour tester et publier.
 // Chaque modification est enregistrée dans le brouillon, qu'aucune facture ne voit avant la publication.
+import { usePeut } from './droits'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as api from './api'
 import type { BrouillonCircuit, Catalogue, Changement, FactureResume, Graphe, NoeudGraphe, Relances, ResultatTest, TypeEtape } from './api'
@@ -38,6 +39,9 @@ export function Circuit({
   const [factureTest, setFactureTest] = useState('')
   const [voirChangements, setVoirChangements] = useState(false)
   const [confirmation, setConfirmation] = useState<'publier' | 'annuler' | null>(null)
+  const peut = usePeut()
+  // Sans le droit « circuit » (approbateur, lecture seule, opérateur), on regarde le circuit sans le modifier.
+  const lectureSeule = !peut('circuit')
   const [palette, setPalette] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
   const [occupe, setOccupe] = useState(false)
@@ -220,6 +224,7 @@ export function Circuit({
           </div>
           {onglets}
           <div className="barre-circuit__droite">
+          {!lectureSeule && (
           <label className="barre-circuit__test">
             <Icone nom="test" />
             <span className="visuellement-cache">Tester sur une facture</span>
@@ -240,6 +245,7 @@ export function Circuit({
               ))}
             </select>
           </label>
+          )}
 
           <div className="barre-circuit__actions">
             {confirmation ? (
@@ -254,14 +260,18 @@ export function Circuit({
               </>
             ) : (
               <>
-                {brouillon.modifie && (
+                {brouillon.modifie && !lectureSeule && (
                   <button className="bouton bouton--fantome" onClick={() => setConfirmation('annuler')} disabled={occupe}>
                     Annuler
                   </button>
                 )}
+                {peut('administrer') ? (
                 <button className="bouton bouton--plein" onClick={() => setConfirmation('publier')} disabled={!peutPublier || occupe} title={peutPublier ? undefined : brouillon.a_completer ? `À compléter : ${brouillon.a_completer}` : 'Modifiez le circuit pour pouvoir publier'}>
                   Publier la version {prochaine}
                 </button>
+                ) : (
+                  <span className="barre-circuit__note">Un administrateur publie le circuit</span>
+                )}
               </>
             )}
           </div>
@@ -309,13 +319,15 @@ export function Circuit({
             catalogue={catalogue}
             test={test}
             choisie={choisie}
-            surGraphe={(suite) => modifier(suite, relances)}
+            lectureSeule={lectureSeule}
+            surGraphe={(suite) => !lectureSeule && modifier(suite, relances)}
             surChoix={(id) => {
+              if (lectureSeule) return
               setChoisie(id)
               if (id) setPalette(false)
             }}
           />
-          {!etape && !palette && (
+          {!etape && !palette && !lectureSeule && (
             <button className="editeur__ajouter" onClick={() => setPalette(true)} aria-label="Ajouter une étape" title="Ajouter une étape">
               <Icone nom="plus" taille={20} />
             </button>

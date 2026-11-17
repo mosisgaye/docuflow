@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react'
+import { usePeut } from './droits'
 import * as api from './api'
 import type { Evenement, FactureDetail } from './api'
 import { LIBELLE_ETAT, LIBELLE_NIVEAU, euros, heure, jour, jourEtHeure, nombre, raconter, siret } from './format'
@@ -267,8 +268,9 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
   const fautifs = new Set(facture.anomalies.map((anomalie) => anomalie.champ))
   const marque = (champ: string) => (fautifs.has(champ) ? 'fautif' : undefined)
   const bloquantes = facture.anomalies.filter((anomalie) => anomalie.gravite === 'bloquante')
-  const decidable = facture.etat === 'a_valider' || facture.etat === 'en_approbation' || facture.etat === 'en_anomalie'
-  const approuvable = (facture.etat === 'a_valider' || facture.etat === 'en_approbation') && !facture.circuit?.bloque
+  const peut = usePeut()
+  const decidable = peut('approuver') && (facture.etat === 'a_valider' || facture.etat === 'en_approbation' || facture.etat === 'en_anomalie')
+  const approuvable = decidable && (facture.etat === 'a_valider' || facture.etat === 'en_approbation') && !facture.circuit?.bloque
   const avecRegles = facture.circuit?.version != null
   const libelleDecision = avecRegles && facture.niveau_attendu ? `Approuver (${LIBELLE_NIVEAU[facture.niveau_attendu].toLowerCase()})` : 'Valider'
 

@@ -109,6 +109,7 @@ export function SchemaCircuit({
   choisie,
   surGraphe,
   surChoix,
+  lectureSeule = false,
 }: {
   graphe: Graphe
   catalogue: Catalogue
@@ -116,6 +117,7 @@ export function SchemaCircuit({
   choisie: string | null
   surGraphe: (graphe: Graphe) => void
   surChoix: (id: string | null) => void
+  lectureSeule?: boolean
 }) {
   const parcourues = useMemo(() => (test ? new Map(test.chemin.map((etape) => [etape.id, etape.sortie])) : null), [test])
 
@@ -199,7 +201,9 @@ export function SchemaCircuit({
         onConnect={relier}
         onPaneClick={() => surChoix(null)}
         isValidConnection={(connexion) => connexion.source !== connexion.target && connexion.target !== 'debut'}
-        deleteKeyCode={['Backspace', 'Delete']}
+        deleteKeyCode={lectureSeule ? null : ['Backspace', 'Delete']}
+        nodesDraggable={!lectureSeule}
+        nodesConnectable={!lectureSeule}
         fitView
         fitViewOptions={{ padding: 0.15, minZoom: 0.6, maxZoom: 1.1 }}
         minZoom={0.3}

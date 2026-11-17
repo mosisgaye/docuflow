@@ -108,6 +108,7 @@ export interface Statistiques {
 }
 
 export const EVENEMENT_ACCES = 'docuflow:acces-requis'
+export const EVENEMENT_CONNEXION = 'verifac:connexion-requise'
 
 async function appeler<T>(chemin: string, options?: RequestInit): Promise<T> {
   let reponse: Response
@@ -122,6 +123,8 @@ async function appeler<T>(chemin: string, options?: RequestInit): Promise<T> {
       const corps = await reponse.json()
       // Code d'accès de la démonstration absent ou périmé : l'application affiche l'écran d'entrée.
       if (reponse.status === 401 && corps.acces) window.dispatchEvent(new Event(EVENEMENT_ACCES))
+      // Session de compte absente ou expirée : l'application affiche l'écran de connexion.
+      if (reponse.status === 401 && reponse.headers.get('X-Verifac-Connexion') === 'requise') window.dispatchEvent(new Event(EVENEMENT_CONNEXION))
       if (typeof corps.detail === 'string') message = corps.detail
     } catch {
       // Réponse sans JSON : on garde le message par défaut.
@@ -276,6 +279,29 @@ export interface EtatAcces {
 export const etatAcces = () => appeler<EtatAcces>('/acces')
 export const entrer = (code: string) => appeler<EtatAcces>('/acces', enJson({ code }))
 export const sortir = () => appeler<EtatAcces>('/acces', { method: 'DELETE' })
+
+// ───────── Les comptes : connexion par lien ou par code ─────────
+
+export type Role = 'administrateur' | 'membre' | 'approbateur' | 'lecture' | 'operateur'
+export type Droit = 'voir' | 'approuver' | 'traiter' | 'circuit' | 'agent' | 'administrer' | 'operer'
+
+export interface Compte {
+  id: string
+  nom: string
+  email: string
+  role: Role
+  libelle_role: string
+  niveaux: Niveau[]
+  actif: boolean
+  derniere_connexion: string | null
+  droits: Droit[]
+}
+
+export const moi = () => appeler<{ compte: Compte | null; comptes: boolean }>('/moi')
+export const demanderConnexion = (email: string) => appeler<{ message: string }>('/connexion/demande', enJson({ email }))
+export const connexionParLien = (jeton: string) => appeler<{ compte: Compte }>('/connexion/lien', enJson({ jeton }))
+export const connexionParCode = (email: string, code: string) => appeler<{ compte: Compte }>('/connexion/code', enJson({ email, code }))
+export const deconnexion = () => appeler<{ compte: null }>('/deconnexion', { method: 'POST' })
 
 // ───────── Réglages : l'équipe qui approuve, et la réception des factures ─────────
 

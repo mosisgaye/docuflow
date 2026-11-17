@@ -10,6 +10,8 @@ import { IconeAgent } from './IconeAgent'
 import { Connecteurs, type OngletConnecteurs } from './Connecteurs'
 import { Documents } from './Pages'
 import { EcranAcces } from './EcranAcces'
+import { EcranConnexion } from './EcranConnexion'
+import { CompteConnecte } from './droits'
 import { type OngletReglages, Reglages } from './Reglages'
 import { TableauDeBord } from './TableauDeBord'
 import { type OngletWorkflow, Workflow } from './Workflow'
@@ -20,6 +22,7 @@ type Page = 'tableau' | 'documents' | 'workflow' | 'connecteurs' | 'reglages'
 type Vue = Etat | 'toutes' | 'a_traiter' | 'mon_tour' | 'a_regler' | 'echeances' | 'attente'
 
 const CLE_AUTEUR = 'factures.auteur'
+const LIBELLE_NIVEAU_COURT: Record<api.Niveau, string> = { comptable: 'comptable', directeur_financier: 'directeur financier', gerant: 'gérant' }
 const MENU: { page: Page; nom: string; icone: NomIcone }[] = [
   { page: 'tableau', nom: 'Accueil', icone: 'accueil' },
   { page: 'documents', nom: 'Factures', icone: 'document' },
@@ -105,6 +108,16 @@ export function Application() {
   const [agentOuvert, setAgentOuvert] = useState(false)
   // null : on ne sait pas encore ; vrai : le code d'accès de la démonstration est demandé.
   const [verrouille, setVerrouille] = useState<boolean | null>(null)
+  // Les comptes : undefined tant qu'on ne sait pas, null si personne n'est connecté.
+  const [compte, setCompte] = useState<api.Compte | null | undefined>(undefined)
+  const [avecComptes, setAvecComptes] = useState(false)
+  const [menuCompte, setMenuCompte] = useState(false)
+  // Le lien du mail de connexion arrive avec ?connexion=… : il ouvre l'écran avec le bouton « Se connecter ».
+  const [jetonLien, setJetonLien] = useState(() => new URLSearchParams(window.location.search).get('connexion'))
+  const connecte = (nouveau: api.Compte) => {
+    setJetonLien(null) // un lien ne sert qu'une fois : on l'oublie dès la connexion
+    setCompte(nouveau)
+  }
   const champRecherche = useRef<HTMLInputElement>(null)
   const [tours, setTours] = useState<Tour[]>([])
   const [recherche, setRecherche] = useState('')
@@ -115,7 +128,9 @@ export function Application() {
   const [decision, setDecision] = useState(false)
   const [depotEnCours, setDepotEnCours] = useState<string | null>(null)
   const [survol, setSurvol] = useState(false)
-  const [auteur, setAuteur] = useState(() => lire(CLE_AUTEUR) ?? '')
+  const [auteurSaisi, setAuteur] = useState(() => lire(CLE_AUTEUR) ?? '')
+  // Avec des comptes, c'est le compte connecté qui signe ; sans comptes, le nom saisi en haut.
+  const auteur = compte?.nom ?? auteurSaisi
   const [branches, setBranches] = useState<string[]>([])
   const [equipe, setEquipe] = useState<api.MembreEquipe[]>([])
   const rechargerConnecteurs = useCallback(() => {
@@ -132,9 +147,10 @@ export function Application() {
 
   // Qui je suis : mon nom (en haut à droite) retrouvé dans « Mon équipe » donne mes rôles d'approbation.
   const mesNiveaux = useMemo(() => {
+    if (compte) return compte.niveaux
     const moi = normaliser(auteur)
     return moi ? equipe.filter((membre) => normaliser(membre.nom) === moi).map((membre) => membre.niveau) : []
-  }, [equipe, auteur])
+  }, [equipe, auteur, compte])
   const monTour = useCallback(
     (facture: FactureResume) =>
       Boolean(facture.niveau_attendu && mesNiveaux.includes(facture.niveau_attendu) && !(facture.approuve_par ?? []).some((nom) => normaliser(nom) === normaliser(auteur))),
@@ -162,27 +178,49 @@ export function Application() {
   }, [])
 
   useEffect(() => {
-    api.etatAcces().then(
-      (etat) => setVerrouille(etat.requis && !etat.ouvert),
-      () => setVerrouille(false), // moteur injoignable : l'écran normal le dira
+    const parLeCode = () =>
+      api.etatAcces().then(
+        (etat) => setVerrouille(etat.requis && !etat.ouvert),
+        () => setVerrouille(false), // moteur injoignable : l'écran normal le dira
+      )
+    // Dès qu'un compte existe, la connexion par compte remplace le code d'accès.
+    api.moi().then(
+      (reponse) => {
+        setCompte(reponse.compte)
+        setAvecComptes(reponse.comptes)
+        if (reponse.comptes) setVerrouille(false)
+        else parLeCode()
+      },
+      () => {
+        setCompte(null)
+        parLeCode()
+      },
     )
     const fermer = () => setVerrouille(true)
+    const seConnecter = () => {
+      setCompte(null)
+      setAvecComptes(true)
+    }
     window.addEventListener(api.EVENEMENT_ACCES, fermer)
-    return () => window.removeEventListener(api.EVENEMENT_ACCES, fermer)
+    window.addEventListener(api.EVENEMENT_CONNEXION, seConnecter)
+    return () => {
+      window.removeEventListener(api.EVENEMENT_ACCES, fermer)
+      window.removeEventListener(api.EVENEMENT_CONNEXION, seConnecter)
+    }
   }, [])
 
   useEffect(() => {
-    if (verrouille === false) {
+    if (verrouille === false && !(avecComptes && !compte)) {
       setErreur(null)
       recharger()
       rechargerConnecteurs()
       api.equipe().then((reponse) => setEquipe(reponse.membres), () => setEquipe([]))
     }
-  }, [verrouille, recharger, rechargerConnecteurs])
+  }, [verrouille, recharger, rechargerConnecteurs, avecComptes, compte])
 
   useEffect(() => {
-    ecrire(CLE_AUTEUR, auteur)
-  }, [auteur])
+    ecrire(CLE_AUTEUR, auteurSaisi)
+  }, [auteurSaisi])
 
   // La facture mise en avant sur le tableau de bord : celle qu'on vient de déposer,
   // sinon la première à traiter, sinon la plus récente.
@@ -410,7 +448,7 @@ export function Application() {
   // ───────── Ce qui est affiché ─────────
 
   const ongletConnecteursEffectif: OngletConnecteurs = ongletConnecteurs ?? (branches.length > 0 ? 'mes' : 'decouvrir')
-  const compte = useMemo(() => {
+  const parEtat = useMemo(() => {
     const parEtat = new Map<Etat, number>()
     for (const facture of factures) parEtat.set(facture.etat, (parEtat.get(facture.etat) ?? 0) + 1)
     return parEtat
@@ -508,11 +546,14 @@ export function Application() {
   // L'accueil et le Workflow prennent toute la largeur : leur contenu suffit, une barre latérale le répéterait.
   const lateraleAffichee = laterale && page !== 'workflow' && page !== 'tableau'
 
-  if (verrouille === null) return null
+  if (verrouille === null || compte === undefined) return null
+  if (jetonLien && !compte) return <EcranConnexion jeton={jetonLien} surConnexion={connecte} />
+  if (avecComptes && !compte) return <EcranConnexion jeton={null} surConnexion={connecte} />
   if (verrouille) return <EcranAcces surOuverture={() => setVerrouille(false)} />
   const enSaisieNom = !auteur.trim()
 
   return (
+    <CompteConnecte.Provider value={compte ?? null}>
     <div
       className={`app${lateraleAffichee ? '' : ' app--sans-laterale'}${agentOuvert ? ' app--agent' : ''}`}
       onDragOver={(evenement) => {
@@ -551,6 +592,7 @@ export function Application() {
         </label>
 
         <div className="haut__actions">
+          {(!compte || compte.droits.includes('agent')) && (
           <button
             className={`bouton-agent${agentOuvert ? ' bouton-agent--ouvert' : ''}`}
             onClick={() => setAgentOuvert(!agentOuvert)}
@@ -561,12 +603,46 @@ export function Application() {
             <IconeAgent taille={18} />
             <span>Agent</span>
           </button>
-          <label className="auteur" title="Votre nom, inscrit au journal à chaque décision">
-            <span className={`avatar teinte-3`} aria-hidden="true">
-              {enSaisieNom ? <Icone nom="utilisateur" taille={12} /> : initiales(auteur)}
-            </span>
-            <input ref={champAuteur} value={auteur} onChange={(evenement) => setAuteur(evenement.target.value)} placeholder="Votre nom" maxLength={100} aria-label="Votre nom" />
-          </label>
+          )}
+          {compte ? (
+            <div className="compte">
+              <button className="compte__bouton" onClick={() => setMenuCompte(!menuCompte)} aria-expanded={menuCompte} aria-haspopup="true" title="Votre compte">
+                <span className={`avatar ${teinte(compte.nom)}`} aria-hidden="true">
+                  {initiales(compte.nom)}
+                </span>
+                <span className="compte__nom">{compte.nom}</span>
+              </button>
+              {menuCompte && (
+                <div className="compte__menu" role="dialog" aria-label="Votre compte">
+                  <p className="compte__identite">
+                    <strong>{compte.nom}</strong>
+                    <span>{compte.email}</span>
+                  </p>
+                  <p className="compte__role">
+                    {compte.libelle_role}
+                    {compte.niveaux.length > 0 && ` · approuve en tant que ${compte.niveaux.map((niveau) => LIBELLE_NIVEAU_COURT[niveau]).join(', ')}`}
+                  </p>
+                  <button
+                    className="bouton bouton--fantome compte__sortie"
+                    onClick={async () => {
+                      await api.deconnexion().catch(() => undefined)
+                      setMenuCompte(false)
+                      setCompte(null)
+                    }}
+                  >
+                    <Icone nom="deconnexion" taille={14} /> Se déconnecter
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <label className="auteur" title="Votre nom, inscrit au journal à chaque décision">
+              <span className={`avatar teinte-3`} aria-hidden="true">
+                {enSaisieNom ? <Icone nom="utilisateur" taille={12} /> : initiales(auteur)}
+              </span>
+              <input ref={champAuteur} value={auteurSaisi} onChange={(evenement) => setAuteur(evenement.target.value)} placeholder="Votre nom" maxLength={100} aria-label="Votre nom" />
+            </label>
+          )}
           <button className="bouton bouton--fantome bouton--icone" onClick={changerTheme} aria-label={theme === 'dark' ? 'Passer en thème clair' : 'Passer en thème sombre'} title="Changer de thème">
             <Icone nom={theme === 'dark' ? 'soleil' : 'lune'} />
           </button>
@@ -689,11 +765,11 @@ export function Application() {
                 <span className="laterale__compte">{factures.length}</span>
               </button>
               {/* Les états vides n'encombrent pas la liste, sauf celui qu'on regarde. */}
-              {ORDRE_ETATS.filter((etat) => etat !== 'extraite' && ((compte.get(etat) ?? 0) > 0 || (page === 'documents' && vue === etat))).map((etat) => (
+              {ORDRE_ETATS.filter((etat) => etat !== 'extraite' && ((parEtat.get(etat) ?? 0) > 0 || (page === 'documents' && vue === etat))).map((etat) => (
                 <button key={etat} className="laterale__ligne" aria-current={(page === 'documents' && vue === etat) || undefined} onClick={() => allerVue(etat)} tabIndex={laterale ? 0 : -1}>
                   <span className={`puce puce--${etat}`} aria-hidden="true" />
                   <span>{LIBELLE_ETAT[etat]}</span>
-                  <span className="laterale__compte">{compte.get(etat) ?? 0}</span>
+                  <span className="laterale__compte">{parEtat.get(etat) ?? 0}</span>
                 </button>
               ))}
             </div>
@@ -772,9 +848,11 @@ export function Application() {
                       <h1>{TITRES_VUES[vue as keyof typeof TITRES_VUES]?.[0] ?? LIBELLE_ETAT[vue as Etat]}</h1>
                       <p>{TITRES_VUES[vue as keyof typeof TITRES_VUES]?.[1] ?? 'Cliquez sur une facture pour l’ouvrir à côté de la liste.'}</p>
                     </div>
-                    <button className="bouton bouton--plein" onClick={() => champFichier.current?.click()} disabled={occupe}>
-                      <Icone nom="deposer" /> Déposer
-                    </button>
+                    {(!compte || compte.droits.includes('traiter')) && (
+                      <button className="bouton bouton--plein" onClick={() => champFichier.current?.click()} disabled={occupe}>
+                        <Icone nom="deposer" /> Déposer
+                      </button>
+                    )}
                   </header>
                   <Documents factures={listeAffichee} recherche={recherche} ouverte={detail?.id ?? null} surOuverture={ouvrir} surDepot={() => champFichier.current?.click()} />
                 </>
@@ -900,5 +978,6 @@ export function Application() {
 
       {survol && <div className="depot">Relâchez pour déposer les factures</div>}
     </div>
+    </CompteConnecte.Provider>
   )
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePeut } from './droits'
 import type { Etat, FactureResume, Statistiques } from './api'
 import { LIBELLE_ETAT, ORDRE_ETATS, euros, ilYA, initiales, jour, manquant, teinte, urgence } from './format'
 import { Icone, type NomIcone } from './Icones'
@@ -53,6 +54,7 @@ function Ligne({ facture, ouverte, surOuverture, avecEtat }: { facture: FactureR
 
 /** Les factures en liste dense, groupées par état comme une liste de tâches. */
 export function Documents({ factures, recherche, ouverte, surOuverture, surDepot }: PropsDocuments) {
+  const peut = usePeut()
   const [grouper, setGrouper] = useState(true)
   const [anomaliesSeules, setAnomaliesSeules] = useState(false)
   const [replies, setReplies] = useState<Set<Etat>>(new Set())
@@ -88,7 +90,7 @@ export function Documents({ factures, recherche, ouverte, surOuverture, surDepot
           <Icone nom={recherche.trim() ? 'recherche' : 'reception'} taille={28} />
           <strong>{recherche.trim() ? `Aucune facture ne correspond à « ${recherche.trim()} »` : 'Aucune facture ici'}</strong>
           <p>{recherche.trim() ? 'Essayez un nom de fournisseur, un numéro ou un SIRET.' : 'Déposez un PDF ou une photo de facture : elle est lue en quelques secondes.'}</p>
-          {!recherche.trim() && (
+          {!recherche.trim() && peut('traiter') && (
             <button className="bouton bouton--plein" onClick={surDepot}>
               <Icone nom="deposer" /> Déposer des factures
             </button>
