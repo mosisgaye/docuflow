@@ -4996,6 +4996,24 @@ button.pastille-niveau:hover:not(:disabled) {
   .comptes__ligne > :nth-child(n + 3) {
     grid-column: 2;
   }
+
+  /* Au doigt : 44 px de haut pour tout ce qui agit sur un compte (WCAG 2.5.5). */
+  button.pastille-niveau,
+  .comptes__role,
+  .comptes__actions .bouton,
+  .reglages__ajout .bouton--plein {
+    height: 2.75rem;
+  }
+
+  button.pastille-niveau {
+    padding: 0 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  .comptes__niveaux,
+  .comptes__actions {
+    gap: 0.5rem;
+  }
 }
 
 /* ───────── Console de l'opérateur ───────── */
