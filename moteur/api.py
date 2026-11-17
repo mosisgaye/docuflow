@@ -22,6 +22,8 @@
     GET  /circuit/brouillon           le brouillon du circuit, ou la version en service s'il n'y en a pas
     PUT  /circuit/brouillon           enregistrer le brouillon (vérifié ; aucune facture n'est touchée)
     DELETE /circuit/brouillon         annuler les modifications : retour à la version en service
+    GET  /circuit/differences         ce que le brouillon change, en phrases
+    POST /circuit/publier             faire du brouillon la version suivante (les factures en cours gardent la leur)
     GET  /approbation/{jeton}         la page de confirmation ouverte depuis le lien du mail
     POST /approbation/{jeton}         approuver ou rejeter depuis cette page
     POST /agent                       parler à l'assistant (réponse envoyée au fil de l'eau)
@@ -533,6 +535,24 @@ def creer_application(
     @application.delete("/circuit/brouillon")
     def annuler_brouillon(session: Session = Depends(session_de_requete, scope="function")) -> dict:
         return editeur_circuit.annuler(session)
+
+    @application.get("/circuit/differences")
+    def differences_du_brouillon(session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        return editeur_circuit.differences(session)
+
+    class PublicationCircuit(BaseModel):
+        auteur: str = Field(min_length=1, max_length=100)
+
+    @application.post("/circuit/publier", status_code=status.HTTP_201_CREATED)
+    def publier_circuit(demande: PublicationCircuit, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        if not demande.auteur.strip():
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Indiquez votre nom : chaque publication est inscrite à un nom.")
+        try:
+            version = editeur_circuit.publier_brouillon(session, demande.auteur.strip())
+        except editeur_circuit.PublicationImpossible as erreur:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(erreur)) from erreur
+        logging.getLogger("moteur.api").info("Circuit publié : version %s par %s", version.version, version.publie_par)
+        return {"version": version.version, "publie_par": version.publie_par, "changements": version.changements}
 
     class Publication(BaseModel):
         auteur: str = Field(min_length=1, max_length=100)

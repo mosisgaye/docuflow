@@ -197,6 +197,8 @@ class ReglesApprobation(Base):
     regles: Mapped[list] = mapped_column(JSONB)
     # Les relances par niveau ({"comptable": {"delai_h": 48, ...}}). Absentes : les délais par défaut.
     relances: Mapped[dict | None] = mapped_column(JSONB)
+    # Ce que cette version a changé, en phrases lisibles (publiée depuis l'éditeur). Absent avant l'éditeur.
+    changements: Mapped[list | None] = mapped_column(JSONB)
     publie_par: Mapped[str] = mapped_column(String(100))
     publie_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

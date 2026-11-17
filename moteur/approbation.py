@@ -226,12 +226,12 @@ REGLES_DEMO = [
 ]
 
 
-def publier(session: Session, regles: list[dict], auteur: str, relances: dict | None = None) -> ReglesApprobation:
+def publier(session: Session, regles: list[dict], auteur: str, relances: dict | None = None, changements: list | None = None) -> ReglesApprobation:
     """Publie une nouvelle version des règles (et des relances), après les avoir vérifiées. Les anciennes restent."""
     verifiees = [Regle.model_validate(regle).model_dump(mode="json", exclude_none=True) for regle in regles]
     relances_verifiees = verifier_relances(relances)
     suivante = (session.scalar(select(func.max(ReglesApprobation.version))) or 0) + 1
-    version = ReglesApprobation(version=suivante, regles=verifiees, relances=relances_verifiees, publie_par=auteur)
+    version = ReglesApprobation(version=suivante, regles=verifiees, relances=relances_verifiees, changements=changements, publie_par=auteur)
     session.add(version)
     session.flush()
     return version

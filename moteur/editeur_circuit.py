@@ -2,17 +2,30 @@
 
 Le circuit en service est la dernière version publiée (moteur/approbation.py). L'éditeur travaille
 sur un brouillon unique : on l'enregistre autant de fois qu'on veut, on peut l'annuler, et seule la
-publication (plus tard) en fait une nouvelle version. Tant qu'il n'est pas publié, aucune facture
+publication en fait une nouvelle version. Tant qu'il n'est pas publié, aucune facture
 ne le voit.
 
 Sans brouillon, l'éditeur s'ouvre sur la version en service, réécrite en lignes (la forme de l'éditeur).
 """
 
+from decimal import Decimal
+
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from moteur.approbation import LIBELLES, Regle, Relance, en_lignes, verifier_relances, version_en_vigueur
-from moteur.base import BrouillonCircuit
+from moteur.approbation import (
+    LIBELLES,
+    NIVEAUX,
+    RELANCES_DEFAUT,
+    Regle,
+    Relance,
+    en_lignes,
+    publier,
+    verifier_relances,
+    version_en_vigueur,
+)
+from moteur.base import BrouillonCircuit, ReglesApprobation
+from moteur.catalogue_circuit import ANOMALIES, CHAMPS, COMPARAISONS
 
 REGLES_MAX = 50
 
@@ -124,3 +137,111 @@ def annuler(session: Session) -> dict:
         session.delete(brouillon)
         session.flush()
     return lire(session)
+
+
+# ───────── En phrases : ce que dit une règle, et ce qui a changé ─────────
+
+
+def _montant(valeur: str) -> str:
+    """« 2500.50 » → « 2 500,50 € » ; « 1000 » → « 1 000 € »."""
+    nombre = Decimal(valeur)
+    texte = f"{nombre:,.2f}".replace(",", " ").replace(".", ",").removesuffix(",00")
+    return f"{texte} €"
+
+
+def _ligne(ligne: dict) -> str:
+    champ = next(c for c in CHAMPS if c["champ"] == ligne["champ"])
+    comparaison = COMPARAISONS[ligne["comparaison"]]
+    if champ["genre"] == "montant":
+        return f"{champ['libelle']} {comparaison} {_montant(ligne['valeur'])}"
+    if champ["genre"] == "anomalies":
+        libelles = {a["code"]: a["libelle"] for a in ANOMALIES}
+        noms = " ou ".join(libelles.get(code, code) for code in ligne["valeur"])
+        return f"{'Anomalie' if ligne['comparaison'] == 'une_de' else 'Aucune anomalie'} : {noms}"
+    return f"{champ['libelle']} {comparaison} « {ligne['valeur']} »"
+
+
+def resume_condition(condition: dict) -> str:
+    """Une condition en français : « Montant TTC supérieur à 1 000 € ou Anomalie : IBAN différent… »."""
+    condition = en_lignes(condition)
+    if condition.get("toujours"):
+        return "Toujours"
+    lien = " et " if condition.get("combinaison") == "toutes" else " ou "
+    return lien.join(_ligne(ligne) for ligne in condition["lignes"])
+
+
+def resume_regle(regle: dict) -> str:
+    effet = (
+        f"bloque : {regle['bloque']}" if regle.get("bloque") else "exige " + ", ".join(LIBELLES[n].lower() for n in regle["exige"])
+    )
+    return f"{resume_condition(regle['si'])}, {effet}"
+
+
+def _resume_relance(reglage: dict) -> str:
+    return f"relance après {reglage['delai_h']} h ({reglage['delai_urgent_h']} h si l'échéance approche), {reglage['maximum']} au plus"
+
+
+def _comparable(regle: dict) -> dict:
+    """Une règle sous une forme où deux écritures du même sens sont égales (ancienne forme ou lignes)."""
+    si = en_lignes(regle["si"])
+    if "lignes" in si:
+        lignes = []
+        for ligne in si["lignes"]:
+            valeur = ligne["valeur"]
+            if ligne["champ"] in ("total_ttc", "total_ht"):
+                valeur = format(Decimal(valeur).normalize(), "f")  # « 1000.00 » et « 1000 » sont le même seuil
+            elif isinstance(valeur, list):
+                valeur = sorted(valeur)  # l'ordre des anomalies ne change rien
+            lignes.append({**ligne, "valeur": valeur})
+        si = {**si, "lignes": lignes, "combinaison": si.get("combinaison") or "une"}
+    return {**regle, "si": si}
+
+
+def comparer(avant: dict, apres: dict) -> list[dict]:
+    """Ce qui change d'un circuit (règles, relances) à l'autre, règle par règle (retrouvée par son nom)."""
+    changements = []
+    anciennes = {r["nom"]: _comparable(r) for r in avant["regles"]}
+    nouvelles = {r["nom"]: _comparable(r) for r in apres["regles"]}
+    for nom, regle in anciennes.items():
+        if nom not in nouvelles:
+            changements.append({"genre": "retrait", "regle": nom, "avant": resume_regle(regle), "apres": None, "texte": f"Règle retirée : {nom}."})
+    for nom, regle in nouvelles.items():
+        if nom not in anciennes:
+            changements.append({"genre": "ajout", "regle": nom, "avant": None, "apres": resume_regle(regle), "texte": f"Règle ajoutée : {nom} ({resume_regle(regle)})."})
+        elif regle != anciennes[nom]:
+            ancien, nouveau = resume_regle(anciennes[nom]), resume_regle(regle)
+            changements.append({"genre": "modification", "regle": nom, "avant": ancien, "apres": nouveau, "texte": f"{nom} : {ancien} → {nouveau}."})
+    for niveau in NIVEAUX:
+        ancien = (avant.get("relances") or {}).get(niveau) or RELANCES_DEFAUT
+        nouveau = (apres.get("relances") or {}).get(niveau) or RELANCES_DEFAUT
+        if ancien != nouveau:
+            texte = f"Relances du {LIBELLES[niveau].lower()} : {_resume_relance(ancien)} → {_resume_relance(nouveau)}."
+            changements.append({"genre": "relances", "regle": None, "niveau": niveau, "avant": _resume_relance(ancien), "apres": _resume_relance(nouveau), "texte": texte})
+    return changements
+
+
+def differences(session: Session) -> dict:
+    """Ce que le brouillon change par rapport à la version en service."""
+    service, brouillon = en_service(session), lire(session)
+    return {"version_en_service": service["version"], "modifie": brouillon["modifie"], "changements": comparer(service, brouillon) if brouillon["modifie"] else []}
+
+
+class PublicationImpossible(ValueError):
+    """Rien à publier : pas de brouillon, ou un brouillon identique à la version en service."""
+
+
+def publier_brouillon(session: Session, auteur: str) -> ReglesApprobation:
+    """Fait du brouillon la version suivante, avec la liste de ce qu'elle change, puis le jette.
+
+    Les factures déjà en cours gardent leur version ; seules les suivantes prennent la nouvelle.
+    """
+    brouillon = session.get(BrouillonCircuit, 1, with_for_update=True)  # deux publications à la fois : l'une attend l'autre
+    if brouillon is None:
+        raise PublicationImpossible("Aucune modification à publier.")
+    changements = comparer(en_service(session), {"regles": brouillon.regles, "relances": brouillon.relances})
+    if not changements:
+        raise PublicationImpossible("Le brouillon est identique à la version en service : rien à publier.")
+    version = publier(session, brouillon.regles, auteur, brouillon.relances, [c["texte"] for c in changements])
+    session.delete(brouillon)
+    session.flush()
+    return version
