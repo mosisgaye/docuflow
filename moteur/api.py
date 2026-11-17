@@ -18,6 +18,7 @@
     GET  /oauth/retour                l'éditeur y renvoie le navigateur après la connexion
     GET  /regles                      les règles d'approbation en vigueur
     POST /regles                      publier une nouvelle version des règles
+    GET  /circuit/catalogue           ce que l'éditeur de circuit peut régler (champs, comparaisons, anomalies…)
     GET  /approbation/{jeton}         la page de confirmation ouverte depuis le lien du mail
     POST /approbation/{jeton}         approuver ou rejeter depuis cette page
     POST /agent                       parler à l'assistant (réponse envoyée au fil de l'eau)
@@ -56,6 +57,7 @@ from moteur.odoo import Odoo, depuis_configuration
 from moteur.base import AppelConnecteur, ConnecteurBranche
 from moteur import oauth
 from moteur.approbation import LIBELLES, approbations_valides, empreinte, niveau_attendu, publier, version_en_vigueur
+from moteur.catalogue_circuit import catalogue
 from moteur import acces, cles_api, evenements_sortants, notifications
 from moteur.base import Abonnement, CleApi, Livraison, MailRecu, MembreEquipe
 from moteur.approbation import NIVEAUX
@@ -502,6 +504,10 @@ def creer_application(
         if version is None:
             return None
         return {"version": version.version, "regles": version.regles, "publie_par": version.publie_par, "publie_le": version.publie_le}
+
+    @application.get("/circuit/catalogue")
+    def catalogue_du_circuit() -> dict:
+        return catalogue()
 
     class Publication(BaseModel):
         auteur: str = Field(min_length=1, max_length=100)
