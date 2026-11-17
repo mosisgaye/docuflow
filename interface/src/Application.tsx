@@ -33,11 +33,6 @@ const ONGLETS_CONNECTEURS: { onglet: OngletConnecteurs; nom: string; icone: NomI
   { onglet: 'integres', nom: 'Intégrés à Verifac', icone: 'bouclier' },
   { onglet: 'developpeurs', nom: 'Accès développeurs', icone: 'code' },
 ]
-const ONGLETS_WORKFLOW: { onglet: OngletWorkflow; nom: string; icone: NomIcone }[] = [
-  { onglet: 'circuit', nom: 'Circuit des factures', icone: 'workflow' },
-  { onglet: 'versions', nom: 'Versions publiées', icone: 'journal' },
-  { onglet: 'executions', nom: 'Exécutions', icone: 'horloge' },
-]
 const FORMATS_ACCEPTES = /\.(pdf|jpe?g|png|webp)$/i
 const lire = (cle: string) => {
   try {
@@ -450,26 +445,11 @@ export function Application() {
     return () => window.clearTimeout(minuterie)
   }, [information])
 
-  const fil: string[] =
-    page === 'tableau'
-      ? ['Accueil']
-      : page === 'documents'
-        ? ['Factures', vue === 'toutes' ? 'Toutes les factures' : LIBELLE_ETAT[vue]]
-        : page === 'validations'
-          ? ['Factures', 'À traiter']
-          : page === 'assistant'
-            ? ['Assistant']
-            : page === 'workflow'
-              ? ['Workflow', ONGLETS_WORKFLOW.find((o) => o.onglet === ongletWorkflow)!.nom]
-              : page === 'reglages'
-                ? ['Réglages', ongletReglages === 'equipe' ? 'Mon équipe' : 'Réception des factures']
-                : ['Connecteurs', ONGLETS_CONNECTEURS.find((o) => o.onglet === ongletConnecteursEffectif)!.nom]
-
   // La fiche s'ouvre à côté des listes et de l'assistant ; l'accueil et les connecteurs gardent toute la largeur.
   const panneauFacture = detail && page !== 'connecteurs' && page !== 'tableau' && page !== 'reglages' && page !== 'workflow'
 
-  // Sur la page Workflow, le canevas prend toute la place (comme n8n) : pas de barre latérale.
-  const lateraleAffichee = laterale && page !== 'workflow'
+  // Accueil, À traiter et Workflow prennent toute la largeur : leur contenu suffit, une barre latérale le répéterait.
+  const lateraleAffichee = laterale && page !== 'workflow' && page !== 'tableau' && page !== 'validations'
 
   if (verrouille === null) return null
   if (verrouille) return <EcranAcces surOuverture={() => setVerrouille(false)} />
@@ -548,9 +528,12 @@ export function Application() {
             className="rail__bouton"
             aria-current={page === entree.page ? 'page' : undefined}
             onClick={() => {
+              // Recliquer sur la page ouverte replie ou déplie sa barre latérale (comme la touche « [ »).
+              if (entree.page === page) return basculerLaterale()
               if (entree.page === 'documents') setVue('toutes')
               setPage(entree.page)
             }}
+            title={entree.page === page ? 'Replier ou déplier la barre latérale ( [ )' : undefined}
           >
             <Icone nom={entree.icone} taille={18} />
             <span className="rail__libelle">{entree.nom}</span>
@@ -633,28 +616,16 @@ export function Application() {
         ) : (
           <>
             <div className="laterale__tete">
-              <h2>Factures</h2>
-              <button className="bouton bouton--plein bouton--petit" onClick={() => champFichier.current?.click()} disabled={occupe} tabIndex={laterale ? 0 : -1}>
-                <Icone nom="plus" taille={14} /> Déposer
-              </button>
+              <h2>Filtres</h2>
             </div>
             <div className="laterale__corps">
-              <button className="laterale__ligne" aria-current={page === 'tableau' || undefined} onClick={() => setPage('tableau')} tabIndex={laterale ? 0 : -1}>
-                <Icone nom="accueil" />
-                <span>Vue d’ensemble</span>
-              </button>
-              <button className="laterale__ligne" aria-current={page === 'validations' || undefined} onClick={() => setPage('validations')} tabIndex={laterale ? 0 : -1}>
-                <Icone nom="validation" />
-                <span>À traiter</span>
-                <span className="laterale__compte">{aTraiter.length}</span>
-              </button>
               <button className="laterale__ligne" aria-current={(page === 'documents' && vue === 'toutes') || undefined} onClick={() => allerVue('toutes')} tabIndex={laterale ? 0 : -1}>
                 <Icone nom="document" />
-                <span>Toutes les factures</span>
+                <span>Toutes</span>
                 <span className="laterale__compte">{factures.length}</span>
               </button>
-              <p className="laterale__section">Par état</p>
-              {ORDRE_ETATS.filter((etat) => etat !== 'extraite').map((etat) => (
+              {/* Les états vides n'encombrent pas la liste, sauf celui qu'on regarde. */}
+              {ORDRE_ETATS.filter((etat) => etat !== 'extraite' && ((compte.get(etat) ?? 0) > 0 || (page === 'documents' && vue === etat))).map((etat) => (
                 <button key={etat} className="laterale__ligne" aria-current={(page === 'documents' && vue === etat) || undefined} onClick={() => allerVue(etat)} tabIndex={laterale ? 0 : -1}>
                   <span className={`puce puce--${etat}`} aria-hidden="true" />
                   <span>{LIBELLE_ETAT[etat]}</span>
@@ -662,23 +633,17 @@ export function Application() {
                 </button>
               ))}
             </div>
-            <p className="laterale__pied">
-              Ou par mail : <strong>depot@factures.moussagaye.com</strong>
-            </p>
           </>
         )}
       </aside>
 
       <main className="espace">
-        <div className="espace__tete" hidden={page === 'workflow'}>
+        {/* Cette ligne n'apparaît que pour la recherche en cours ; sinon elle ne contenait qu'un bouton et prenait une ligne. */}
+        <div className="espace__tete" hidden={!((page === 'documents' || page === 'validations') && recherche.trim())}>
           <button className="bouton bouton--fantome bouton--icone" onClick={basculerLaterale} aria-label={laterale ? 'Replier la barre latérale' : 'Déplier la barre latérale'} title="Barre latérale ( [ )">
             <Icone nom="panneau" />
           </button>
-          <ol className="fil" aria-label="Vous êtes ici">
-            {fil.map((etape) => (
-              <li key={etape}>{etape}</li>
-            ))}
-          </ol>
+          {/* Pas de fil d'Ariane : chaque page porte déjà son titre, il le répétait. */}
           {(page === 'documents' || page === 'validations') && recherche.trim() && (
             <div className="espace__outils">
               <button className="pastille-filtre" aria-pressed="true" onClick={() => setRecherche('')}>

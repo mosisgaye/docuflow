@@ -11,7 +11,7 @@ interface PropsDocuments {
   surDepot: () => void
 }
 
-function Ligne({ facture, ouverte, surOuverture }: { facture: FactureResume; ouverte: boolean; surOuverture: (id: string) => void }) {
+function Ligne({ facture, ouverte, surOuverture, avecEtat }: { facture: FactureResume; ouverte: boolean; surOuverture: (id: string) => void; avecEtat: boolean }) {
   const echeance = urgence(facture.date_echeance)
   const lue = facture.etat !== 'recue' && facture.etat !== 'echec'
   return (
@@ -41,9 +41,11 @@ function Ligne({ facture, ouverte, surOuverture }: { facture: FactureResume; ouv
           <span className="liste__muet">—</span>
         )}
       </td>
-      <td>
-        <span className={`etat etat--${facture.etat}`}>{LIBELLE_ETAT[facture.etat]}</span>
-      </td>
+      {avecEtat && (
+        <td>
+          <span className={`etat etat--${facture.etat}`}>{LIBELLE_ETAT[facture.etat]}</span>
+        </td>
+      )}
       <td className="liste__col-recue liste__muet">{ilYA(facture.cree_le)}</td>
     </tr>
   )
@@ -100,7 +102,7 @@ export function Documents({ factures, recherche, ouverte, surOuverture, surDepot
             <col style={{ width: '7.5rem' }} />
             <col className="liste__col-echeance" style={{ width: '6.5rem' }} />
             <col className="liste__col-anomalies" style={{ width: '5.25rem' }} />
-            <col style={{ width: '9.375rem' }} />
+            {!grouper && <col style={{ width: '9.375rem' }} />}
             <col className="liste__col-recue" style={{ width: '6.25rem' }} />
           </colgroup>
           <thead>
@@ -118,7 +120,8 @@ export function Documents({ factures, recherche, ouverte, surOuverture, surDepot
               <th scope="col" className="liste__col-anomalies">
                 Anomalies
               </th>
-              <th scope="col">État</th>
+              {/* Groupée par état, la liste ne répète pas l'état sur chaque ligne : le groupe le dit. */}
+              {!grouper && <th scope="col">État</th>}
               <th scope="col" className="liste__col-recue">
                 Reçue
               </th>
@@ -130,7 +133,7 @@ export function Documents({ factures, recherche, ouverte, surOuverture, surDepot
               <tbody key={groupe.etat ?? 'toutes'}>
                 {groupe.etat && (
                   <tr className={`liste__groupe${replie ? ' liste__groupe--replie' : ''}`}>
-                    <th colSpan={7} scope="rowgroup">
+                    <th colSpan={grouper ? 6 : 7} scope="rowgroup">
                       <button aria-expanded={!replie} onClick={() => basculer(groupe.etat!)}>
                         <Icone nom="deplier" taille={14} />
                         <span className={`etat etat--${groupe.etat}`}>{LIBELLE_ETAT[groupe.etat]}</span>
@@ -139,7 +142,7 @@ export function Documents({ factures, recherche, ouverte, surOuverture, surDepot
                     </th>
                   </tr>
                 )}
-                {!replie && groupe.factures.map((facture) => <Ligne key={facture.id} facture={facture} ouverte={facture.id === ouverte} surOuverture={surOuverture} />)}
+                {!replie && groupe.factures.map((facture) => <Ligne key={facture.id} facture={facture} ouverte={facture.id === ouverte} surOuverture={surOuverture} avecEtat={!grouper} />)}
               </tbody>
             )
           })}

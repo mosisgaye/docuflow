@@ -30,7 +30,7 @@ export const LIBELLE_ETAT: Record<Etat, string> = {
   en_anomalie: 'En anomalie',
   validee: 'Validée',
   rejetee: 'Rejetée',
-  exportee: 'Exportée',
+  exportee: 'En comptabilité',
   echec: 'Lecture impossible',
 }
 
@@ -119,7 +119,8 @@ export function duree(secondes: number) {
   return secondes < 0.01 ? 'moins de 10 ms' : `${Math.round(secondes * 1000)} ms`
 }
 
-export const ETAPES = ['Réception', 'Analyse IA', 'Contrôle', 'Validation', 'Terminé'] as const
+// Le même vocabulaire que l'éditeur de circuit : Réception, Lecture IA, Contrôles, Approbation.
+export const ETAPES = ['Réception', 'Lecture IA', 'Contrôles', 'Approbation', 'Terminé'] as const
 
 /** Où en est une facture dans le parcours : nombre d'étapes finies, et si l'étape en cours pose problème. */
 export function avancement(etat: Etat): { faites: number; alerte: boolean } {
