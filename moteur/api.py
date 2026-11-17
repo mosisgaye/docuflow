@@ -39,6 +39,7 @@ La lecture des factures est faite par un processus à part : uv run python -m mo
 
 import json
 import logging
+from contextvars import ContextVar
 from html import escape as html_escape
 import pathlib
 import uuid
@@ -232,6 +233,16 @@ def _detail(facture: FactureEnBase) -> dict:
     }
 
 
+# Le compte connecté pendant la requête (posé par le contrôle des comptes), ou None sans comptes.
+CONNECTE: ContextVar[dict | None] = ContextVar("verifac_connecte", default=None)
+
+
+def qui(propose: str) -> str:
+    """Qui signe l'action : le compte connecté s'il y en a un, sinon le nom saisi (installation sans comptes)."""
+    connecte = CONNECTE.get()
+    return connecte["nom"] if connecte else propose
+
+
 def creer_application(
     fabrique_session: Callable[[], Session] | None = None,
     extracteur: Callable[[str], ResultatExtraction] = extraire,
@@ -272,15 +283,41 @@ def creer_application(
         enregistrer_consigne(session, consigne_assistant())
         session.commit()
 
-    application = FastAPI(title="Moteur de factures", version="0.1.0")
+    async def controle_des_comptes(requete: Request) -> None:
+        """Dès qu'un compte existe, chaque adresse exige une session et le droit de son rôle (comptes.REGLES_ACCES).
+
+        Sans aucun compte (installation d'avant les comptes, démonstration), rien ne change : le code d'accès suffit.
+        Le compte connecté est gardé pour la requête : c'est lui qui signe les actions (qui()).
+        """
+        CONNECTE.set(None)
+        chemin = requete.url.path
+        if acces.chemin_libre(chemin) or requete.method in ("OPTIONS", "HEAD"):
+            return
+        with fabrique_session() as session:
+            if not comptes.existe_un_compte(session):
+                return
+            compte = comptes.lire_session(session, requete.cookies.get(comptes.COOKIE))
+            if compte is None:
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Connectez-vous pour continuer.", headers={"X-Verifac-Connexion": "requise"})
+            droit = comptes.droit_requis(requete.method, chemin)
+            if not comptes.peut(compte, droit):
+                raise HTTPException(status.HTTP_403_FORBIDDEN, f"Votre rôle ({comptes.LIBELLES_ROLES[compte.role]}) ne permet pas cette action.")
+            CONNECTE.set({"id": str(compte.id), "nom": compte.nom, "role": compte.role, "niveaux": list(compte.niveaux or [])})
+
+    application = FastAPI(title="Moteur de factures", version="0.1.0", dependencies=[Depends(controle_des_comptes)])
+    def avec_comptes() -> bool:
+        with fabrique_session() as session:
+            return comptes.existe_un_compte(session)
+
     tentatives = acces.Tentatives()
     # Toutes adresses confondues : derrière Vercel, l'adresse vue peut être partagée ou falsifiée.
     tentatives_toutes = acces.Tentatives(maximum=acces.ESSAIS_MAX_TOTAL)
 
     @application.middleware("http")
     async def code_d_acces(requete: Request, suite):
-        # Sans code configuré (développement), tout passe. Sinon, le cookie du code est exigé.
-        if not acces.autorise(requete.url.path, requete.cookies.get(acces.COOKIE)):
+        # Sans code configuré (développement), tout passe. Sinon, le cookie du code est exigé…
+        # … sauf dès qu'un compte existe : la connexion par compte remplace alors le code d'accès.
+        if not acces.autorise(requete.url.path, requete.cookies.get(acces.COOKIE)) and not avec_comptes():
             return JSONResponse({"detail": "Code d’accès requis.", "acces": True}, status_code=status.HTTP_401_UNAUTHORIZED)
         return await suite(requete)
 
@@ -415,9 +452,20 @@ def creer_application(
         reponse.delete_cookie(comptes.COOKIE, path="/")
         return {"compte": None}
 
+    def visible(session: Session, facture: FactureEnBase) -> bool:
+        """Un approbateur ne voit que les factures où c'est son tour, ou qu'il a déjà approuvées. Les autres voient tout."""
+        connecte = CONNECTE.get()
+        if not connecte or connecte["role"] != "approbateur":
+            return True
+        tour = _tour(facture)
+        moi = connecte["nom"].strip().casefold()
+        return tour["niveau_attendu"] in connecte["niveaux"] or any(nom.strip().casefold() == moi for nom in tour["approuve_par"]) or any(
+            a.personne.strip().casefold() == moi for a in approbations_valides(session, facture)
+        )
+
     def facture_ou_404(session: Session, facture_id: uuid.UUID) -> FactureEnBase:
         facture = session.get(FactureEnBase, facture_id)
-        if facture is None:
+        if facture is None or not visible(session, facture):  # invisible : on ne dit même pas qu'elle existe
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Facture introuvable.")
         return facture
 
@@ -509,7 +557,7 @@ def creer_application(
         requete = select(FactureEnBase).order_by(FactureEnBase.cree_le.desc(), FactureEnBase.nom_fichier)
         if etat is not None:
             requete = requete.where(FactureEnBase.etat == etat.value)
-        return [_resume(facture) for facture in session.scalars(requete)]
+        return [_resume(facture) for facture in session.scalars(requete) if visible(session, facture)]
 
     @application.get("/factures/{facture_id}", response_model=FactureDetail)
     def detailler(facture_id: uuid.UUID, session: Session = Depends(session_de_requete, scope="function")) -> dict:
@@ -533,16 +581,23 @@ def creer_application(
 
     @application.post("/factures/{facture_id}/validation", response_model=FactureDetail)
     def valider_facture(facture_id: uuid.UUID, demande: Validation, session: Session = Depends(session_de_requete, scope="function")) -> dict:
-        return decider(lambda: valider(session, facture_id, demande.auteur))
+        facture = facture_ou_404(session, facture_id)
+        connecte = CONNECTE.get()
+        attendu = niveau_attendu(session, facture) if facture.etat in (Etat.A_VALIDER.value, Etat.EN_APPROBATION.value) else None
+        if connecte and attendu and attendu not in connecte["niveaux"]:
+            # Avec des comptes, on n'approuve que son propre niveau : le nom tapé ne suffit plus.
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"C'est au niveau « {LIBELLES[attendu].lower()} » d'approuver : ce n'est pas le vôtre.")
+        return decider(lambda: valider(session, facture_id, qui(demande.auteur)))
 
     @application.post("/factures/{facture_id}/rejet", response_model=FactureDetail)
     def rejeter_facture(facture_id: uuid.UUID, demande: Rejet, session: Session = Depends(session_de_requete, scope="function")) -> dict:
-        return decider(lambda: rejeter(session, facture_id, demande.auteur, demande.motif))
+        facture_ou_404(session, facture_id)
+        return decider(lambda: rejeter(session, facture_id, qui(demande.auteur), demande.motif))
 
     @application.post("/factures/{facture_id}/export", response_model=FactureDetail)
     def exporter_facture(facture_id: uuid.UUID, demande: Validation, session: Session = Depends(session_de_requete, scope="function")) -> dict:
         try:
-            return decider(lambda: exporter(session, facture_id, demande.auteur, exports, client_export, odoo=odoo, dossier_fichiers=dossier))
+            return decider(lambda: exporter(session, facture_id, qui(demande.auteur), exports, client_export, odoo=odoo, dossier_fichiers=dossier))
         except ErreurExport as erreur:
             # L'échec est inscrit au journal : on l'enregistre avant de répondre par une erreur.
             session.commit()
@@ -615,10 +670,10 @@ def creer_application(
 
     @application.put("/circuit/brouillon")
     def enregistrer_brouillon(demande: Brouillon, session: Session = Depends(session_de_requete, scope="function")) -> dict:
-        if not demande.auteur.strip():
+        if not qui(demande.auteur).strip():
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Indiquez votre nom : chaque modification est inscrite à un nom.")
         try:
-            return editeur_circuit.enregistrer(session, demande.graphe, demande.relances, demande.auteur.strip())
+            return editeur_circuit.enregistrer(session, demande.graphe, demande.relances, qui(demande.auteur).strip())
         except editeur_circuit.BrouillonInvalide as erreur:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erreur)) from erreur
 
@@ -656,10 +711,10 @@ def creer_application(
 
     @application.post("/circuit/publier", status_code=status.HTTP_201_CREATED)
     def publier_circuit(demande: PublicationCircuit, session: Session = Depends(session_de_requete, scope="function")) -> dict:
-        if not demande.auteur.strip():
+        if not qui(demande.auteur).strip():
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Indiquez votre nom : chaque publication est inscrite à un nom.")
         try:
-            version = editeur_circuit.publier_brouillon(session, demande.auteur.strip())
+            version = editeur_circuit.publier_brouillon(session, qui(demande.auteur).strip())
         except editeur_circuit.PublicationImpossible as erreur:
             raise HTTPException(status.HTTP_409_CONFLICT, str(erreur)) from erreur
         logging.getLogger("moteur.api").info("Circuit publié : version %s par %s", version.version, version.publie_par)
@@ -672,7 +727,7 @@ def creer_application(
     @application.post("/regles", status_code=status.HTTP_201_CREATED)
     def publier_regles(demande: Publication, session: Session = Depends(session_de_requete, scope="function")) -> dict:
         try:
-            version = publier(session, demande.regles, demande.auteur)
+            version = publier(session, demande.regles, qui(demande.auteur))
         except ValidationError as erreur:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Règle mal formée : {erreur.errors()[0]['msg']}") from erreur
         return {"version": version.version, "regles": version.regles, "publie_par": version.publie_par}
@@ -827,8 +882,8 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
             outils = passerelle.outils_du_serveur(identifiant)
         except ErreurConnecteur as erreur:
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(erreur)) from erreur
-        branche = session.get(ConnecteurBranche, identifiant) or ConnecteurBranche(id=identifiant, branche_par=demande.auteur)
-        branche.actif, branche.branche_par, branche.branche_le = True, demande.auteur, func.now()
+        branche = session.get(ConnecteurBranche, identifiant) or ConnecteurBranche(id=identifiant, branche_par=qui(demande.auteur))
+        branche.actif, branche.branche_par, branche.branche_le = True, qui(demande.auteur), func.now()
         session.add(branche)
         session.flush()
         return {**vue_connecteur(entree, branche), "outils_lecture": [o.nom for o in outils if o.lecture], "outils_ecriture_ignores": [o.nom for o in outils if not o.lecture]}
@@ -850,7 +905,7 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
         if entree["connexion"] != "oauth" or adresse is None or entree["statut"] not in ("disponible", "preversion"):
             raise HTTPException(status.HTTP_409_CONFLICT, f"{entree['nom']} ne se connecte pas par compte.")
         try:
-            return {"adresse": oauth.commencer(session, identifiant, adresse, demande.auteur, client_oauth)}
+            return {"adresse": oauth.commencer(session, identifiant, adresse, qui(demande.auteur), client_oauth)}
         except oauth.ErreurOAuth as erreur:
             raise HTTPException(status.HTTP_409_CONFLICT, str(erreur)) from erreur
 
@@ -871,8 +926,8 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
             # Le détail reste dans le journal du serveur : l'adresse ne transporte ni secret ni message d'erreur.
             logging.getLogger("moteur.api").warning("Connexion OAuth échouée : %s", erreur)
             return RedirectResponse(f"{interface}/?oauth=echec", status.HTTP_303_SEE_OTHER)
-        branche = session.get(ConnecteurBranche, demande.connecteur) or ConnecteurBranche(id=demande.connecteur, branche_par=demande.auteur)
-        branche.actif, branche.branche_par, branche.branche_le = True, demande.auteur, func.now()
+        branche = session.get(ConnecteurBranche, demande.connecteur) or ConnecteurBranche(id=demande.connecteur, branche_par=qui(demande.auteur))
+        branche.actif, branche.branche_par, branche.branche_le = True, qui(demande.auteur), func.now()
         session.add(branche)
         return RedirectResponse(f"{interface}/?oauth=ok&connecteur={demande.connecteur}", status.HTTP_303_SEE_OTHER)
 
@@ -955,7 +1010,7 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
         email = demande.email.strip().lower()
         if session.scalar(select(MembreEquipe).where(MembreEquipe.email == email, MembreEquipe.niveau == demande.niveau)):
             raise HTTPException(status.HTTP_409_CONFLICT, f"{email} a déjà ce rôle.")
-        membre = MembreEquipe(nom=demande.nom.strip(), email=email, niveau=demande.niveau, cree_par=demande.auteur.strip())
+        membre = MembreEquipe(nom=demande.nom.strip(), email=email, niveau=demande.niveau, cree_par=qui(demande.auteur).strip())
         session.add(membre)
         session.flush()
         session.refresh(membre)
@@ -995,7 +1050,7 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
     @application.post("/cles-api", status_code=status.HTTP_201_CREATED)
     def creer_cle(demande: NouvelleCle, session: Session = Depends(session_de_requete, scope="function")) -> dict:
         try:
-            creee = cles_api.creer(session, demande.nom.strip(), demande.droits, demande.auteur.strip())
+            creee = cles_api.creer(session, demande.nom.strip(), demande.droits, qui(demande.auteur).strip())
         except ValueError as erreur:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erreur)) from erreur
         session.refresh(creee.cle)
@@ -1033,7 +1088,7 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
     @application.post("/abonnements", status_code=status.HTTP_201_CREATED)
     def creer_abonnement(demande: NouvelAbonnement, session: Session = Depends(session_de_requete, scope="function")) -> dict:
         try:
-            abonnement, secret = evenements_sortants.creer_abonnement(session, demande.url.strip(), demande.evenements, demande.auteur.strip())
+            abonnement, secret = evenements_sortants.creer_abonnement(session, demande.url.strip(), demande.evenements, qui(demande.auteur).strip())
         except evenements_sortants.AbonnementRefuse as erreur:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erreur)) from erreur
         session.refresh(abonnement)
@@ -1067,15 +1122,16 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
             session = fabrique_session()
             try:
                 elements = []
-                if demande.auteur:
-                    elements.append(f"La personne s'appelle {demande.auteur} : signe les courriels de son nom.")
+                auteur = qui(demande.auteur or "") or None
+                if auteur:
+                    elements.append(f"La personne s'appelle {auteur} : signe les courriels de son nom.")
                 if demande.facture_id:
                     facture = session.get(FactureEnBase, demande.facture_id)
                     if facture is not None:
                         elements.append(f"Elle regarde la facture n° {facture.numero_facture} (identifiant {facture.id}, état « {facture.etat} »).")
                 contexte = " ".join(elements) or None
                 messages = [message.model_dump() for message in demande.messages]
-                for evenement in converser(session, messages, contexte, llm_agent, passerelle, demande.auteur):
+                for evenement in converser(session, messages, contexte, llm_agent, passerelle, auteur):
                     yield f"data: {json.dumps(evenement, ensure_ascii=False)}\n\n"
             finally:
                 session.rollback()

@@ -321,3 +321,33 @@ def composer_mail(envoi: Envoi):
 <p style="color:#55627b;font-size:13px">Verifac</p>
 </div>"""
     return Message(envoi.email, "Votre connexion à Verifac", corps, texte, f"connexion-{_empreinte(envoi.jeton)[:24]}")
+
+
+# ───────── Le droit exigé par chaque adresse de l'API ─────────
+
+# (méthode, motif de l'adresse, droit). Lu dans l'ordre : la première ligne qui correspond s'applique.
+# Une adresse absente de la liste exige le droit le plus fort : on n'ouvre rien par oubli.
+REGLES_ACCES = [
+    ("POST", r"/factures/[^/]+/(validation|rejet)", "approuver"),
+    ("POST", r"/factures/[^/]+/export", "traiter"),
+    ("POST", r"/factures", "traiter"),
+    ("GET", r"/factures(/.*)?", "voir"),
+    ("GET", r"/statistiques", "voir"),
+    ("POST", r"/circuit/publier", "administrer"),
+    ("GET", r"/circuit/.*", "voir"),
+    ("PUT", r"/circuit/brouillon", "circuit"),
+    ("DELETE", r"/circuit/brouillon", "circuit"),
+    ("POST", r"/circuit/tester", "circuit"),
+    ("GET", r"/regles", "voir"),
+    ("POST", r"/agent", "agent"),
+    ("GET", r"/connecteurs(/.*)?", "voir"),
+    ("GET", r"/reglages/(equipe|reception)", "voir"),
+    ("GET", r"/comptes", "voir"),
+]
+
+
+def droit_requis(methode: str, chemin: str) -> str:
+    for verbe, motif, droit in REGLES_ACCES:
+        if methode == verbe and re.fullmatch(motif, chemin):
+            return droit
+    return "administrer"
