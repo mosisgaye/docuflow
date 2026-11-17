@@ -170,9 +170,8 @@ def test_un_evenement_est_prepare_signe_et_livre(client, fabrique):
     assert requete.headers["X-Verifac-Signature"] == evenements_sortants.signer(abonnement["secret"], horodatage, requete.content)
     assert requete.headers["X-Verifac-Livraison"] == identifiant
     assert requete.headers["X-Verifac-Evenement"] == "facture.a_valider"
-    # Transition : les abonnés d'avant le changement de nom lisent encore les en-têtes X-DocuFlow-*, mêmes valeurs.
-    for nom in ("Horodatage", "Signature", "Livraison", "Evenement"):
-        assert requete.headers[f"X-DocuFlow-{nom}"] == requete.headers[f"X-Verifac-{nom}"]
+    # L'ancien nom du produit n'est plus envoyé.
+    assert not [nom for nom in requete.headers if nom.lower().startswith("x-docuflow-")]
 
 
 def test_la_documentation_ne_montre_que_l_api_publique(client):

@@ -15,7 +15,6 @@ Comment c'est fiable :
   vérifie la signature et refuse un envoi trop ancien ;
 - l'identifiant de livraison (X-Verifac-Livraison) est le même à chaque nouvel essai :
   le destinataire peut ignorer un doublon.
-- pendant la transition, les mêmes en-têtes partent aussi sous l'ancien nom X-DocuFlow-*.
 """
 
 import hashlib
@@ -131,10 +130,8 @@ def signer(secret: str, horodatage: str, corps: bytes) -> str:
 
 
 def entetes_signes(evenement: str, livraison: str, horodatage: str, signature: str) -> dict[str, str]:
-    """Les en-têtes X-Verifac-*. Les mêmes valeurs partent aussi en X-DocuFlow-* (l'ancien nom du produit),
-    le temps que les abonnés existants passent au nouveau nom : à retirer ensuite."""
-    valeurs = {"Evenement": evenement, "Livraison": livraison, "Horodatage": horodatage, "Signature": signature}
-    return {f"X-{marque}-{nom}": valeur for marque in ("Verifac", "DocuFlow") for nom, valeur in valeurs.items()}
+    """Les en-têtes X-Verifac-* d'un envoi (l'ancien nom X-DocuFlow-* n'est plus envoyé depuis le 17/11/2026)."""
+    return {"X-Verifac-Evenement": evenement, "X-Verifac-Livraison": livraison, "X-Verifac-Horodatage": horodatage, "X-Verifac-Signature": signature}
 
 
 def livrer_une(session: Session, client: httpx.Client | None = None) -> Livraison | None:
