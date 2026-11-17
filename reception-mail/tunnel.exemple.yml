@@ -1,4 +1,4 @@
-# Tunnel Cloudflare de DocuFlow (copie de ~/.cloudflared/docuflow.yml, sans identifiants).
+# Tunnel Cloudflare de Verifac (copie de ~/.cloudflared/docuflow.yml, sans identifiants).
 # Seule la réception des mails est joignable depuis Internet : tout le reste de l'API répond 404.
 #   cloudflared tunnel --config ~/.cloudflared/docuflow.yml run docuflow
 tunnel: <identifiant du tunnel>

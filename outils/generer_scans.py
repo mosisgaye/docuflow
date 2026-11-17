@@ -4,7 +4,7 @@
 
 Chaque facture de factures/ est rendue en image puis abîmée comme par un scanner de bureau
 moyen : niveaux de gris, page penchée de 1,5°, grain, léger flou, compression JPEG. Le PDF
-obtenu ne contient AUCUN texte : DocuFlow doit le lire sur l'image.
+obtenu ne contient AUCUN texte : Verifac doit le lire sur l'image.
 Les réponses attendues sont celles de factures/attendu.json (mêmes noms de fichiers).
 """
 

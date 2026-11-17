@@ -1,4 +1,4 @@
-# Moteur DocuFlow (API et travailleur) : une seule image, deux commandes.
+# Moteur Verifac (API et travailleur) : une seule image, deux commandes.
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

@@ -1,8 +1,8 @@
-"""Serveur MCP « Odoo » de DocuFlow : ce que l'assistant peut lire dans le logiciel du client.
+"""Serveur MCP « Odoo » de Verifac : ce que l'assistant peut lire dans le logiciel du client.
 
 Odoo a son propre serveur MCP, mais seulement avec son application IA, absente d'Odoo
 Community. On expose donc ici notre connecteur JSON-2, déjà testé (moteur/odoo.py), par le
-protocole MCP : l'assistant de DocuFlow s'y branche comme à n'importe quel autre connecteur.
+protocole MCP : l'assistant de Verifac s'y branche comme à n'importe quel autre connecteur.
 
 Uniquement de la LECTURE : chaque outil est déclaré « read_only ». Créer une facture dans Odoo
 reste le travail du code testé de l'export, jamais celui de l'assistant.

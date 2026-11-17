@@ -216,7 +216,7 @@ const INTEGRATIONS: { nom: string; detail: string; icone: NomIcone }[] = [
   },
 ]
 
-/** Ce qui fonctionne sans rien brancher : les services intégrés à DocuFlow (onglet de la page Connecteurs). */
+/** Ce qui fonctionne sans rien brancher : les services intégrés à Verifac (onglet de la page Connecteurs). */
 export function ServicesIntegres({ statistiques }: { statistiques: Statistiques | null }) {
   return (
     <>

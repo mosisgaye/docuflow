@@ -1,7 +1,7 @@
 """Remplit l'Odoo de démonstration : l'entreprise Transports Lemaire SAS et son activité.
 
     uv run python -m outils.odoo_remplir
-    uv run python -m outils.odoo_remplir --nouvelle-cle   # renouveler la clé d'API de DocuFlow
+    uv run python -m outils.odoo_remplir --nouvelle-cle   # renouveler la clé d'API de Verifac
 
 Ce qu'il crée (relançable, rien n'est créé deux fois) :
 - les fournisseurs des factures d'exemple (outils/generer_factures.py), avec SIRET, TVA,

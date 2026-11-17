@@ -173,7 +173,7 @@ def envoyer_par_resend(message: Message, client: httpx.Client | None = None) -> 
         raise RuntimeError("Clé Resend absente (RESEND_API_KEY).")
     reponse = (client or httpx.Client(timeout=15)).post(
         "https://api.resend.com/emails",
-        json={"from": config.lire("MAIL_EXPEDITEUR", "DocuFlow <docuflow@moussagaye.com>"), "to": [message.destinataire], "subject": message.sujet, "html": message.html, "text": message.texte},
+        json={"from": config.lire("MAIL_EXPEDITEUR", "Verifac <docuflow@moussagaye.com>"), "to": [message.destinataire], "subject": message.sujet, "html": message.html, "text": message.texte},
         headers={"Authorization": f"Bearer {cle}", "Idempotency-Key": message.idempotence},
     )
     if reponse.status_code >= 300:
@@ -187,7 +187,7 @@ def envoyer_par_resend(message: Message, client: httpx.Client | None = None) -> 
 def demander(session: Session, facture: FactureEnBase, niveau: str, rappel: str | None = None) -> bool:
     """Prépare la demande d'approbation pour ce niveau. Elle partira après la validation de la transaction.
 
-    Renvoie faux si les mails ne sont pas configurés (l'approbation se fait alors dans DocuFlow).
+    Renvoie faux si les mails ne sont pas configurés (l'approbation se fait alors dans Verifac).
     """
     personnes = destinataires(session, niveau)
     if not personnes or not config.lire("APPROBATION_SECRET", ""):

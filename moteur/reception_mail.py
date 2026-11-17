@@ -7,7 +7,7 @@ Toutes les messageries savent fournir ce format : l'analyse est faite une seule 
 par la bibliothèque standard de Python. Ajouter un adaptateur ne touche pas au moteur.
 
 Sécurité : l'adaptateur signe chaque envoi avec sa clé privée Ed25519, sur
-« horodatage.corps ». DocuFlow ne connaît que les clés publiques : lire sa configuration
+« horodatage.corps ». Verifac ne connaît que les clés publiques : lire sa configuration
 ne permet pas de fabriquer un faux envoi. La clé privée de l'adaptateur Cloudflare a été
 créée chez Cloudflare et n'en sort jamais. Une signature fausse, ou un envoi de plus de
 5 minutes rejoué plus tard, est refusé.

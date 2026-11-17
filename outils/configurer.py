@@ -1,4 +1,4 @@
-"""Configure les services externes de DocuFlow en posant les questions une par une.
+"""Configure les services externes de Verifac en posant les questions une par une.
 
     uv run python -m outils.configurer
 
@@ -63,7 +63,7 @@ def resend(valeurs: dict[str, str]) -> dict[str, str]:
     nouveaux = {}
     if cle := demander("Clé API Resend (Entrée pour garder l'actuelle)", secret=True):
         nouveaux["RESEND_API_KEY"] = cle
-    nouveaux["MAIL_EXPEDITEUR"] = valeurs.get("MAIL_EXPEDITEUR") or "DocuFlow <docuflow@moussagaye.com>"
+    nouveaux["MAIL_EXPEDITEUR"] = valeurs.get("MAIL_EXPEDITEUR") or "Verifac <docuflow@moussagaye.com>"
     print("Pour voir la séparation des tâches, chaque niveau doit avoir une adresse différente.")
     print("Avec Gmail, une seule boîte suffit : prenom.nom+comptable@gmail.com et prenom.nom+daf@gmail.com arrivent au même endroit.")
     for niveau, libelle in (("COMPTABLE", "comptable"), ("DIRECTEUR_FINANCIER", "directeur financier"), ("GERANT", "gérant")):
@@ -98,7 +98,7 @@ def main() -> None:
     if not sys.stdin.isatty():
         sys.exit("Lancez cet outil dans votre propre terminal : il pose des questions et cache les secrets.")
     valeurs = lire()
-    print("Configuration de DocuFlow. Rien de ce que vous tapez ne s'affiche à l'écran pour les secrets.")
+    print("Configuration de Verifac. Rien de ce que vous tapez ne s'affiche à l'écran pour les secrets.")
     choix = input("Que voulez-vous régler ? 1 = mails (Resend), 2 = HubSpot, 3 = les deux : ").strip()
     nouveaux = {}
     if choix in ("1", "3"):

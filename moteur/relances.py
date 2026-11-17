@@ -6,10 +6,10 @@ et une facture garde ceux de la version avec laquelle son circuit a été calcul
 - plus tôt (24 heures) si l'échéance de paiement tombe dans 3 jours ou moins :
   une facture payée en retard coûte des pénalités.
 Au plus 2 relances par niveau : au-delà, ce n'est plus un oubli, c'est un sujet à traiter
-de vive voix. La facture reste visible dans DocuFlow.
+de vive voix. La facture reste visible dans Verifac.
 
 Une relance n'est faite que si le premier mail est bien parti : si les mails ne sont pas
-configurés, l'approbation se fait dans DocuFlow et il n'y a personne à relancer.
+configurés, l'approbation se fait dans Verifac et il n'y a personne à relancer.
 
 Le travailleur appelle relancer() régulièrement. Un verrou PostgreSQL garantit qu'un seul
 travailleur s'en occupe à la fois : deux travailleurs ne relancent jamais deux fois.

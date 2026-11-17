@@ -843,7 +843,7 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
             "outils_autorises": branche.outils_autorises if branche else None,
             "branche_par": branche.branche_par if branche else None,
             "branche_le": branche.branche_le if branche else None,
-            # Pour une connexion par compte : DocuFlow a-t-il ce qu'il faut (identifiants de l'éditeur, clé) ?
+            # Pour une connexion par compte : Verifac a-t-il ce qu'il faut (identifiants de l'éditeur, clé) ?
             "connexion_prete": entree["connexion"] != "oauth" or oauth.pret(entree["id"]),
         }
 

@@ -1,7 +1,7 @@
-"""Clés d'accès à l'API publique de DocuFlow (/v1/…), pour que d'autres logiciels s'y branchent.
+"""Clés d'accès à l'API publique de Verifac (/v1/…), pour que d'autres logiciels s'y branchent.
 
-Une clé ressemble à : dfk_3f9a2c1b_8kq2…  (« dfk » pour DocuFlow key, puis un préfixe, puis le secret).
-- Elle n'est montrée qu'UNE fois, à sa création. DocuFlow ne garde que son empreinte (SHA-256) :
+Une clé ressemble à : dfk_3f9a2c1b_8kq2…  (« dfk » : préfixe historique des clés, puis un préfixe, puis le secret).
+- Elle n'est montrée qu'UNE fois, à sa création. Verifac ne garde que son empreinte (SHA-256) :
   une fuite de la base ne donne aucune clé utilisable.
 - Le préfixe, lui, est gardé en clair : il permet de reconnaître une clé (« dfk_3f9a2c1b… »)
   et de la retrouver sans parcourir toutes les empreintes.

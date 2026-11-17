@@ -9,7 +9,7 @@ Comment c'est fiable :
   (« boîte d'envoi transactionnelle ») : si le changement est annulé, rien ne part ;
   s'il est enregistré, l'envoi finira par partir, même après une panne ;
 - le travailleur envoie les livraisons, et retente en cas d'échec : 30 s, 2 min, 10 min,
-  1 h, 6 h, puis abandon (visible dans DocuFlow) ;
+  1 h, 6 h, puis abandon (visible dans Verifac) ;
 - chaque envoi est signé : HMAC-SHA256 de « horodatage.corps » avec le secret de
   l'abonnement (en-têtes X-DocuFlow-Horodatage et X-DocuFlow-Signature). Le destinataire
   vérifie la signature et refuse un envoi trop ancien ;

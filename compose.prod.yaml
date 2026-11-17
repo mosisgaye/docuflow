@@ -1,4 +1,4 @@
-# Moteur DocuFlow en démonstration sur un serveur : rien n'est ouvert sur Internet.
+# Moteur Verifac en démonstration sur un serveur : rien n'est ouvert sur Internet.
 # L'interface est sur Vercel (vercel.json), qui renvoie /api/… vers ce moteur.
 # Le moteur sort par le tunnel Cloudflare (HTTPS fourni par Cloudflare) :
 #   api-docuflow.moussagaye.com → l'API, derrière le code d'accès

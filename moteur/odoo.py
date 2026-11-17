@@ -1,6 +1,6 @@
 """Connecteur Odoo : le logiciel de comptabilité et le CRM du client.
 
-DocuFlow lui parle par l'API JSON-2 d'Odoo (POST /json/2/<modèle>/<méthode>), avec la clé
+Verifac lui parle par l'API JSON-2 d'Odoo (POST /json/2/<modèle>/<méthode>), avec la clé
 d'API d'un utilisateur technique aux droits limités. XML-RPC et JSON-RPC, dépréciés depuis
 Odoo 19, ne sont pas utilisés.
 
@@ -97,7 +97,7 @@ class Odoo:
         except httpx.HTTPError as erreur:
             raise ErreurOdoo(f"Odoo est injoignable ({type(erreur).__name__}).", passagere=True) from erreur
         if reponse.status_code == 401:
-            raise ErreurOdoo("Odoo refuse la clé d'API de DocuFlow (clé expirée ou révoquée).")
+            raise ErreurOdoo("Odoo refuse la clé d'API de Verifac (clé expirée ou révoquée).")
         if reponse.status_code >= 400:
             try:
                 message = reponse.json().get("message", "")
@@ -298,7 +298,7 @@ class Odoo:
 
 
 def depuis_configuration() -> Odoo | None:
-    """Le connecteur Odoo, si sa clé d'API est présente. Sinon None : DocuFlow fonctionne sans Odoo."""
+    """Le connecteur Odoo, si sa clé d'API est présente. Sinon None : Verifac fonctionne sans Odoo."""
     fichier = pathlib.Path(config.lire("ODOO_CLE_FICHIER", str(config.RACINE / "donnees" / "odoo-cle-api")))
     if not fichier.exists():
         return None

@@ -1,10 +1,10 @@
 """Connexion d'un connecteur par compte (OAuth 2.1 avec PKCE), comme le demande le protocole MCP.
 
 Le parcours :
-1. commencer() : DocuFlow fabrique un « state » et un secret PKCE, puis envoie le navigateur
-   chez l'éditeur (HubSpot…), où la personne se connecte et autorise DocuFlow ;
+1. commencer() : Verifac fabrique un « state » et un secret PKCE, puis envoie le navigateur
+   chez l'éditeur (HubSpot…), où la personne se connecte et autorise Verifac ;
 2. l'éditeur renvoie le navigateur sur /oauth/retour avec un code ;
-3. terminer() : DocuFlow échange ce code contre des jetons, qu'il range CHIFFRÉS en base ;
+3. terminer() : Verifac échange ce code contre des jetons, qu'il range CHIFFRÉS en base ;
 4. jeton() : donne un jeton d'accès valide, en le renouvelant tout seul quand il expire.
 
 Les adresses OAuth ne sont pas écrites en dur : elles sont lues dans les métadonnées que le
@@ -149,11 +149,11 @@ def terminer(session: Session, etat: str, code: str, adresse_de: dict[str, str],
     """Échange le code reçu contre des jetons. adresse_de : adresse du serveur MCP de chaque connecteur."""
     demande = session.get(DemandeOAuth, etat, with_for_update=True)
     if demande is None:
-        raise ErreurOAuth("Demande de connexion inconnue ou déjà utilisée : recommencez depuis DocuFlow.")
+        raise ErreurOAuth("Demande de connexion inconnue ou déjà utilisée : recommencez depuis Verifac.")
     session.delete(demande)  # un « state » ne sert qu'une fois
     session.flush()
     if demande.cree_le < datetime.now(UTC) - DUREE_DEMANDE:
-        raise ErreurOAuth("La demande de connexion a expiré : recommencez depuis DocuFlow.")
+        raise ErreurOAuth("La demande de connexion a expiré : recommencez depuis Verifac.")
     client_id, secret = identifiants(demande.connecteur) or ("", "")
     reponse = _appeler_jetons(
         adresse_de[demande.connecteur],

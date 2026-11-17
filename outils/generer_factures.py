@@ -16,7 +16,7 @@ from decimal import ROUND_HALF_UP, Decimal
 FACTURES = pathlib.Path(__file__).resolve().parent.parent / "factures"
 TAUX = Decimal("20")
 # Toutes les factures sont adressées à la même entreprise : celle de l'Odoo de démonstration
-# (outils/odoo_installer.py). Ce sont SES factures fournisseurs que DocuFlow traite.
+# (outils/odoo_installer.py). Ce sont SES factures fournisseurs que Verifac traite.
 CLIENT = ("Transports Lemaire SAS", "Zone d'activité des Pins, 30900 Nîmes")
 
 

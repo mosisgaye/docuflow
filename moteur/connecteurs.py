@@ -1,8 +1,8 @@
-"""Les connecteurs de DocuFlow : brancher les logiciels de l'entreprise par MCP.
+"""Les connecteurs de Verifac : brancher les logiciels de l'entreprise par MCP.
 
-DocuFlow est ici CLIENT MCP. Chaque connecteur du catalogue (catalogue_connecteurs.json) est
-un serveur MCP : celui de DocuFlow pour Odoo, ou celui d'un éditeur (HubSpot, Google…).
-Brancher un connecteur ne demande aucun code : DocuFlow demande au serveur la liste de ses
+Verifac est ici CLIENT MCP. Chaque connecteur du catalogue (catalogue_connecteurs.json) est
+un serveur MCP : celui de Verifac pour Odoo, ou celui d'un éditeur (HubSpot, Google…).
+Brancher un connecteur ne demande aucun code : Verifac demande au serveur la liste de ses
 outils et les donne à l'assistant.
 
 Les garde-fous :
@@ -14,7 +14,7 @@ Les garde-fous :
 
 Les connexions MCP sont asynchrones. Elles vivent dans une boucle à part, dans son propre fil
 d'exécution : chaque connecteur a sa tâche, qui garde la connexion ouverte et traite les
-demandes une par une. Le reste de DocuFlow (synchrone) lui parle par une file.
+demandes une par une. Le reste de Verifac (synchrone) lui parle par une file.
 """
 
 import asyncio
@@ -147,7 +147,7 @@ class _Connexion:
 
 
 class Passerelle:
-    """Le point d'entrée de DocuFlow vers tous les connecteurs branchés."""
+    """Le point d'entrée de Verifac vers tous les connecteurs branchés."""
 
     def __init__(self, fabrique_session: Callable[[], Session], cibles: dict[str, Callable[[], Any]] | None = None):
         self._fabrique_session = fabrique_session

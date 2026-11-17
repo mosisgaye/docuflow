@@ -163,7 +163,7 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
         >
           <label className="acces__champ">
             Adresse à prévenir
-            <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://erp.exemple.fr/docuflow" required />
+            <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://erp.exemple.fr/verifac" required />
           </label>
           <fieldset className="acces__choix">
             <legend>Quand ?</legend>

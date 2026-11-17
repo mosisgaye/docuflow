@@ -2,7 +2,7 @@
   {
     "id": "odoo",
     "nom": "Odoo",
-    "editeur": "DocuFlow",
+    "editeur": "Verifac",
     "description": "Fournisseurs, factures fournisseurs, bons de commande et contacts de votre Odoo.",
     "usages": [
       "Retrouver un fournisseur et ses contacts",
@@ -28,7 +28,7 @@
     "connexion": "oauth",
     "transport": {"type": "http", "url": "https://mcp.hubspot.com"},
     "lecture_verifiee": ["get_user_details", "get_organization_details", "search_crm_objects", "get_crm_objects", "search_properties", "get_properties", "search_owners", "search_conversations"],
-    "note": "Serveur MCP officiel de HubSpot, ouvert à tous les comptes. Connexion OAuth. DocuFlow n'utilise que ses outils de lecture du CRM : contacts, entreprises, échanges.",
+    "note": "Serveur MCP officiel de HubSpot, ouvert à tous les comptes. Connexion OAuth. Verifac n'utilise que ses outils de lecture du CRM : contacts, entreprises, échanges.",
     "documentation": "https://developers.hubspot.com/docs/build-with-ai/remote-mcp-server"
   },
   {

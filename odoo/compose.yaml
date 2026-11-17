@@ -1,5 +1,5 @@
 # Odoo de démonstration : il joue « le logiciel existant du client » (CRM, achats, comptabilité).
-# Séparé de DocuFlow, avec sa propre base. Accessible seulement depuis cette machine.
+# Séparé de Verifac, avec sa propre base. Accessible seulement depuis cette machine.
 #
 #   docker compose -f odoo/compose.yaml up -d      (Compose charge odoo/.env tout seul)
 #   uv run python -m outils.odoo_installer      # crée la base « demo » (une seule fois)
