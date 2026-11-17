@@ -8,11 +8,13 @@ ne le voit.
 Sans brouillon, l'éditeur s'ouvre sur la version en service, réécrite en lignes (la forme de l'éditeur).
 """
 
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
 from pydantic import ValidationError
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, selectinload
 
 from moteur.approbation import (
     LIBELLES,
@@ -22,11 +24,12 @@ from moteur.approbation import (
     Relance,
     circuit,
     en_lignes,
+    niveau_attendu,
     publier,
     verifier_relances,
     version_en_vigueur,
 )
-from moteur.base import BrouillonCircuit, FactureEnBase, ReglesApprobation
+from moteur.base import BrouillonCircuit, Etat, Evenement, FactureEnBase, ReglesApprobation
 from moteur.catalogue_circuit import ANOMALIES, CHAMPS, COMPARAISONS
 
 REGLES_MAX = 50
@@ -314,3 +317,102 @@ def tester(session: Session, facture: FactureEnBase) -> dict:
         "en_service": {"version": service["version"], "niveaux": _niveaux(service), "bloque": service["bloque"]},
         "change": (_niveaux(calcule), calcule["bloque"]) != (_niveaux(service), service["bloque"]),
     }
+
+
+# ───────── Les versions publiées, et le chemin suivi par les dernières factures ─────────
+
+
+def versions(session: Session) -> list[dict]:
+    """Toutes les versions publiées, de la plus récente à la plus ancienne. La première est en service."""
+    toutes = session.scalars(select(ReglesApprobation).order_by(ReglesApprobation.version.desc())).all()
+    return [
+        {
+            "version": v.version,
+            "en_service": rang == 0,
+            "publie_par": v.publie_par,
+            "publie_le": v.publie_le,
+            "nombre_regles": len(v.regles),
+            "changements": v.changements,  # None : publiée avant l'éditeur
+            "relances_reglees": bool(v.relances),
+        }
+        for rang, v in enumerate(toutes)
+    ]
+
+
+EXECUTIONS_MAX = 100
+
+RESULTATS = {
+    Etat.RECUE.value: "En lecture",
+    Etat.EXTRAITE.value: "En contrôle",
+    Etat.A_VALIDER.value: "En attente",
+    Etat.EN_APPROBATION.value: "En attente",
+    Etat.EN_ANOMALIE.value: "Arrêtée aux contrôles",
+    Etat.VALIDEE.value: "Validée",
+    Etat.REJETEE.value: "Rejetée",
+    Etat.EXPORTEE.value: "Envoyée au logiciel",
+    Etat.ECHEC.value: "Lecture impossible",
+}
+TERMINES = {Etat.VALIDEE.value, Etat.REJETEE.value, Etat.EXPORTEE.value, Etat.EN_ANOMALIE.value, Etat.ECHEC.value}
+
+
+def _etape(evenement: Evenement) -> str | None:
+    """Une étape du chemin, en quelques mots, lue dans le journal. None : pas une étape du chemin."""
+    detail = evenement.detail or {}
+    if evenement.type == "RECEPTION":
+        return "Reçue"
+    if evenement.type == "EXTRACTION":
+        return "Lue"
+    if evenement.type in ("EXTRACTION_ECHOUEE", "LECTURE_IMPOSSIBLE"):
+        return "Lecture impossible"
+    if evenement.type == "CONTROLE":
+        return "Contrôles : arrêtée" if evenement.etat == Etat.EN_ANOMALIE.value else "Contrôles"
+    if evenement.type in ("APPROBATION", "VALIDATION") and detail.get("libelle"):
+        return f"{detail['libelle']} ✓ ({evenement.auteur})"
+    if evenement.type == "VALIDATION":
+        return f"Validée ({evenement.auteur})"
+    if evenement.type == "NOTIFICATION" and detail.get("rappel"):
+        return f"Relance : {LIBELLES.get(detail.get('niveau'), detail.get('niveau'))}"
+    if evenement.type == "REJET":
+        return f"Rejetée ({evenement.auteur})"
+    if evenement.type == "EXPORT":
+        return "Envoyée au logiciel"
+    return None
+
+
+def executions(session: Session, limite: int = 20, maintenant: datetime | None = None) -> list[dict]:
+    """Le chemin réellement suivi par les dernières factures, lu dans le journal (rien n'est calculé de nouveau)."""
+    maintenant = maintenant or datetime.now(UTC)
+    # À égalité de date de création (même transaction), l'heure exacte du premier événement départage.
+    premier = select(func.min(Evenement.cree_le)).where(Evenement.facture_id == FactureEnBase.id).scalar_subquery()
+    factures = session.scalars(
+        select(FactureEnBase)
+        .options(selectinload(FactureEnBase.evenements))
+        .order_by(FactureEnBase.cree_le.desc(), premier.desc().nulls_last())
+        .limit(min(max(limite, 1), EXECUTIONS_MAX))
+    ).all()
+    lignes = []
+    for facture in factures:
+        evenements = list(facture.evenements)
+        chemin = [etape for etape in (_etape(e) for e in evenements) if etape]
+        en_cours = facture.etat not in TERMINES
+        fin = maintenant if en_cours or not evenements else evenements[-1].cree_le
+        debut = evenements[0].cree_le if evenements else facture.cree_le
+        attendu = niveau_attendu(session, facture) if facture.etat in (Etat.A_VALIDER.value, Etat.EN_APPROBATION.value) else None
+        resultat = RESULTATS.get(facture.etat, facture.etat)
+        if attendu:
+            resultat = f"En attente : {LIBELLES[attendu].lower()}"
+        donnees = facture.donnees or {}
+        lignes.append({
+            "facture_id": str(facture.id),
+            "fournisseur": donnees.get("fournisseur_nom"),
+            "numero": donnees.get("numero_facture"),
+            "total_ttc": donnees.get("total_ttc"),
+            "etat": facture.etat,
+            "version_circuit": (facture.circuit or {}).get("version"),
+            "chemin": chemin,
+            "resultat": resultat,
+            "en_cours": en_cours,
+            "duree_s": max(int((fin - debut).total_seconds()), 0),
+            "recue_le": facture.cree_le,
+        })
+    return lignes

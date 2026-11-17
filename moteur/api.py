@@ -25,6 +25,8 @@
     GET  /circuit/differences         ce que le brouillon change, en phrases
     POST /circuit/publier             faire du brouillon la version suivante (les factures en cours gardent la leur)
     POST /circuit/tester              le chemin que prendrait une facture avec le brouillon (rien n'est écrit)
+    GET  /circuit/versions            les versions publiées, avec ce que chacune a changé
+    GET  /circuit/executions          le chemin réellement suivi par les dernières factures
     GET  /approbation/{jeton}         la page de confirmation ouverte depuis le lien du mail
     POST /approbation/{jeton}         approuver ou rejeter depuis cette page
     POST /agent                       parler à l'assistant (réponse envoyée au fil de l'eau)
@@ -553,6 +555,14 @@ def creer_application(
             return editeur_circuit.tester(session, facture)
         except editeur_circuit.TestImpossible as erreur:
             raise HTTPException(status.HTTP_409_CONFLICT, str(erreur)) from erreur
+
+    @application.get("/circuit/versions")
+    def versions_du_circuit(session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        return {"versions": editeur_circuit.versions(session)}
+
+    @application.get("/circuit/executions")
+    def executions_du_circuit(limite: int = 20, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        return {"executions": editeur_circuit.executions(session, limite)}
 
     class PublicationCircuit(BaseModel):
         auteur: str = Field(min_length=1, max_length=100)
