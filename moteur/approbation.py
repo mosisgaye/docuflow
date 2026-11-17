@@ -11,6 +11,12 @@ Une condition :
     {"toujours": true}
     {"champ": "total_ttc", "superieur_a": "1000"}      champs : total_ttc, total_ht
     {"anomalie": ["ECART_COMMANDE", "SANS_COMMANDE"]}  au moins une de ces anomalies
+    {"lignes": [<ligne>, ...], "combinaison": "une" | "toutes"}   la forme de l'éditeur
+Une ligne : {"champ": ..., "comparaison": ..., "valeur": ...}
+    montants (total_ttc, total_ht) : superieur_a, superieur_ou_egal_a, inferieur_a, inferieur_ou_egal_a, egal_a
+    textes (fournisseur_nom, fournisseur_siret) : egal_a, different_de, contient
+    anomalie (valeur = liste de codes) : une_de, aucune_de
+    Une information absente de la facture ne remplit jamais une ligne.
 
 Les garanties :
 - les niveaux s'approuvent dans l'ordre (comptable, puis directeur financier, puis gérant) ;
@@ -23,7 +29,8 @@ Sans règles publiées, le circuit n'a qu'un niveau, le comptable : une seule va
 
 import hashlib
 import json
-from decimal import Decimal
+import re
+from decimal import Decimal, InvalidOperation
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -43,6 +50,79 @@ class ApprobationRefusee(Exception):
 # ───────── Le langage des règles ─────────
 
 
+CHAMPS_MONTANT = ("total_ttc", "total_ht")
+CHAMPS_TEXTE = ("fournisseur_nom", "fournisseur_siret")
+COMPARAISONS_MONTANT = ("superieur_a", "superieur_ou_egal_a", "inferieur_a", "inferieur_ou_egal_a", "egal_a")
+COMPARAISONS_TEXTE = ("egal_a", "different_de", "contient")
+COMPARAISONS_ANOMALIE = ("une_de", "aucune_de")
+CODE_ANOMALIE = re.compile(r"^[A-Z][A-Z_]{2,39}$")
+
+
+def _texte(valeur) -> str:
+    """Un texte comparable : sans espaces superflus ni différence de casse (« 552 100 554 » = « 552100554 » pour un SIRET)."""
+    return " ".join(str(valeur).split()).casefold()
+
+
+class Ligne(BaseModel):
+    """Une ligne de condition : un champ de la facture, une comparaison, une valeur."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    champ: Literal["total_ttc", "total_ht", "fournisseur_nom", "fournisseur_siret", "anomalie"]
+    comparaison: Literal["superieur_a", "superieur_ou_egal_a", "inferieur_a", "inferieur_ou_egal_a", "egal_a", "different_de", "contient", "une_de", "aucune_de"]
+    valeur: str | list[str]
+
+    @model_validator(mode="after")
+    def coherente(self):
+        if self.champ in CHAMPS_MONTANT:
+            if self.comparaison not in COMPARAISONS_MONTANT:
+                raise ValueError(f"Un montant se compare avec : {', '.join(COMPARAISONS_MONTANT)}.")
+            if not isinstance(self.valeur, str):
+                raise ValueError("Un montant se compare à un seul nombre.")
+            try:
+                montant = Decimal(self.valeur.replace(" ", "").replace(",", "."))
+            except InvalidOperation:
+                raise ValueError(f"« {self.valeur} » n'est pas un montant.") from None
+            if not montant.is_finite() or montant < 0:
+                raise ValueError(f"« {self.valeur} » n'est pas un montant.")
+            self.valeur = str(montant)
+        elif self.champ in CHAMPS_TEXTE:
+            if self.comparaison not in COMPARAISONS_TEXTE:
+                raise ValueError(f"Un texte se compare avec : {', '.join(COMPARAISONS_TEXTE)}.")
+            if not isinstance(self.valeur, str) or not self.valeur.strip() or len(self.valeur) > 200:
+                raise ValueError("Un texte se compare à une valeur non vide (200 caractères au plus).")
+        else:
+            if self.comparaison not in COMPARAISONS_ANOMALIE:
+                raise ValueError(f"Les anomalies se comparent avec : {', '.join(COMPARAISONS_ANOMALIE)}.")
+            if not isinstance(self.valeur, list) or not 1 <= len(self.valeur) <= 30 or not all(CODE_ANOMALIE.match(code) for code in self.valeur):
+                raise ValueError("Les anomalies se donnent en liste de codes, par exemple [\"IBAN_DIFFERENT\"].")
+        return self
+
+    def vraie(self, donnees: dict, codes: set[str]) -> bool:
+        if self.champ == "anomalie":
+            presente = bool(codes & set(self.valeur))
+            return presente if self.comparaison == "une_de" else not presente
+        brute = donnees.get(self.champ)
+        if brute is None or brute == "":
+            return False  # une information absente ne remplit jamais une condition
+        if self.champ in CHAMPS_MONTANT:
+            try:
+                valeur, seuil = Decimal(str(brute)), Decimal(self.valeur)
+            except InvalidOperation:
+                return False
+            return {
+                "superieur_a": valeur > seuil,
+                "superieur_ou_egal_a": valeur >= seuil,
+                "inferieur_a": valeur < seuil,
+                "inferieur_ou_egal_a": valeur <= seuil,
+                "egal_a": valeur == seuil,
+            }[self.comparaison]
+        valeur, attendu = _texte(brute), _texte(self.valeur)
+        if self.champ == "fournisseur_siret":
+            valeur, attendu = valeur.replace(" ", ""), attendu.replace(" ", "")
+        return {"egal_a": valeur == attendu, "different_de": valeur != attendu, "contient": attendu in valeur}[self.comparaison]
+
+
 class Condition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -50,14 +130,18 @@ class Condition(BaseModel):
     champ: Literal["total_ttc", "total_ht"] | None = None
     superieur_a: Decimal | None = None
     anomalie: list[str] | None = None
+    lignes: list[Ligne] | None = Field(default=None, min_length=1, max_length=20)
+    combinaison: Literal["une", "toutes"] | None = None
 
     @model_validator(mode="after")
     def une_seule_forme(self):
-        formes = [self.toujours is True, self.champ is not None, self.anomalie is not None]
+        formes = [self.toujours is True, self.champ is not None, self.anomalie is not None, self.lignes is not None]
         if sum(formes) != 1:
-            raise ValueError("Une condition est « toujours », un champ comparé à un seuil, ou une liste d'anomalies.")
+            raise ValueError("Une condition est « toujours », un champ comparé à un seuil, une liste d'anomalies, ou des lignes.")
         if (self.champ is None) != (self.superieur_a is None):
             raise ValueError("Un champ se compare toujours à un seuil (superieur_a).")
+        if self.combinaison is not None and self.lignes is None:
+            raise ValueError("La combinaison (une ou toutes) ne s'emploie qu'avec des lignes.")
         return self
 
     def vraie(self, donnees: dict, anomalies: list[dict]) -> bool:
@@ -67,7 +151,23 @@ class Condition(BaseModel):
             valeur = donnees.get(self.champ)
             return valeur is not None and Decimal(str(valeur)) > self.superieur_a
         codes = {anomalie["code"] for anomalie in anomalies}
+        if self.lignes is not None:
+            resultats = (ligne.vraie(donnees, codes) for ligne in self.lignes)
+            return all(resultats) if self.combinaison == "toutes" else any(resultats)
         return bool(codes & set(self.anomalie or []))
+
+
+def en_lignes(condition: dict) -> dict:
+    """Réécrit une condition de l'ancienne forme en lignes, sans changer ce qu'elle veut dire.
+
+    Sert à l'éditeur : une version publiée avant les lignes s'ouvre et se modifie comme les autres.
+    """
+    forme = Condition.model_validate(condition)
+    if forme.champ is not None:
+        return {"lignes": [{"champ": forme.champ, "comparaison": "superieur_a", "valeur": str(forme.superieur_a)}], "combinaison": "une"}
+    if forme.anomalie is not None:
+        return {"lignes": [{"champ": "anomalie", "comparaison": "une_de", "valeur": list(forme.anomalie)}], "combinaison": "une"}
+    return forme.model_dump(mode="json", exclude_none=True)
 
 
 class Regle(BaseModel):
