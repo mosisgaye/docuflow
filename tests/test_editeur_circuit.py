@@ -174,3 +174,19 @@ def test_le_message_dit_quelle_ligne_et_quel_niveau():
         editeur_circuit.verifier([{"nom": "x", "si": deux_lignes, "exige": ["gerant"]}], None)
     with pytest.raises(editeur_circuit.BrouillonInvalide, match="Relances du directeur financier"):
         editeur_circuit.verifier(REGLES_DEMO, {"directeur_financier": {"delai_h": "demain", "delai_urgent_h": 1, "maximum": 1}})
+
+
+@pytest.mark.parametrize("autre_nom", ["Toute facture est approuvée par le comptable", "  toute FACTURE est approuvée  par le comptable "])
+def test_deux_regles_du_meme_nom_sont_refusees(session, autre_nom):
+    """Les différences et le test retrouvent les règles par leur nom : deux du même nom se confondraient."""
+    regles = [REGLES_DEMO[0], {**REGLES_DEMO[2], "nom": autre_nom}]
+
+    with pytest.raises(editeur_circuit.BrouillonInvalide, match="la règle 1 porte déjà ce nom"):
+        editeur_circuit.enregistrer(session, regles, None, "Claire")
+
+
+def test_un_seuil_demesure_est_refuse():
+    for valeur in ("1e999999", "1000000000.01"):
+        with pytest.raises(editeur_circuit.BrouillonInvalide, match="ne dépasse pas"):
+            editeur_circuit.verifier([{"nom": "x", "si": {"lignes": [{"champ": "total_ttc", "comparaison": "superieur_a", "valeur": valeur}]}, "exige": ["gerant"]}], None)
+    editeur_circuit.verifier([{"nom": "x", "si": {"lignes": [{"champ": "total_ttc", "comparaison": "superieur_a", "valeur": "1000000000"}]}, "exige": ["gerant"]}], None)

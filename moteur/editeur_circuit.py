@@ -83,6 +83,13 @@ def verifier(regles: list[dict], relances: dict | None) -> tuple[list[dict], dic
         except ValidationError as erreur:
             nom = regle.get("nom") if isinstance(regle, dict) else None
             raise BrouillonInvalide(_message(erreur, f"Règle {numero}{f' « {nom} »' if nom else ''}")) from erreur
+    # Les règles se retrouvent par leur nom (différences, résultat du test) : deux règles du même nom se confondraient.
+    vus: dict[str, int] = {}
+    for numero, regle in enumerate(verifiees, start=1):
+        cle = " ".join(regle["nom"].split()).casefold()
+        if cle in vus:
+            raise BrouillonInvalide(f"Règle {numero} « {regle['nom']} » : la règle {vus[cle]} porte déjà ce nom. Donnez-lui un autre nom.")
+        vus[cle] = numero
     if isinstance(relances, dict):
         for niveau, reglage in relances.items():
             if niveau in LIBELLES:

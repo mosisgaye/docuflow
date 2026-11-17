@@ -106,3 +106,30 @@ def test_derriere_vercel_l_adresse_du_visiteur_est_comptee_et_la_limite_totale_t
     for rang in range(acces.ESSAIS_MAX_TOTAL):
         client.post("/acces", json={"code": "faux"}, headers={"X-Forwarded-For": f"192.0.2.{rang}"})
     assert client.post("/acces", json={"code": "graine-de-baobab"}, headers={"X-Forwarded-For": "198.51.100.10"}).status_code == 429
+
+
+CIRCUIT = [
+    ("get", "/circuit/catalogue", None),
+    ("get", "/circuit/brouillon", None),
+    ("put", "/circuit/brouillon", {"auteur": "x", "regles": [{"nom": "x", "si": {"toujours": True}, "exige": ["gerant"]}]}),
+    ("delete", "/circuit/brouillon", None),
+    ("get", "/circuit/differences", None),
+    ("post", "/circuit/publier", {"auteur": "x"}),
+    ("post", "/circuit/tester", {"facture_id": "00000000-0000-0000-0000-000000000000"}),
+    ("get", "/circuit/versions", None),
+    ("get", "/circuit/executions", None),
+]
+
+
+def test_l_editeur_de_circuit_est_ferme_sans_le_code_et_ouvert_avec(client, monkeypatch):
+    """Changer le circuit, c'est changer le contrôle des paiements : jamais sans le code."""
+    monkeypatch.setenv("DOCUFLOW_CODE_ACCES", "graine-de-baobab")
+
+    for methode, chemin, corps in CIRCUIT:
+        reponse = client.request(methode.upper(), chemin, json=corps)
+        assert reponse.status_code == 401, chemin
+
+    client.post("/acces", json={"code": "graine-de-baobab"})
+    assert client.get("/circuit/brouillon").status_code == 200  # le cas légitime passe
+    assert client.put("/circuit/brouillon", json=CIRCUIT[2][2]).status_code == 200
+    assert client.get("/circuit/brouillon").json()["modifie"] is True

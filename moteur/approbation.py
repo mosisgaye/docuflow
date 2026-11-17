@@ -55,6 +55,7 @@ CHAMPS_TEXTE = ("fournisseur_nom", "fournisseur_siret")
 COMPARAISONS_MONTANT = ("superieur_a", "superieur_ou_egal_a", "inferieur_a", "inferieur_ou_egal_a", "egal_a")
 COMPARAISONS_TEXTE = ("egal_a", "different_de", "contient")
 COMPARAISONS_ANOMALIE = ("une_de", "aucune_de")
+MONTANT_MAX = Decimal("1000000000")  # au-delà, un seuil n'a plus de sens (et « 1e999999 » s'écrirait sur un million de chiffres)
 CODE_ANOMALIE = re.compile(r"^[A-Z][A-Z_]{2,39}$")
 
 
@@ -85,6 +86,8 @@ class Ligne(BaseModel):
                 raise ValueError(f"« {self.valeur} » n'est pas un montant.") from None
             if not montant.is_finite() or montant < 0:
                 raise ValueError(f"« {self.valeur} » n'est pas un montant.")
+            if montant > MONTANT_MAX:
+                raise ValueError("Un seuil ne dépasse pas 1 000 000 000 €.")
             self.valeur = str(montant)
         elif self.champ in CHAMPS_TEXTE:
             if self.comparaison not in COMPARAISONS_TEXTE:
