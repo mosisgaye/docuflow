@@ -19,6 +19,9 @@
     GET  /regles                      les règles d'approbation en vigueur
     POST /regles                      publier une nouvelle version des règles
     GET  /circuit/catalogue           ce que l'éditeur de circuit peut régler (champs, comparaisons, anomalies…)
+    GET  /circuit/brouillon           le brouillon du circuit, ou la version en service s'il n'y en a pas
+    PUT  /circuit/brouillon           enregistrer le brouillon (vérifié ; aucune facture n'est touchée)
+    DELETE /circuit/brouillon         annuler les modifications : retour à la version en service
     GET  /approbation/{jeton}         la page de confirmation ouverte depuis le lien du mail
     POST /approbation/{jeton}         approuver ou rejeter depuis cette page
     POST /agent                       parler à l'assistant (réponse envoyée au fil de l'eau)
@@ -45,7 +48,7 @@ from pypdf.errors import PyPdfError
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, object_session, sessionmaker
 
-from moteur import config
+from moteur import config, editeur_circuit
 from moteur.agent import converser, flux_openai
 from moteur.agent import version_consigne as consigne_assistant
 from moteur.consignes import enregistrer as enregistrer_consigne
@@ -508,6 +511,28 @@ def creer_application(
     @application.get("/circuit/catalogue")
     def catalogue_du_circuit() -> dict:
         return catalogue()
+
+    @application.get("/circuit/brouillon")
+    def lire_brouillon(session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        return editeur_circuit.lire(session)
+
+    class Brouillon(BaseModel):
+        auteur: str = Field(min_length=1, max_length=100)
+        regles: list = Field(max_length=editeur_circuit.REGLES_MAX)
+        relances: dict | None = None
+
+    @application.put("/circuit/brouillon")
+    def enregistrer_brouillon(demande: Brouillon, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        if not demande.auteur.strip():
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Indiquez votre nom : chaque modification est inscrite à un nom.")
+        try:
+            return editeur_circuit.enregistrer(session, demande.regles, demande.relances, demande.auteur.strip())
+        except editeur_circuit.BrouillonInvalide as erreur:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erreur)) from erreur
+
+    @application.delete("/circuit/brouillon")
+    def annuler_brouillon(session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        return editeur_circuit.annuler(session)
 
     class Publication(BaseModel):
         auteur: str = Field(min_length=1, max_length=100)
