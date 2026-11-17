@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useState } from 'react'
+import { Comptes } from './Comptes'
+import { CompteConnecte } from './droits'
 import * as api from './api'
 import type { MailRecu, MembreEquipe, Niveau } from './api'
 import { initiales, jourEtHeure, teinte } from './format'
@@ -237,6 +239,8 @@ function Reception() {
 }
 
 export function Reglages({ onglet, auteur, surSansAuteur }: { onglet: OngletReglages; auteur: string; surSansAuteur: () => void }) {
+  // Avec des comptes, l'équipe, ce sont les comptes ; sans comptes (démonstration), la liste des approbateurs par mail.
+  const avecComptes = useContext(CompteConnecte) !== null
   return (
     <div className="page">
       <header className="page__titre">
@@ -244,12 +248,14 @@ export function Reglages({ onglet, auteur, surSansAuteur }: { onglet: OngletRegl
           <h1>{onglet === 'equipe' ? 'Mon équipe' : 'Réception des factures'}</h1>
           <p>
             {onglet === 'equipe'
-              ? 'Les personnes qui approuvent les factures. Chacune reçoit par mail les demandes de son rôle.'
+              ? avecComptes
+                ? 'Qui a accès à Verifac, et ce que chacun peut faire. Chaque personne reçoit par mail les demandes d’approbation de ses niveaux.'
+                : 'Les personnes qui approuvent les factures. Chacune reçoit par mail les demandes de son rôle.'
               : 'Comment vos factures arrivent dans Verifac.'}
           </p>
         </div>
       </header>
-      {onglet === 'equipe' ? <Equipe auteur={auteur} surSansAuteur={surSansAuteur} /> : <Reception />}
+      {onglet === 'equipe' ? avecComptes ? <Comptes /> : <Equipe auteur={auteur} surSansAuteur={surSansAuteur} /> : <Reception />}
     </div>
   )
 }

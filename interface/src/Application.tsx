@@ -607,7 +607,7 @@ export function Application() {
           {compte ? (
             <div className="compte">
               <button className="compte__bouton" onClick={() => setMenuCompte(!menuCompte)} aria-expanded={menuCompte} aria-haspopup="true" title="Votre compte">
-                <span className={`avatar ${teinte(compte.nom)}`} aria-hidden="true">
+                <span className={`avatar teinte-${teinte(compte.nom)}`} aria-hidden="true">
                   {initiales(compte.nom)}
                 </span>
                 <span className="compte__nom">{compte.nom}</span>

@@ -303,6 +303,18 @@ export const connexionParLien = (jeton: string) => appeler<{ compte: Compte }>('
 export const connexionParCode = (email: string, code: string) => appeler<{ compte: Compte }>('/connexion/code', enJson({ email, code }))
 export const deconnexion = () => appeler<{ compte: null }>('/deconnexion', { method: 'POST' })
 
+export interface ListeComptes {
+  roles: Record<Exclude<Role, 'operateur'>, string>
+  niveaux: Record<Niveau, string>
+  comptes: Compte[]
+}
+
+export const comptes = () => appeler<ListeComptes>('/comptes')
+export const creerCompte = (nom: string, email: string, role: Role, niveaux: Niveau[]) => appeler<Compte>('/comptes', enJson({ nom, email, role, niveaux }))
+export const modifierCompte = (id: string, changement: { role?: Role; niveaux?: Niveau[]; actif?: boolean }) =>
+  appeler<Compte>(`/comptes/${id}`, { ...enJson(changement), method: 'PUT' })
+export const deconnecterCompte = (id: string) => appeler<Compte>(`/comptes/${id}/deconnexion`, { method: 'POST' })
+
 // ───────── Réglages : l'équipe qui approuve, et la réception des factures ─────────
 
 export interface MembreEquipe {
