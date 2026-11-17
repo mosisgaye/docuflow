@@ -235,6 +235,8 @@ export function Application() {
                 ...tour,
                 propositions: [...tour.propositions, { factureId: evenement.facture_id, numero: evenement.numero, decision: evenement.decision, motif: evenement.motif, statut: 'attente' }],
               }
+            case 'circuit':
+              return { ...tour, circuit: evenement.message }
             case 'erreur':
               return { ...tour, erreur: evenement.message }
             default:
@@ -862,6 +864,10 @@ export function Application() {
             surEnvoi={envoyer}
             surFichiers={deposerAvecAssistant}
             surProposition={repondreProposition}
+            surCircuit={() => {
+              setOngletWorkflow('circuit')
+              setPage('workflow')
+            }}
             surOuverture={(id) => {
               // La facture s'ouvre dans la liste, à côté de l'agent qui reste ouvert.
               if (page !== 'documents') allerVue('toutes')

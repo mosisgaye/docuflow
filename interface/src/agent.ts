@@ -5,6 +5,7 @@ export type EvenementAgent =
   | { type: 'outil'; id: string; etat: 'debut' | 'fin'; libelle?: string; duree_s?: number; echec?: boolean }
   | { type: 'facture'; id: string }
   | { type: 'proposition'; facture_id: string; numero: string | null; decision: 'valider' | 'rejeter'; motif: string }
+  | { type: 'circuit'; message: string } // l'agent a préparé le brouillon du circuit
   | { type: 'erreur'; message: string }
   | { type: 'fin' }
 

@@ -4783,3 +4783,24 @@ kbd {
     padding: 0 0.375rem;
   }
 }
+
+/* Dans la conversation : l'agent a préparé le brouillon du circuit. */
+.carte-circuit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border: var(--trait) solid var(--vert-trait);
+  border-radius: var(--rayon-panneau);
+  background: var(--vert-pale);
+  font-size: 0.8125rem;
+}
+
+.carte-circuit p {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}

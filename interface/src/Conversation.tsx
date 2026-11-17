@@ -29,6 +29,7 @@ export interface Tour {
   propositions: Proposition[]
   enCours: boolean
   erreur?: string
+  circuit?: string // l'agent a préparé le brouillon du circuit : ce qu'il a fait
 }
 
 interface Props {
@@ -43,6 +44,8 @@ interface Props {
   surOuverture: (factureId: string) => void
   /** Dans le panneau de l'agent : un accueil avec des actions rapides, à la place des suggestions. */
   panneau?: boolean
+  /** Ouvrir le circuit dans Workflow, après que l'agent l'a préparé. */
+  surCircuit?: () => void
 }
 
 /** Les actions rapides de l'agent : envoyées tout de suite, ou posées dans la saisie pour être complétées. */
@@ -151,7 +154,7 @@ function Etapes({ etapes, enCours }: { etapes: Etape[]; enCours: boolean }) {
   )
 }
 
-export function Conversation({ tours, numeros, occupe, connecteurs, surConnecteurs, surEnvoi, surFichiers, surProposition, surOuverture, panneau = false }: Props) {
+export function Conversation({ tours, numeros, occupe, connecteurs, surConnecteurs, surEnvoi, surFichiers, surProposition, surOuverture, panneau = false, surCircuit }: Props) {
   const [saisie, setSaisie] = useState('')
   const fin = useRef<HTMLDivElement>(null)
   const champFichier = useRef<HTMLInputElement>(null)
@@ -235,15 +238,25 @@ export function Conversation({ tours, numeros, occupe, connecteurs, surConnecteu
             ) : (
               <div key={tour.id} className="tour tour--assistant">
                 <p className="tour__qui">
-                  <span className="marque" aria-hidden="true">
-                    <Icone nom="assistant" taille={12} />
-                  </span>
-                  Assistant Verifac
+                  <IconeAgent taille={14} />
+                  Agent Verifac
                 </p>
                 <Etapes etapes={tour.etapes} enCours={tour.enCours} />
                 {tour.texte && <TexteAssistant texte={tour.texte} numeros={numeros} surOuverture={surOuverture} />}
                 {tour.enCours && !tour.texte && tour.etapes.every((etape) => etape.fini) && <p className="tour__attente">L’assistant réfléchit…</p>}
                 {tour.erreur && <p className="tour__erreur">{tour.erreur}</p>}
+                {tour.circuit && (
+                  <div className="carte-circuit">
+                    <p>
+                      <Icone nom="workflow" taille={14} /> {tour.circuit}
+                    </p>
+                    {surCircuit && (
+                      <button className="bouton bouton--plein bouton--petit" onClick={surCircuit}>
+                        Ouvrir le circuit
+                      </button>
+                    )}
+                  </div>
+                )}
                 {tour.propositions.map((proposition, rang) => (
                   <div key={rang} className={`proposition proposition--${proposition.decision}`}>
                     <p className="proposition__titre">

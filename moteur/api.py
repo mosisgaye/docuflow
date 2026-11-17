@@ -987,7 +987,8 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
     @application.post("/agent")
     def parler_a_l_agent(demande: DemandeAgent) -> StreamingResponse:
         def flux() -> Iterator[str]:
-            # La session vit le temps de la réponse : l'agent ne fait que lire.
+            # La session vit le temps de la réponse. L'agent lit ; ses compétences « circuit » écrivent
+            # seulement le brouillon, et l'enregistrent elles-mêmes (la fin de la réponse annule le reste).
             session = fabrique_session()
             try:
                 elements = []
@@ -999,7 +1000,7 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
                         elements.append(f"Elle regarde la facture n° {facture.numero_facture} (identifiant {facture.id}, état « {facture.etat} »).")
                 contexte = " ".join(elements) or None
                 messages = [message.model_dump() for message in demande.messages]
-                for evenement in converser(session, messages, contexte, llm_agent, passerelle):
+                for evenement in converser(session, messages, contexte, llm_agent, passerelle, demande.auteur):
                     yield f"data: {json.dumps(evenement, ensure_ascii=False)}\n\n"
             finally:
                 session.rollback()
