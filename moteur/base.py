@@ -9,6 +9,7 @@ Les tables :
 - connecteurs et appels_connecteurs : les logiciels branchés (MCP) et le journal de leurs appels ;
 - demandes_oauth et jetons_connecteurs : les connexions par compte (OAuth), jetons chiffrés ;
 - regles_approbation et approbations : qui doit approuver une facture, et qui l'a fait ;
+- brouillon_circuit : le circuit en cours de modification dans l'éditeur, pas encore publié ;
 - cles_api, abonnements et livraisons : l'API publique et les événements envoyés aux autres logiciels.
 
 Toute modification de ces modèles demande une migration (dossier migrations/).
@@ -18,7 +19,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, create_engine, func, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, create_engine, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -194,8 +195,27 @@ class ReglesApprobation(Base):
 
     version: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     regles: Mapped[list] = mapped_column(JSONB)
+    # Les relances par niveau ({"comptable": {"delai_h": 48, ...}}). Absentes : les délais par défaut.
+    relances: Mapped[dict | None] = mapped_column(JSONB)
     publie_par: Mapped[str] = mapped_column(String(100))
     publie_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BrouillonCircuit(Base):
+    """Le circuit en cours de modification dans l'éditeur. Une seule ligne ; publier le vide.
+
+    Il ne touche aucune facture : seules les versions publiées (regles_approbation) comptent.
+    """
+
+    __tablename__ = "brouillon_circuit"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False, default=1)
+    regles: Mapped[list] = mapped_column(JSONB)
+    relances: Mapped[dict | None] = mapped_column(JSONB)
+    modifie_par: Mapped[str] = mapped_column(String(100))
+    modifie_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (CheckConstraint("id = 1", name="ck_brouillon_circuit_unique"),)
 
 
 class Approbation(Base):

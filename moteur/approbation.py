@@ -185,6 +185,37 @@ class Regle(BaseModel):
         return self
 
 
+class Relance(BaseModel):
+    """Quand relancer un niveau qui n'a pas répondu. Les délais sont en heures."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    delai_h: int = Field(ge=1, le=336)  # sans réponse depuis ce délai : relancer
+    delai_urgent_h: int = Field(ge=1, le=336)  # le délai quand l'échéance de paiement approche
+    maximum: int = Field(ge=0, le=5)  # relances au plus, par personne (0 : jamais)
+
+    @model_validator(mode="after")
+    def urgent_plus_court(self):
+        if self.delai_urgent_h > self.delai_h:
+            raise ValueError("Le délai quand l'échéance approche ne peut pas dépasser le délai normal.")
+        return self
+
+
+RELANCES_DEFAUT = {"delai_h": 48, "delai_urgent_h": 24, "maximum": 2}
+
+
+def verifier_relances(relances: dict | None) -> dict | None:
+    """Les relances par niveau, vérifiées. Un niveau absent garde les délais par défaut."""
+    if relances is None:
+        return None
+    if not isinstance(relances, dict):
+        raise ValueError("Les relances se donnent par niveau : {\"comptable\": {...}}.")
+    inconnus = set(relances) - set(NIVEAUX)
+    if inconnus:
+        raise ValueError(f"Niveau inconnu dans les relances : {', '.join(sorted(inconnus))}.")
+    return {niveau: Relance.model_validate(relances[niveau]).model_dump() for niveau in NIVEAUX if niveau in relances}
+
+
 REGLES_DEMO = [
     {"nom": "Toute facture est approuvée par le comptable", "si": {"toujours": True}, "exige": ["comptable"]},
     {"nom": "Plus de 1 000 € TTC", "si": {"champ": "total_ttc", "superieur_a": "1000"}, "exige": ["directeur_financier"]},
@@ -195,11 +226,12 @@ REGLES_DEMO = [
 ]
 
 
-def publier(session: Session, regles: list[dict], auteur: str) -> ReglesApprobation:
-    """Publie une nouvelle version des règles, après les avoir vérifiées. Les anciennes restent."""
+def publier(session: Session, regles: list[dict], auteur: str, relances: dict | None = None) -> ReglesApprobation:
+    """Publie une nouvelle version des règles (et des relances), après les avoir vérifiées. Les anciennes restent."""
     verifiees = [Regle.model_validate(regle).model_dump(mode="json", exclude_none=True) for regle in regles]
+    relances_verifiees = verifier_relances(relances)
     suivante = (session.scalar(select(func.max(ReglesApprobation.version))) or 0) + 1
-    version = ReglesApprobation(version=suivante, regles=verifiees, publie_par=auteur)
+    version = ReglesApprobation(version=suivante, regles=verifiees, relances=relances_verifiees, publie_par=auteur)
     session.add(version)
     session.flush()
     return version
@@ -226,7 +258,10 @@ def circuit(donnees: dict, anomalies: list[dict], version: ReglesApprobation | N
         for niveau in regle.exige or []:
             raisons.setdefault(niveau, []).append(regle.nom)
     niveaux = [{"niveau": niveau, "raisons": raisons[niveau]} for niveau in NIVEAUX if niveau in raisons]
-    return {"version": version.version, "niveaux": niveaux or [{"niveau": "comptable", "raisons": ["Aucune règle ne s'applique"]}], "bloque": bloque}
+    calcule = {"version": version.version, "niveaux": niveaux or [{"niveau": "comptable", "raisons": ["Aucune règle ne s'applique"]}], "bloque": bloque}
+    if version.relances:
+        calcule["relances"] = version.relances  # figées avec le circuit, comme les niveaux
+    return calcule
 
 
 def empreinte(donnees: dict | None) -> str:
