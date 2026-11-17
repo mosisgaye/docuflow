@@ -19,6 +19,8 @@ import {
   House,
   Inbox,
   KeyRound,
+  Lock,
+  FlaskConical,
   Layers,
   LayoutGrid,
   ListFilter,
@@ -42,6 +44,7 @@ import {
   Upload,
   User,
   Webhook,
+  Workflow,
   X,
   Zap,
   type LucideIcon,
@@ -92,6 +95,9 @@ const ICONES = {
   sortie: Send,
   reglages: Settings,
   equipe: Users,
+  workflow: Workflow,
+  cadenas: Lock,
+  test: FlaskConical,
 } satisfies Record<string, LucideIcon>
 
 export type NomIcone = keyof typeof ICONES

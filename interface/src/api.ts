@@ -291,3 +291,109 @@ export const ajouterMembre = (nom: string, email: string, niveau: Niveau, auteur
   appeler<MembreEquipe>('/reglages/equipe', enJson({ nom, email, niveau, auteur }))
 export const retirerMembre = (id: string) => appeler<{ id: string }>(`/reglages/equipe/${id}`, { method: 'DELETE' })
 export const reception = () => appeler<{ adresse: string; active: boolean; mails: MailRecu[] }>('/reglages/reception')
+
+// ───────── Éditeur de circuit : brouillon, test, publication, versions, exécutions ─────────
+
+export type Comparaison = 'superieur_a' | 'superieur_ou_egal_a' | 'inferieur_a' | 'inferieur_ou_egal_a' | 'egal_a' | 'different_de' | 'contient' | 'une_de' | 'aucune_de'
+export type ChampCondition = 'total_ttc' | 'total_ht' | 'fournisseur_nom' | 'fournisseur_siret' | 'anomalie'
+
+export interface LigneCondition {
+  champ: ChampCondition
+  comparaison: Comparaison
+  valeur: string | string[]
+}
+
+/** Une condition : « toujours », ou des lignes reliées par « une suffit » ou « toutes ». */
+export interface Condition {
+  toujours?: boolean
+  lignes?: LigneCondition[]
+  combinaison?: 'une' | 'toutes'
+}
+
+export interface Regle {
+  nom: string
+  si: Condition
+  exige?: Niveau[]
+  bloque?: string
+}
+
+export interface Relance {
+  delai_h: number
+  delai_urgent_h: number
+  maximum: number
+}
+
+export type Relances = Partial<Record<Niveau, Relance>>
+
+export interface Catalogue {
+  champs: { champ: ChampCondition; libelle: string; genre: 'montant' | 'texte' | 'anomalies'; comparaisons: { code: Comparaison; libelle: string }[] }[]
+  anomalies: { code: string; libelle: string; gravite: 'bloquante' | 'avertissement'; utilisable: boolean }[]
+  niveaux: { code: Niveau; libelle: string }[]
+  relances: { nom: keyof Relance; libelle: string; unite: string; min: number; max: number; defaut: number }[]
+  etapes: { type: string; libelle: string; fixe: boolean; disponible?: boolean }[]
+}
+
+export interface BrouillonCircuit {
+  version_en_service: number | null
+  regles: Regle[]
+  relances: Relances | null
+  modifie: boolean
+  modifie_par: string | null
+  modifie_le: string | null
+}
+
+export interface Changement {
+  genre: 'ajout' | 'retrait' | 'modification' | 'relances'
+  regle: string | null
+  niveau?: Niveau
+  avant: string | null
+  apres: string | null
+  texte: string
+}
+
+export interface ResultatTest {
+  facture: { id: string; fournisseur: string | null; numero: string | null; total_ttc: string | null }
+  circuit_teste: 'brouillon' | 'en_service'
+  controles: { arretee: boolean; anomalies: { code: string; libelle: string; gravite: string | null }[] }
+  regles: { nom: string; condition: string; lignes: { texte: string; vraie: boolean }[]; vraie: boolean; effet: string }[]
+  niveaux: { niveau: Niveau; raisons: string[] }[]
+  bloque: string | null
+  relances: Relances
+  en_service: { version: number | null; niveaux: Niveau[]; bloque: string | null }
+  change: boolean
+}
+
+export interface VersionCircuit {
+  version: number
+  en_service: boolean
+  publie_par: string
+  publie_le: string
+  nombre_regles: number
+  changements: string[] | null
+  relances_reglees: boolean
+}
+
+export interface Execution {
+  facture_id: string
+  fournisseur: string | null
+  numero: string | null
+  total_ttc: string | null
+  etat: Etat
+  version_circuit: number | null
+  chemin: string[]
+  resultat: string
+  en_cours: boolean
+  duree_s: number
+  recue_le: string
+}
+
+export const catalogueCircuit = () => appeler<Catalogue>('/circuit/catalogue')
+export const brouillon = () => appeler<BrouillonCircuit>('/circuit/brouillon')
+export const enregistrerBrouillon = (regles: Regle[], relances: Relances | null, auteur: string) =>
+  appeler<BrouillonCircuit>('/circuit/brouillon', { ...enJson({ auteur, regles, relances }), method: 'PUT' })
+export const annulerBrouillon = () => appeler<BrouillonCircuit>('/circuit/brouillon', supprimer)
+export const differences = () => appeler<{ version_en_service: number | null; modifie: boolean; changements: Changement[] }>('/circuit/differences')
+export const publierCircuit = (auteur: string) => appeler<{ version: number; publie_par: string; changements: string[] }>('/circuit/publier', enJson({ auteur }))
+export const testerCircuit = (factureId: string) => appeler<ResultatTest>('/circuit/tester', enJson({ facture_id: factureId }))
+export const versionsCircuit = () => appeler<{ versions: VersionCircuit[] }>('/circuit/versions')
+export const executions = (limite = 30) => appeler<{ executions: Execution[] }>(`/circuit/executions?limite=${limite}`)

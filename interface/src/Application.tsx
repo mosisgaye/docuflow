@@ -11,9 +11,10 @@ import { Documents } from './Pages'
 import { EcranAcces } from './EcranAcces'
 import { type OngletReglages, Reglages } from './Reglages'
 import { TableauDeBord } from './TableauDeBord'
+import { type OngletWorkflow, Workflow } from './Workflow'
 import { type Theme, retenirTheme } from './theme'
 
-type Page = 'tableau' | 'documents' | 'validations' | 'assistant' | 'connecteurs' | 'reglages'
+type Page = 'tableau' | 'documents' | 'validations' | 'assistant' | 'workflow' | 'connecteurs' | 'reglages'
 type Vue = Etat | 'toutes'
 
 const CLE_AUTEUR = 'factures.auteur'
@@ -22,6 +23,7 @@ const MENU: { page: Page; nom: string; icone: NomIcone }[] = [
   { page: 'documents', nom: 'Factures', icone: 'document' },
   { page: 'validations', nom: 'À traiter', icone: 'validation' },
   { page: 'assistant', nom: 'Assistant', icone: 'assistant' },
+  { page: 'workflow', nom: 'Workflow', icone: 'workflow' },
   { page: 'connecteurs', nom: 'Connecteurs', icone: 'integration' },
   { page: 'reglages', nom: 'Réglages', icone: 'reglages' },
 ]
@@ -30,6 +32,11 @@ const ONGLETS_CONNECTEURS: { onglet: OngletConnecteurs; nom: string; icone: NomI
   { onglet: 'decouvrir', nom: 'Découvrir', icone: 'grille' },
   { onglet: 'integres', nom: 'Intégrés à Verifac', icone: 'bouclier' },
   { onglet: 'developpeurs', nom: 'Accès développeurs', icone: 'code' },
+]
+const ONGLETS_WORKFLOW: { onglet: OngletWorkflow; nom: string; icone: NomIcone }[] = [
+  { onglet: 'circuit', nom: 'Circuit des factures', icone: 'workflow' },
+  { onglet: 'versions', nom: 'Versions publiées', icone: 'journal' },
+  { onglet: 'executions', nom: 'Exécutions', icone: 'horloge' },
 ]
 const FORMATS_ACCEPTES = /\.(pdf|jpe?g|png|webp)$/i
 const lire = (cle: string) => {
@@ -80,6 +87,7 @@ export function Application() {
   const [vue, setVue] = useState<Vue>('toutes')
   const [ongletConnecteurs, setOngletConnecteurs] = useState<OngletConnecteurs | null>(null)
   const [ongletReglages, setOngletReglages] = useState<OngletReglages>('equipe')
+  const [ongletWorkflow, setOngletWorkflow] = useState<OngletWorkflow>('circuit')
   const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'))
   const [laterale, setLaterale] = useState(() => lire('docuflow.laterale') !== 'repliee')
   // null : on ne sait pas encore ; vrai : le code d'accès de la démonstration est demandé.
@@ -451,12 +459,14 @@ export function Application() {
           ? ['Factures', 'À traiter']
           : page === 'assistant'
             ? ['Assistant']
-            : page === 'reglages'
-              ? ['Réglages', ongletReglages === 'equipe' ? 'Mon équipe' : 'Réception des factures']
-              : ['Connecteurs', ONGLETS_CONNECTEURS.find((o) => o.onglet === ongletConnecteursEffectif)!.nom]
+            : page === 'workflow'
+              ? ['Workflow', ONGLETS_WORKFLOW.find((o) => o.onglet === ongletWorkflow)!.nom]
+              : page === 'reglages'
+                ? ['Réglages', ongletReglages === 'equipe' ? 'Mon équipe' : 'Réception des factures']
+                : ['Connecteurs', ONGLETS_CONNECTEURS.find((o) => o.onglet === ongletConnecteursEffectif)!.nom]
 
   // La fiche s'ouvre à côté des listes et de l'assistant ; l'accueil et les connecteurs gardent toute la largeur.
-  const panneauFacture = detail && page !== 'connecteurs' && page !== 'tableau' && page !== 'reglages'
+  const panneauFacture = detail && page !== 'connecteurs' && page !== 'tableau' && page !== 'reglages' && page !== 'workflow'
 
   if (verrouille === null) return null
   if (verrouille) return <EcranAcces surOuverture={() => setVerrouille(false)} />
@@ -572,6 +582,27 @@ export function Application() {
             </div>
             <p className="laterale__pied">Ce que vous réglez ici s’applique à toute l’entreprise.</p>
           </>
+        ) : page === 'workflow' ? (
+          <>
+            <div className="laterale__tete">
+              <h2>Workflow</h2>
+            </div>
+            <div className="laterale__corps">
+              {ONGLETS_WORKFLOW.map((entree) => (
+                <button
+                  key={entree.onglet}
+                  className="laterale__ligne"
+                  aria-current={ongletWorkflow === entree.onglet || undefined}
+                  onClick={() => setOngletWorkflow(entree.onglet)}
+                  tabIndex={laterale ? 0 : -1}
+                >
+                  <Icone nom={entree.icone} />
+                  <span>{entree.nom}</span>
+                </button>
+              ))}
+            </div>
+            <p className="laterale__pied">Les étapes fixes protègent le paiement : elles ne se modifient pas.</p>
+          </>
         ) : page === 'connecteurs' ? (
           <>
             <div className="laterale__tete">
@@ -676,7 +707,19 @@ export function Application() {
         </div>
 
         <div className="espace__corps">
-          {page === 'reglages' ? (
+          {page === 'workflow' ? (
+            <Workflow
+              onglet={ongletWorkflow}
+              auteur={auteur}
+              factures={factures}
+              surSansAuteur={() => champAuteur.current?.focus()}
+              surInformation={setInformation}
+              surFacture={(id) => {
+                allerVue('toutes')
+                ouvrir(id)
+              }}
+            />
+          ) : page === 'reglages' ? (
             <Reglages onglet={ongletReglages} auteur={auteur} surSansAuteur={() => champAuteur.current?.focus()} />
           ) : page === 'connecteurs' ? (
             <Connecteurs
