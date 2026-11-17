@@ -50,6 +50,17 @@ class Base(DeclarativeBase):
     pass
 
 
+# Les valeurs permises, vérifiées aussi par la base (CHECK) : une écriture hors liste est refusée,
+# même si elle venait d'un script ou d'une erreur de code. Rôles et niveaux : moteur/comptes.py
+# (un test vérifie que les deux listes restent identiques).
+ROLES_EN_BASE = ("administrateur", "membre", "approbateur", "lecture", "operateur")
+NIVEAUX_EN_BASE = ("comptable", "directeur_financier", "gerant")
+
+
+def _parmi(colonne: str, valeurs, nom: str) -> CheckConstraint:
+    return CheckConstraint(f"{colonne} IN ({', '.join(repr(str(v)) for v in valeurs)})", name=nom)
+
+
 class FactureEnBase(Base):
     __tablename__ = "factures"
 
@@ -70,7 +81,10 @@ class FactureEnBase(Base):
 
     evenements: Mapped[list["Evenement"]] = relationship(back_populates="facture", order_by="Evenement.rang")
 
-    __table_args__ = (Index("ix_factures_fournisseur_numero", "fournisseur_siret", "numero_facture"),)
+    __table_args__ = (
+        Index("ix_factures_fournisseur_numero", "fournisseur_siret", "numero_facture"),
+        _parmi("etat", [e.value for e in Etat], "ck_factures_etat"),
+    )
 
 
 class Evenement(Base):
@@ -88,6 +102,12 @@ class Evenement(Base):
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.clock_timestamp())
 
     facture: Mapped[FactureEnBase] = relationship(back_populates="evenements")
+
+    __table_args__ = (
+        # Deux événements d'une facture n'ont jamais le même rang (voir workflow._journaliser, qui verrouille la facture).
+        UniqueConstraint("facture_id", "rang", name="uq_evenements_facture_rang"),
+        _parmi("etat", [e.value for e in Etat], "ck_evenements_etat"),
+    )
 
 
 class Consigne(Base):
@@ -118,6 +138,7 @@ class Tache(Base):
         Index("ix_taches_a_faire", "prochain_essai_le", postgresql_where=text("etat = 'en_attente'")),
         # Jamais deux tâches en attente pour la même facture.
         Index("uq_taches_une_en_attente", "facture_id", unique=True, postgresql_where=text("etat = 'en_attente'")),
+        _parmi("etat", [e.value for e in EtatTache], "ck_taches_etat"),
     )
 
 
@@ -238,7 +259,10 @@ class Approbation(Base):
     empreinte_donnees: Mapped[str] = mapped_column(String(64))
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.clock_timestamp())
 
-    __table_args__ = (UniqueConstraint("facture_id", "niveau", name="uq_approbations_facture_niveau"),)
+    __table_args__ = (
+        UniqueConstraint("facture_id", "niveau", name="uq_approbations_facture_niveau"),
+        _parmi("niveau", NIVEAUX_EN_BASE, "ck_approbations_niveau"),
+    )
 
 
 class CleApi(Base):
@@ -340,7 +364,10 @@ class MembreEquipe(Base):
     cree_par: Mapped[str] = mapped_column(String(100))
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    __table_args__ = (UniqueConstraint("email", "niveau", name="uq_membres_equipe_email_niveau"),)
+    __table_args__ = (
+        UniqueConstraint("email", "niveau", name="uq_membres_equipe_email_niveau"),
+        _parmi("niveau", NIVEAUX_EN_BASE, "ck_membres_equipe_niveau"),
+    )
 
 
 class Compte(Base):
@@ -360,7 +387,10 @@ class Compte(Base):
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     derniere_connexion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (UniqueConstraint("email", name="uq_comptes_email"),)
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_comptes_email"),
+        _parmi("role", ROLES_EN_BASE, "ck_comptes_role"),
+    )
 
 
 class DemandeConnexion(Base):

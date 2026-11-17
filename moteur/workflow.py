@@ -23,7 +23,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import date
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -71,10 +71,17 @@ class ResultatTraitement:
 
 
 def _journaliser(session: Session, facture: FactureEnBase, type_evenement: str, auteur: str, detail: dict | None = None) -> None:
+    # Deux écritures en même temps sur la même facture (le travailleur et une approbation par mail, par exemple)
+    # calculeraient le même rang. On verrouille la ligne de la facture jusqu'à la fin de la transaction,
+    # puis on lit le dernier rang en base, pas dans la liste chargée en mémoire, qui peut être en retard.
+    # La contrainte uq_evenements_facture_rang refuse de toute façon un rang en double.
+    session.flush()
+    session.execute(select(FactureEnBase.id).where(FactureEnBase.id == facture.id).with_for_update())
+    dernier = session.scalar(select(func.max(Evenement.rang)).where(Evenement.facture_id == facture.id)) or 0
     session.add(
         Evenement(
             facture=facture,
-            rang=len(facture.evenements) + 1,
+            rang=dernier + 1,
             type=type_evenement,
             etat=facture.etat,
             auteur=auteur,
