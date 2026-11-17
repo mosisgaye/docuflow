@@ -23,6 +23,9 @@ interface LigneEcriture {
   credit: string
 }
 
+/** Le temps pendant lequel on ne peut pas approuver une facture qui vient de s'ouvrir. */
+const DELAI_AVANT_APPROBATION_MS = 600
+
 const NOMS_COMPTES: Record<string, string> = { '445660': 'TVA déductible', '401000': 'Fournisseur' }
 
 const dernier = (facture: FactureDetail, ...types: string[]): Evenement | undefined =>
@@ -268,6 +271,14 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
   // Risque de fraude à l'IBAN : on n'approuve qu'après avoir confirmé l'appel au fournisseur.
   const risque = facture.anomalies.some((anomalie) => CODES_RISQUE.includes(anomalie.code))
   const [appele, setAppele] = useState(false)
+  // Après une décision, la facture suivante s'ouvre avec le bouton au même endroit : un second clic
+  // (ou un second « A ») parti trop vite approuverait une facture pas encore lue. La fiche est
+  // recréée à chaque facture (voir sa clé dans Application.tsx) : on n'arme l'approbation qu'après un délai.
+  const [arme, setArme] = useState(false)
+  useEffect(() => {
+    const minuterie = window.setTimeout(() => setArme(true), DELAI_AVANT_APPROBATION_MS)
+    return () => window.clearTimeout(minuterie)
+  }, [])
   const donnees = facture.donnees
   const fautifs = new Set(facture.anomalies.map((anomalie) => anomalie.champ))
   const marque = (champ: string) => (fautifs.has(champ) ? 'fautif' : undefined)
@@ -275,7 +286,7 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
   const peut = usePeut()
   const decidable = peut('approuver') && (facture.etat === 'a_valider' || facture.etat === 'en_approbation' || facture.etat === 'en_anomalie')
   const approuvable = decidable && (facture.etat === 'a_valider' || facture.etat === 'en_approbation') && !facture.circuit?.bloque
-  const pret = approuvable && (!risque || appele)
+  const pret = approuvable && arme && (!risque || appele)
   const avecRegles = facture.circuit?.version != null
   const libelleDecision = avecRegles && facture.niveau_attendu ? `Approuver (${LIBELLE_NIVEAU[facture.niveau_attendu].toLowerCase()})` : 'Valider'
 
