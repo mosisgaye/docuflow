@@ -18,7 +18,7 @@ const surGrille = (valeur: number) => Math.round(valeur / GRILLE) * GRILLE
 export function ranger(graphe: Graphe, tailles: Map<string, Taille>): Graphe {
   const g = new dagre.graphlib.Graph({ multigraph: true })
   // align « UL » : chaque étape s'aligne sur sa voisine du haut, ce qui garde la ligne principale droite.
-  g.setGraph({ rankdir: 'LR', align: 'UL', ranksep: 100, nodesep: 60, edgesep: 20, marginx: 0, marginy: 0 })
+  g.setGraph({ rankdir: 'LR', align: 'UL', ranksep: 70, nodesep: 120, edgesep: 20, marginx: 0, marginy: 0 })
   g.setDefaultEdgeLabel(() => ({}))
 
   for (const etape of graphe.noeuds) g.setNode(etape.id, { ...(tailles.get(etape.id) ?? TAILLE_PAR_DEFAUT) })
