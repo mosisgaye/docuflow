@@ -16,7 +16,7 @@ import { type Theme, retenirTheme } from './theme'
 
 type Page = 'tableau' | 'documents' | 'assistant' | 'workflow' | 'connecteurs' | 'reglages'
 // « À traiter » est un filtre des factures (comme « Non lus » dans une boîte mail), pas une page à part.
-type Vue = Etat | 'toutes' | 'a_traiter' | 'a_regler' | 'echeances' | 'attente'
+type Vue = Etat | 'toutes' | 'a_traiter' | 'mon_tour' | 'a_regler' | 'echeances' | 'attente'
 
 const CLE_AUTEUR = 'factures.auteur'
 const MENU: { page: Page; nom: string; icone: NomIcone }[] = [
@@ -40,6 +40,7 @@ const AUTRES_FILTRES: { vue: 'a_regler' | 'echeances' | 'attente'; nom: string; 
   { vue: 'attente', nom: 'En attente depuis 48 h', icone: 'utilisateur', garder: (facture) => attenteLongue(facture) },
 ]
 const TITRES_VUES = {
+  mon_tour: ['Mon tour', 'Les factures où c’est à vous d’approuver maintenant. A approuve, R rejette, les flèches passent à la suivante.'],
   a_traiter: ['À traiter', 'Les factures qui attendent une décision, les anomalies en premier.'],
   toutes: ['Toutes les factures', 'Cliquez sur une facture pour l’ouvrir à côté de la liste.'],
   a_regler: ['Anomalies à régler', 'Arrêtées aux contrôles ou illisibles : à corriger, ou à rejeter avec un motif.'],
@@ -62,6 +63,8 @@ const ecrire = (cle: string, valeur: string) => {
   }
 }
 let prochainId = 1
+// Un nom comparable : sans majuscules ni espaces en trop (« claire  FABRE » = « Claire Fabre »).
+const normaliser = (nom: string) => nom.trim().replace(/\s+/g, ' ').toLowerCase()
 
 const tourVide = (role: Tour['role'], champs: Partial<Tour> = {}): Tour => ({
   id: prochainId++,
@@ -112,6 +115,7 @@ export function Application() {
   const [survol, setSurvol] = useState(false)
   const [auteur, setAuteur] = useState(() => lire(CLE_AUTEUR) ?? '')
   const [branches, setBranches] = useState<string[]>([])
+  const [equipe, setEquipe] = useState<api.MembreEquipe[]>([])
   const rechargerConnecteurs = useCallback(() => {
     api.connecteurs().then(
       (liste) => setBranches(liste.filter((connecteur) => connecteur.branche).map((connecteur) => connecteur.nom)),
@@ -123,6 +127,18 @@ export function Application() {
   const toursActuels = useRef(tours)
   toursActuels.current = tours
   const derniereOuverture = useRef(0)
+
+  // Qui je suis : mon nom (en haut à droite) retrouvé dans « Mon équipe » donne mes rôles d'approbation.
+  const mesNiveaux = useMemo(() => {
+    const moi = normaliser(auteur)
+    return moi ? equipe.filter((membre) => normaliser(membre.nom) === moi).map((membre) => membre.niveau) : []
+  }, [equipe, auteur])
+  const monTour = useCallback(
+    (facture: FactureResume) =>
+      Boolean(facture.niveau_attendu && mesNiveaux.includes(facture.niveau_attendu) && !(facture.approuve_par ?? []).some((nom) => normaliser(nom) === normaliser(auteur))),
+    [mesNiveaux, auteur],
+  )
+  const aMonTour = useMemo(() => factures.filter(monTour), [factures, monTour])
 
   const aTraiter = useMemo(
     () => factures.filter((facture) => A_TRAITER.includes(facture.etat)).sort((a, b) => A_TRAITER.indexOf(a.etat) - A_TRAITER.indexOf(b.etat)),
@@ -158,6 +174,7 @@ export function Application() {
       setErreur(null)
       recharger()
       rechargerConnecteurs()
+      api.equipe().then((reponse) => setEquipe(reponse.membres), () => setEquipe([]))
     }
   }, [verrouille, recharger, rechargerConnecteurs])
 
@@ -399,7 +416,9 @@ export function Application() {
 
   const listeAffichee = useMemo(() => {
     const base =
-      vue === 'a_traiter'
+      vue === 'mon_tour'
+        ? aMonTour
+        : vue === 'a_traiter'
         ? aTraiter
         : vue === 'toutes'
           ? factures
@@ -420,7 +439,7 @@ export function Application() {
     // Les échéances : la plus urgente d'abord. Sinon, même ordre que les groupes affichés.
     if (vue === 'echeances') return [...trouvees].sort((a, b) => (a.date_echeance ?? '').localeCompare(b.date_echeance ?? ''))
     return [...trouvees].sort((a, b) => ORDRE_ETATS.indexOf(a.etat) - ORDRE_ETATS.indexOf(b.etat))
-  }, [page, vue, factures, aTraiter, recherche])
+  }, [page, vue, factures, aTraiter, aMonTour, recherche])
 
   // Précédente et suivante : dans la liste affichée si la facture y est, sinon dans toutes.
   const voisines = page === 'documents' ? listeAffichee : factures
@@ -564,7 +583,8 @@ export function Application() {
             onClick={() => {
               // Recliquer sur la page ouverte replie ou déplie sa barre latérale (comme la touche « [ »).
               if (entree.page === page) return basculerLaterale()
-              if (entree.page === 'documents') setVue('a_traiter')
+              // Factures s'ouvre sur « Mon tour » s'il y a des factures à approuver soi-même, sinon sur « À traiter ».
+              if (entree.page === 'documents') setVue(aMonTour.length > 0 ? 'mon_tour' : 'a_traiter')
               setPage(entree.page)
             }}
             title={entree.page === page ? 'Replier ou déplier la barre latérale ( [ )' : undefined}
@@ -658,6 +678,13 @@ export function Application() {
                 <span>À traiter</span>
                 <span className="laterale__compte">{aTraiter.length}</span>
               </button>
+              {mesNiveaux.length > 0 && (
+                <button className="laterale__ligne" aria-current={(page === 'documents' && vue === 'mon_tour') || undefined} onClick={() => allerVue('mon_tour')} tabIndex={laterale ? 0 : -1}>
+                  <Icone nom="utilisateur" />
+                  <span>Mon tour</span>
+                  <span className="laterale__compte">{aMonTour.length}</span>
+                </button>
+              )}
               {AUTRES_FILTRES.map(({ vue: filtre, nom, icone, garder }) => {
                 const nombre = factures.filter(garder).length
                 if (nombre === 0 && vue !== filtre) return null
@@ -745,6 +772,7 @@ export function Application() {
                     surAssistant={versAssistant}
                     surDocuments={() => allerVue('toutes')}
                     factures={factures}
+                    monTour={mesNiveaux.length > 0 ? aMonTour.length : null}
                     surVue={(filtre) => allerVue(filtre)}
                   />
                 ) : (

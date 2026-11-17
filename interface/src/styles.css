@@ -4583,6 +4583,15 @@ kbd {
   --ton-pale: var(--bleu-pale);
 }
 
+.a-faire--quatre {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.a-faire__carte--vert {
+  --ton: var(--vert-texte);
+  --ton-pale: var(--vert-pale);
+}
+
 .a-faire__carte--calme {
   --ton: var(--vert-texte);
   --ton-pale: var(--vert-pale);

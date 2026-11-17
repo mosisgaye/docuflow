@@ -52,6 +52,8 @@ export interface FactureResume {
   date_echeance?: string | null
   nb_anomalies: number
   cree_le: string
+  niveau_attendu?: Niveau | null // à qui c'est le tour d'approuver
+  approuve_par?: string[] // qui a déjà approuvé (personne n'approuve deux niveaux)
 }
 
 export type Niveau = 'comptable' | 'directeur_financier' | 'gerant'

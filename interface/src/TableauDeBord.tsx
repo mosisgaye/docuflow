@@ -12,7 +12,8 @@ interface Props {
   surAssistant: (question?: string) => void
   surDocuments: () => void
   factures: FactureResume[]
-  surVue: (vue: 'a_regler' | 'echeances' | 'attente') => void
+  monTour: number | null // null : on ne sait pas qui vous êtes (votre nom n'est pas dans « Mon équipe »)
+  surVue: (vue: 'mon_tour' | 'a_regler' | 'echeances' | 'attente') => void
 }
 
 const POURCENT = new Intl.NumberFormat('fr-FR', { style: 'percent', maximumFractionDigits: 1 })
@@ -121,14 +122,17 @@ function Repartition({ statistiques }: { statistiques: Statistiques }) {
 }
 
 /** Ce qui demande une action aujourd'hui : trois cartes, chacune ouvre la liste des factures concernées. */
-function AFaire({ factures, surVue }: { factures: FactureResume[]; surVue: Props['surVue'] }) {
+function AFaire({ factures, monTour, surVue }: { factures: FactureResume[]; monTour: number | null; surVue: Props['surVue'] }) {
   const cartes = [
+    ...(monTour !== null
+      ? [{ vue: 'mon_tour' as const, nombre: monTour, un: 'facture à approuver par vous', plusieurs: 'factures à approuver par vous', detail: 'C’est votre tour dans le circuit', icone: 'utilisateur' as const, ton: 'vert' }]
+      : []),
     { vue: 'a_regler' as const, nombre: factures.filter((f) => aRegler(f)).length, un: 'anomalie à régler', plusieurs: 'anomalies à régler', detail: 'Arrêtées aux contrôles ou illisibles', icone: 'anomalie' as const, ton: 'ambre' },
     { vue: 'echeances' as const, nombre: factures.filter((f) => echeanceProche(f)).length, un: 'échéance sous 7 jours', plusieurs: 'échéances sous 7 jours', detail: 'Ou déjà passées : risque de pénalités', icone: 'horloge' as const, ton: 'rouge' },
     { vue: 'attente' as const, nombre: factures.filter((f) => attenteLongue(f)).length, un: 'approbation en attente depuis 48 h', plusieurs: 'approbations en attente depuis 48 h', detail: 'Une relance est partie toute seule', icone: 'utilisateur' as const, ton: 'bleu' },
   ]
   return (
-    <section className="a-faire" aria-label="À faire aujourd’hui">
+    <section className={`a-faire${cartes.length === 4 ? ' a-faire--quatre' : ''}`} aria-label="À faire aujourd’hui">
       {cartes.map((carte) => (
         <button key={carte.vue} className={`a-faire__carte a-faire__carte--${carte.nombre ? carte.ton : 'calme'}`} onClick={() => surVue(carte.vue)} disabled={carte.nombre === 0}>
           <span className="a-faire__icone" aria-hidden="true">
@@ -145,7 +149,7 @@ function AFaire({ factures, surVue }: { factures: FactureResume[]; surVue: Props
   )
 }
 
-export function TableauDeBord({ statistiques, vedette, depotEnCours, auteur, surOuverture, surAssistant, surDocuments, factures, surVue }: Props) {
+export function TableauDeBord({ statistiques, vedette, depotEnCours, auteur, surOuverture, surAssistant, surDocuments, factures, monTour, surVue }: Props) {
   const total = statistiques.total
   const progression = vedette ? avancement(vedette.etat) : { faites: 1, alerte: false }
   const prenom = auteur.trim().split(/\s+/)[0]
@@ -159,7 +163,7 @@ export function TableauDeBord({ statistiques, vedette, depotEnCours, auteur, sur
         </div>
       </header>
 
-      <AFaire factures={factures} surVue={surVue} />
+      <AFaire factures={factures} monTour={monTour} surVue={surVue} />
 
       <section className="indicateurs" aria-label="Chiffres clés">
         <div className="indicateur">

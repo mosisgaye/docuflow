@@ -101,6 +101,9 @@ class FactureResume(BaseModel):
     date_echeance: str | None = None
     nb_anomalies: int = 0
     cree_le: datetime
+    # Pour « Mon tour » : le niveau qui doit approuver maintenant, et qui a déjà approuvé (personne n'approuve deux niveaux).
+    niveau_attendu: str | None = None
+    approuve_par: list[str] = []
 
 
 class FactureDetail(FactureResume):
@@ -202,7 +205,16 @@ def _resume(facture: FactureEnBase) -> dict:
         "date_echeance": donnees.get("date_echeance"),
         "nb_anomalies": len(facture.anomalies),
         "cree_le": facture.cree_le,
+        **_tour(facture),
     }
+
+
+def _tour(facture: FactureEnBase) -> dict:
+    """À qui c'est le tour d'approuver, et qui l'a déjà fait (vide hors approbation)."""
+    session = object_session(facture)
+    if session is None or facture.etat not in (Etat.A_VALIDER.value, Etat.EN_APPROBATION.value) or (facture.circuit or {}).get("bloque"):
+        return {"niveau_attendu": None, "approuve_par": []}
+    return {"niveau_attendu": niveau_attendu(session, facture), "approuve_par": [a.personne for a in approbations_valides(session, facture)]}
 
 
 def _detail(facture: FactureEnBase) -> dict:
