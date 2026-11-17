@@ -27,11 +27,11 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 import httpx
-from cryptography.fernet import Fernet
+from cryptography.fernet import MultiFernet
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from moteur import config
+from moteur import chiffrement, config
 from moteur.base import Abonnement, Etat, FactureEnBase, Livraison
 
 EVENEMENTS = {
@@ -59,11 +59,11 @@ class AbonnementRefuse(ValueError):
     pass
 
 
-def _chiffreur() -> Fernet:
-    cle = config.lire("CONNECTEURS_CLE_CHIFFREMENT", "")
-    if not cle:
+def _chiffreur() -> MultiFernet:
+    outil = chiffrement.chiffreur()
+    if outil is None:
         raise AbonnementRefuse("La clé de chiffrement (CONNECTEURS_CLE_CHIFFREMENT) n'est pas configurée.")
-    return Fernet(cle.encode())
+    return outil
 
 
 def _url_acceptable(url: str) -> None:

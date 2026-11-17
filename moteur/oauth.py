@@ -11,7 +11,7 @@ Les adresses OAuth ne sont pas écrites en dur : elles sont lues dans les métad
 serveur MCP publie lui-même (/.well-known/oauth-authorization-server).
 
 Réglages (dans .env, jamais affichés) :
-- CONNECTEURS_CLE_CHIFFREMENT : clé Fernet qui chiffre les jetons ;
+- CONNECTEURS_CLE_CHIFFREMENT : clé Fernet qui chiffre les jetons (et CONNECTEURS_CLES_ANCIENNES pour en changer, voir moteur/chiffrement.py) ;
 - <CONNECTEUR>_CLIENT_ID et <CONNECTEUR>_CLIENT_SECRET : fournis par l'éditeur (HUBSPOT_CLIENT_ID…) ;
 - OAUTH_RETOUR : adresse de retour déclarée chez l'éditeur (par défaut http://localhost:5180/api/oauth/retour).
 """
@@ -23,11 +23,11 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
 import httpx
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import InvalidToken, MultiFernet
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from moteur import config
+from moteur import chiffrement, config
 from moteur.base import DemandeOAuth, JetonConnecteur
 
 DUREE_DEMANDE = timedelta(minutes=10)
@@ -53,11 +53,11 @@ def identifiants(connecteur: str) -> tuple[str, str] | None:
     return (client_id, secret) if client_id and secret else None
 
 
-def _chiffreur() -> Fernet:
-    cle = _reglage("CONNECTEURS_CLE_CHIFFREMENT")
-    if not cle:
+def _chiffreur() -> MultiFernet:
+    outil = chiffrement.chiffreur()
+    if outil is None:
         raise ErreurOAuth("La clé de chiffrement des jetons (CONNECTEURS_CLE_CHIFFREMENT) n'est pas configurée.")
-    return Fernet(cle.encode())
+    return outil
 
 
 def pret(connecteur: str) -> bool:
