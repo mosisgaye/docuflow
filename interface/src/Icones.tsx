@@ -39,7 +39,9 @@ import {
   Users,
   ShieldCheck,
   Sparkles,
+  Split,
   Sun,
+  Trash2,
   TriangleAlert,
   Upload,
   User,
@@ -98,6 +100,8 @@ const ICONES = {
   workflow: Workflow,
   cadenas: Lock,
   test: FlaskConical,
+  embranchement: Split,
+  corbeille: Trash2,
 } satisfies Record<string, LucideIcon>
 
 export type NomIcone = keyof typeof ICONES

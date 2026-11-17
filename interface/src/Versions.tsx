@@ -40,7 +40,7 @@ export function Versions() {
                   {version.publie_par}, le {jourEtHeure(version.publie_le)}
                 </span>
                 <span className="versions__compte">
-                  {version.nombre_regles} règle{version.nombre_regles > 1 ? 's' : ''}
+                  {version.nombre_etapes !== null ? `${version.nombre_etapes} étapes` : `${version.nombre_regles} règle${version.nombre_regles > 1 ? 's' : ''}`}
                   {version.relances_reglees && ', relances réglées'}
                 </span>
               </div>

@@ -1,27 +1,16 @@
-// La page Circuit : le schéma, le panneau de réglage, et l'en-tête (différences, annuler, tester, publier).
+// La page Circuit, comme n8n : le canevas où l'on crée et relie ses étapes, un seul panneau à droite
+// (la palette, ou les réglages de l'étape choisie), et une barre en haut pour tester et publier.
 // Chaque modification est enregistrée dans le brouillon, qu'aucune facture ne voit avant la publication.
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as api from './api'
-import type { BrouillonCircuit, Catalogue, Changement, FactureResume, Niveau, Regle, Relances, ResultatTest } from './api'
+import type { BrouillonCircuit, Catalogue, Changement, FactureResume, Graphe, NoeudGraphe, Relances, ResultatTest, TypeEtape } from './api'
 import { euros } from './format'
 import { Icone } from './Icones'
-import { PanneauEtape, type Statut, nouvelleRegle } from './PanneauEtape'
-import { SchemaCircuit, type Selection } from './SchemaCircuit'
+import { PanneauEtape, type Statut, nouvelleEtape } from './PanneauEtape'
+import { SchemaCircuit } from './SchemaCircuit'
 
 const DELAI_ENREGISTREMENT_MS = 600
 const LUES = new Set(['a_valider', 'en_approbation', 'en_anomalie', 'validee', 'rejetee', 'exportee'])
-
-function Fenetre({ titre, children, actions, surFermer }: { titre: string; children: ReactNode; actions: ReactNode; surFermer: () => void }) {
-  return (
-    <div className="voile" onClick={surFermer} onKeyDown={(evenement) => evenement.key === 'Escape' && surFermer()}>
-      <div className="fenetre" role="dialog" aria-modal="true" aria-labelledby="fenetre-titre" onClick={(evenement) => evenement.stopPropagation()}>
-        <h2 id="fenetre-titre">{titre}</h2>
-        <div className="fenetre__corps">{children}</div>
-        <div className="fenetre__actions">{actions}</div>
-      </div>
-    </div>
-  )
-}
 
 const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`
 
@@ -37,23 +26,23 @@ export function Circuit({
   surInformation: (message: string) => void
 }) {
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null)
-  const [regles, setRegles] = useState<Regle[]>([])
+  const [graphe, setGraphe] = useState<Graphe | null>(null)
   const [relances, setRelances] = useState<Relances | null>(null)
   const [brouillon, setBrouillon] = useState<BrouillonCircuit | null>(null)
   const [changements, setChangements] = useState<Changement[]>([])
-  const [selection, setSelection] = useState<Selection>(null)
+  const [choisie, setChoisie] = useState<string | null>(null)
   const [statut, setStatut] = useState<Statut>({ etat: 'repos' })
   const [test, setTest] = useState<ResultatTest | null>(null)
-  const [factureTest, setFactureTest] = useState<string | null>(null)
-  const [fenetre, setFenetre] = useState<'differences' | 'annuler' | 'publier' | null>(null)
-  const [menu, setMenu] = useState<'ajout' | 'test' | null>(null)
+  const [factureTest, setFactureTest] = useState('')
+  const [voirChangements, setVoirChangements] = useState(false)
+  const [confirmation, setConfirmation] = useState<'publier' | 'annuler' | null>(null)
   const [erreur, setErreur] = useState<string | null>(null)
   const [occupe, setOccupe] = useState(false)
   const minuterie = useRef<number | undefined>(undefined)
   const compteur = useRef(0)
-  const enAttenteDeNom = useRef<{ regles: Regle[]; relances: Relances | null } | null>(null)
+  const enAttenteDeNom = useRef<{ graphe: Graphe; relances: Relances | null } | null>(null)
 
-  const tester = useCallback(async (id: string | null) => {
+  const tester = useCallback(async (id: string) => {
     if (!id) return setTest(null)
     try {
       setTest(await api.testerCircuit(id))
@@ -67,7 +56,7 @@ export function Circuit({
       const [cat, actuel, ecarts] = await Promise.all([api.catalogueCircuit(), api.brouillon(), api.differences()])
       setCatalogue(cat)
       setBrouillon(actuel)
-      setRegles(actuel.regles)
+      setGraphe(actuel.graphe)
       setRelances(actuel.relances)
       setChangements(ecarts.changements)
       setStatut({ etat: 'repos' })
@@ -83,15 +72,15 @@ export function Circuit({
   }, [charger])
 
   const enregistrer = useCallback(
-    async (suiteRegles: Regle[], suiteRelances: Relances | null, numero: number) => {
+    async (suite: Graphe, suiteRelances: Relances | null, numero: number) => {
       if (!auteur.trim()) {
-        enAttenteDeNom.current = { regles: suiteRegles, relances: suiteRelances }
-        setStatut({ etat: 'erreur', message: 'Indiquez votre nom en haut à droite : chaque modification est inscrite à un nom.' })
+        enAttenteDeNom.current = { graphe: suite, relances: suiteRelances }
+        setStatut({ etat: 'erreur', message: 'indiquez votre nom en haut à droite : chaque modification est inscrite à un nom.' })
         surSansAuteur()
         return
       }
       try {
-        const enregistre = await api.enregistrerBrouillon(suiteRegles, suiteRelances, auteur.trim())
+        const enregistre = await api.enregistrerBrouillon(suite, suiteRelances, auteur.trim())
         if (numero !== compteur.current) return // une modification plus récente est partie après celle-ci
         setBrouillon(enregistre)
         setStatut({ etat: 'enregistre' })
@@ -104,15 +93,16 @@ export function Circuit({
     [auteur, factureTest, surSansAuteur, tester],
   )
 
-  /** Chaque modification part au brouillon 600 ms après la dernière frappe. */
+  /** Chaque modification part au brouillon 600 ms après la dernière action. */
   const modifier = useCallback(
-    (suiteRegles: Regle[], suiteRelances: Relances | null) => {
-      setRegles(suiteRegles)
+    (suite: Graphe, suiteRelances: Relances | null) => {
+      setGraphe(suite)
       setRelances(suiteRelances)
       setStatut({ etat: 'enregistrement' })
+      setConfirmation(null)
       const numero = ++compteur.current
       window.clearTimeout(minuterie.current)
-      minuterie.current = window.setTimeout(() => enregistrer(suiteRegles, suiteRelances, numero), DELAI_ENREGISTREMENT_MS)
+      minuterie.current = window.setTimeout(() => enregistrer(suite, suiteRelances, numero), DELAI_ENREGISTREMENT_MS)
     },
     [enregistrer],
   )
@@ -120,42 +110,48 @@ export function Circuit({
   // Le nom saisi après coup : la modification en attente part.
   useEffect(() => {
     if (auteur.trim() && enAttenteDeNom.current) {
-      const { regles: r, relances: rel } = enAttenteDeNom.current
+      const { graphe: g, relances: r } = enAttenteDeNom.current
       enAttenteDeNom.current = null
-      modifier(r, rel)
+      modifier(g, r)
     }
   }, [auteur, modifier])
 
-  // Échap ferme le panneau de réglage (hors saisie).
+  // Échap ferme le réglage de l'étape (hors saisie).
   useEffect(() => {
     const touche = (evenement: KeyboardEvent) => {
-      if (evenement.key !== 'Escape' || (evenement.target as HTMLElement).matches('input, textarea, select')) return
-      if (fenetre) setFenetre(null)
-      else if (menu) setMenu(null)
-      else setSelection(null)
+      if (evenement.key === 'Escape' && !(evenement.target as HTMLElement).matches('input, textarea, select')) setChoisie(null)
     }
     window.addEventListener('keydown', touche)
     return () => window.removeEventListener('keydown', touche)
-  }, [fenetre, menu])
+  }, [])
 
-  const modifiees = useMemo(() => new Set(changements.filter((c) => c.regle).map((c) => c.regle!)), [changements])
-  const relancesModifiees = useMemo(() => new Set(changements.filter((c) => c.niveau).map((c) => c.niveau!)), [changements])
-  const lues = useMemo(() => factures.filter((facture) => LUES.has(facture.etat)).slice(0, 12), [factures])
+  const lues = useMemo(() => factures.filter((facture) => LUES.has(facture.etat)).slice(0, 20), [factures])
 
-  if (!catalogue || !brouillon) {
+  if (!catalogue || !brouillon || !graphe) {
     return <div className="page">{erreur ? <p className="connecteurs__message">{erreur}</p> : <p className="note">Chargement du circuit…</p>}</div>
   }
 
+  const etape = graphe.noeuds.find((noeud) => noeud.id === choisie) ?? null
   const enService = brouillon.version_en_service
   const prochaine = (enService ?? 0) + 1
   const peutPublier = brouillon.modifie && changements.length > 0 && statut.etat !== 'enregistrement' && statut.etat !== 'erreur'
-  const libelle = (code: Niveau) => catalogue.niveaux.find((n) => n.code === code)!.libelle
-  const factureTestee = test ? factures.find((facture) => facture.id === test.facture.id) : null
 
-  const ajouterRegle = (niveau: Niveau | null) => {
-    modifier([...regles, nouvelleRegle(regles, catalogue, niveau)], relances)
-    setSelection(niveau ? { genre: 'niveau', niveau } : { genre: 'blocage' })
-    setMenu(null)
+  const ajouter = (type: TypeEtape) => {
+    // La nouvelle étape se pose sous le circuit, au milieu : on la déplace ensuite où l'on veut.
+    const xs = graphe.noeuds.map((n) => n.x)
+    const x = Math.round((Math.min(...xs) + Math.max(...xs)) / 2 / 20) * 20
+    const y = Math.max(...graphe.noeuds.map((n) => n.y)) + 160
+    const nouvelle = nouvelleEtape(type, catalogue, x, y)
+    modifier({ ...graphe, noeuds: [...graphe.noeuds, nouvelle] }, relances)
+    setChoisie(nouvelle.id)
+  }
+
+  const changerEtape = (modifiee: NoeudGraphe) => modifier({ ...graphe, noeuds: graphe.noeuds.map((n) => (n.id === modifiee.id ? modifiee : n)) }, relances)
+
+  const retirer = () => {
+    if (!etape) return
+    modifier({ noeuds: graphe.noeuds.filter((n) => n.id !== etape.id), liens: graphe.liens.filter((l) => l.de !== etape.id && l.vers !== etape.id) }, relances)
+    setChoisie(null)
   }
 
   const annuler = async () => {
@@ -166,7 +162,8 @@ export function Circuit({
       await api.annulerBrouillon()
       await charger()
       if (factureTest) await tester(factureTest)
-      setFenetre(null)
+      setConfirmation(null)
+      setChoisie(null)
       surInformation('Modifications annulées : le circuit est revenu à la version en service.')
     } catch (probleme) {
       setErreur((probleme as Error).message)
@@ -177,14 +174,15 @@ export function Circuit({
 
   const publier = async () => {
     if (!auteur.trim()) {
-      setFenetre(null)
+      setConfirmation(null)
       setErreur('Indiquez votre nom en haut à droite : chaque publication est inscrite à un nom.')
       return surSansAuteur()
     }
     setOccupe(true)
     try {
       const publiee = await api.publierCircuit(auteur.trim())
-      setFenetre(null)
+      setConfirmation(null)
+      setVoirChangements(false)
       await charger()
       if (factureTest) await tester(factureTest)
       surInformation(`Version ${publiee.version} publiée : les nouvelles factures suivent ce circuit. Celles en cours gardent le leur.`)
@@ -196,218 +194,116 @@ export function Circuit({
   }
 
   return (
-    <div className={`editeur${selection ? ' editeur--panneau' : ''}`}>
+    <div className="editeur">
       <div className="editeur__principal">
-        <header className="editeur__tete">
-          <div className="editeur__titre">
-            <h1>Circuit de validation des factures</h1>
-            <p className="editeur__pastilles">
-              <span className="etat etat--validee">{enService ? `Version ${enService} en service` : 'Aucune version publiée'}</span>
-              {brouillon.modifie && (
-                <span className="etat etat--en_anomalie">
-                  Brouillon : {pluriel(changements.length, 'modification')}, pas encore publiée{changements.length > 1 ? 's' : ''}
-                </span>
-              )}
-              {brouillon.modifie && changements.length > 0 && (
-                <button className="lien-bouton lien-bouton--vert" onClick={() => setFenetre('differences')}>
-                  Voir les différences
-                </button>
-              )}
-            </p>
-            <p className="editeur__aide">Qui approuve, quand, et ce qui bloque une facture avant le paiement.</p>
-          </div>
-          <div className="editeur__actions">
-            {brouillon.modifie && (
-              <button className="bouton bouton--fantome" onClick={() => setFenetre('annuler')} disabled={occupe}>
-                Annuler les modifications
-              </button>
-            )}
-            <div className="menu-deroulant">
-              <button className="bouton" aria-expanded={menu === 'test'} aria-haspopup="menu" onClick={() => setMenu(menu === 'test' ? null : 'test')}>
-                <Icone nom="test" /> Tester une facture
-              </button>
-              {menu === 'test' && (
-                <div className="menu-deroulant__liste" role="menu" aria-label="Choisir une facture à tester">
-                  {lues.length === 0 && <p className="menu-deroulant__vide">Aucune facture lue pour l’instant.</p>}
-                  {lues.map((facture) => (
-                    <button
-                      key={facture.id}
-                      role="menuitem"
-                      onClick={() => {
-                        setFactureTest(facture.id)
-                        tester(facture.id)
-                        setMenu(null)
-                      }}
-                    >
-                      <strong>{facture.fournisseur_nom ?? facture.nom_fichier}</strong>
-                      <small>
-                        {facture.numero_facture ?? 'sans numéro'}
-                        {facture.total_ttc && ` · ${euros(facture.total_ttc)}`}
-                      </small>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button className="bouton bouton--plein" onClick={() => setFenetre('publier')} disabled={!peutPublier || occupe} title={peutPublier ? undefined : 'Modifiez le circuit pour pouvoir publier'}>
-              Publier la version {prochaine}
+        <header className="barre-circuit">
+          <h1>Circuit des factures</h1>
+          <span className="etat etat--validee">{enService ? `Version ${enService} en service` : 'Aucune version publiée'}</span>
+          {brouillon.modifie && changements.length > 0 && (
+            <button className="etat etat--en_anomalie barre-circuit__brouillon" aria-expanded={voirChangements} onClick={() => setVoirChangements(!voirChangements)}>
+              Brouillon : {pluriel(changements.length, 'modification')}
+              <Icone nom="deplier" taille={12} />
             </button>
+          )}
+
+          <label className="barre-circuit__test">
+            <Icone nom="test" />
+            <span className="visuellement-cache">Tester sur une facture</span>
+            <select
+              className="champ"
+              value={factureTest}
+              onChange={(evenement) => {
+                setFactureTest(evenement.target.value)
+                tester(evenement.target.value)
+              }}
+            >
+              <option value="">Tester sur une facture…</option>
+              {lues.map((facture) => (
+                <option key={facture.id} value={facture.id}>
+                  {facture.fournisseur_nom ?? facture.nom_fichier} · {facture.numero_facture ?? 'sans numéro'}
+                  {facture.total_ttc ? ` · ${euros(facture.total_ttc)}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="barre-circuit__actions">
+            {confirmation ? (
+              <>
+                <span className="barre-circuit__question">{confirmation === 'publier' ? `Publier la version ${prochaine} ?` : 'Jeter le brouillon ?'}</span>
+                <button className="bouton bouton--fantome" onClick={() => setConfirmation(null)} disabled={occupe}>
+                  Non
+                </button>
+                <button className={`bouton ${confirmation === 'publier' ? 'bouton--plein' : 'bouton--danger'}`} onClick={confirmation === 'publier' ? publier : annuler} disabled={occupe}>
+                  {confirmation === 'publier' ? 'Oui, publier' : 'Oui, annuler'}
+                </button>
+              </>
+            ) : (
+              <>
+                {brouillon.modifie && (
+                  <button className="bouton bouton--fantome" onClick={() => setConfirmation('annuler')} disabled={occupe}>
+                    Annuler
+                  </button>
+                )}
+                <button className="bouton bouton--plein" onClick={() => setConfirmation('publier')} disabled={!peutPublier || occupe} title={peutPublier ? undefined : 'Modifiez le circuit pour pouvoir publier'}>
+                  Publier la version {prochaine}
+                </button>
+              </>
+            )}
           </div>
         </header>
 
+        {(voirChangements || confirmation === 'publier') && changements.length > 0 && (
+          <ul className="bande bande--changements">
+            {changements.map((changement) => (
+              <li key={changement.texte}>{changement.texte}</li>
+            ))}
+          </ul>
+        )}
+
+        {test && (
+          <p className={`bande bande--test${test.change ? ' bande--change' : ''}`} role="status">
+            <Icone nom="test" />
+            <span>
+              <strong>{test.facture.numero ?? 'Facture'}</strong>
+              {test.facture.total_ttc && `, ${euros(test.facture.total_ttc)}`} : {test.bloque ? `bloquée (${test.bloque})` : `approuvée par ${test.niveaux.map((n) => catalogue.niveaux.find((c) => c.code === n.niveau)!.libelle.toLowerCase()).join(', ')}`}.
+              {test.change && <strong> Différent de la version en service.</strong>}
+            </span>
+            <button
+              className="bouton bouton--fantome bouton--petit bouton--icone"
+              aria-label="Arrêter le test"
+              onClick={() => {
+                setFactureTest('')
+                setTest(null)
+              }}
+            >
+              <Icone nom="fermer" taille={14} />
+            </button>
+          </p>
+        )}
+
         {erreur && (
-          <p className="connecteurs__message" role="alert">
+          <p className="bande bande--erreur" role="alert">
             {erreur}
           </p>
         )}
 
-        {test && (
-          <div className={`editeur__test${test.change ? ' editeur__test--change' : ''}`} role="status">
-            <Icone nom="test" />
-            <p>
-              <strong>Test : </strong>
-              {test.facture.fournisseur ?? 'Facture'} {test.facture.numero && `n° ${test.facture.numero}`}
-              {test.facture.total_ttc && `, ${euros(test.facture.total_ttc)}`}. Le chemin en vert est celui qu’elle prendrait avec{' '}
-              {test.circuit_teste === 'brouillon' ? 'le brouillon' : 'la version en service'}.
-              {test.change && (
-                <>
-                  {' '}
-                  <strong>Différent de la version en service</strong>, qui demandait :{' '}
-                  {test.en_service.bloque ? 'un blocage' : test.en_service.niveaux.map((n) => libelle(n).toLowerCase()).join(', ') || 'aucune approbation'}.
-                </>
-              )}
-              {factureTestee && factureTestee.etat === 'en_anomalie' && ' Cette facture est en anomalie.'}
-            </p>
-            <button
-              className="bouton bouton--fantome bouton--petit"
-              onClick={() => {
-                setFactureTest(null)
-                setTest(null)
-              }}
-            >
-              Arrêter le test
-            </button>
-          </div>
-        )}
-
-        <div className="editeur__outils">
-          <div className="menu-deroulant">
-            <button className="bouton bouton--vert-pale" aria-expanded={menu === 'ajout'} aria-haspopup="menu" onClick={() => setMenu(menu === 'ajout' ? null : 'ajout')}>
-              <Icone nom="plus" /> Ajouter une étape
-            </button>
-            {menu === 'ajout' && (
-              <div className="menu-deroulant__liste menu-deroulant__liste--gauche" role="menu" aria-label="Types d’étapes">
-                <p className="menu-deroulant__section">Approbation : qui approuve</p>
-                {catalogue.niveaux.map((niveau) => (
-                  <button key={niveau.code} role="menuitem" onClick={() => ajouterRegle(niveau.code)}>
-                    <strong>{niveau.libelle}</strong>
-                    <small>Ajouter une règle qui exige son approbation</small>
-                  </button>
-                ))}
-                <p className="menu-deroulant__section">Autres étapes</p>
-                <button role="menuitem" onClick={() => ajouterRegle(null)}>
-                  <strong>Blocage par règle</strong>
-                  <small>Empêcher l’approbation tant qu’un problème n’est pas réglé</small>
-                </button>
-                {catalogue.etapes
-                  .filter((etape) => !etape.fixe && etape.disponible === false)
-                  .map((etape) => (
-                    <button key={etape.type} role="menuitem" disabled>
-                      <strong>
-                        {etape.libelle} <span className="pastille-bientot">Bientôt</span>
-                      </strong>
-                    </button>
-                  ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <SchemaCircuit
-          regles={regles}
-          catalogue={catalogue}
-          test={test}
-          selection={selection}
-          modifiees={modifiees}
-          relancesModifiees={relancesModifiees}
-          surSelection={(choix) => {
-            setSelection(choix)
-            setMenu(null)
-          }}
-        />
+        <SchemaCircuit graphe={graphe} catalogue={catalogue} test={test} choisie={choisie} surGraphe={(suite) => modifier(suite, relances)} surChoix={setChoisie} />
       </div>
 
-      {selection && (
-        <PanneauEtape
-          key={selection.genre === 'niveau' ? selection.niveau : 'blocage'}
-          selection={selection}
-          regles={regles}
-          relances={relances}
-          catalogue={catalogue}
-          test={test}
-          statut={statut}
-          surRegles={(suite) => modifier(suite, relances)}
-          surRelances={(suite) => modifier(regles, suite)}
-          surFermer={() => setSelection(null)}
-        />
-      )}
-
-      {fenetre === 'differences' && (
-        <Fenetre titre="Ce que le brouillon change" surFermer={() => setFenetre(null)} actions={<button className="bouton" onClick={() => setFenetre(null)}>Fermer</button>}>
-          <ul className="differences">
-            {changements.map((changement) => (
-              <li key={changement.texte} className={`differences__${changement.genre}`}>
-                {changement.texte}
-              </li>
-            ))}
-          </ul>
-        </Fenetre>
-      )}
-
-      {fenetre === 'annuler' && (
-        <Fenetre
-          titre="Annuler les modifications ?"
-          surFermer={() => setFenetre(null)}
-          actions={
-            <>
-              <button className="bouton bouton--fantome" onClick={() => setFenetre(null)}>
-                Garder le brouillon
-              </button>
-              <button className="bouton bouton--danger" onClick={annuler} disabled={occupe}>
-                Annuler les modifications
-              </button>
-            </>
-          }
-        >
-          <p>Le brouillon est jeté : le circuit revient à la version {enService ?? 'de départ'}. Aucune facture n’est touchée.</p>
-        </Fenetre>
-      )}
-
-      {fenetre === 'publier' && (
-        <Fenetre
-          titre={`Publier la version ${prochaine} ?`}
-          surFermer={() => setFenetre(null)}
-          actions={
-            <>
-              <button className="bouton bouton--fantome" onClick={() => setFenetre(null)}>
-                Pas maintenant
-              </button>
-              <button className="bouton bouton--plein" onClick={publier} disabled={occupe}>
-                Publier la version {prochaine}
-              </button>
-            </>
-          }
-        >
-          <p>Les nouvelles factures suivront ce circuit. Celles déjà en cours gardent le leur. Ce qui change :</p>
-          <ul className="differences">
-            {changements.map((changement) => (
-              <li key={changement.texte} className={`differences__${changement.genre}`}>
-                {changement.texte}
-              </li>
-            ))}
-          </ul>
-        </Fenetre>
-      )}
+      <PanneauEtape
+        key={etape?.id ?? 'palette'}
+        etape={etape}
+        catalogue={catalogue}
+        relances={relances}
+        test={test}
+        statut={statut}
+        surEtape={changerEtape}
+        surRelances={(suite) => modifier(graphe, suite)}
+        surRetrait={retirer}
+        surAjout={ajouter}
+        surFermer={() => setChoisie(null)}
+      />
     </div>
   )
 }

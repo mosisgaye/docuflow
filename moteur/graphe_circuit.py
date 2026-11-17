@@ -190,7 +190,7 @@ def depuis_regles(regles: list[dict]) -> dict:
     une condition dont le « oui » mène à l'action, et dont le « non » passe à la règle suivante.
     Une règle « toujours » devient directement son action.
     """
-    pas = 240
+    pas = 200  # écart entre deux colonnes du canevas ; une action se pose à mi-chemin, dessous (ou dessus)
     noeuds: list[dict] = [{"id": "debut", "type": "debut", "x": 0, "y": 0, "nom": "Début"}]
     liens: list[dict] = []
     precedents: list[tuple[str, str | None]] = [("debut", None)]  # ce qui mène à l'étape suivante
@@ -205,7 +205,7 @@ def depuis_regles(regles: list[dict]) -> dict:
     for rang, (brute, regle) in enumerate(ordre, start=1):
         x = colonne * pas
         if regle.bloque:
-            arret = {"id": f"r{rang}-blocage", "type": "blocage", "x": x, "y": -160, "nom": regle.nom, "message": regle.bloque}
+            arret = {"id": f"r{rang}-blocage", "type": "blocage", "x": x + pas // 2, "y": -160, "nom": regle.nom, "message": regle.bloque}
             if regle.si.toujours:  # toute facture est bloquée : la suite ne sert plus
                 noeuds.append({**arret, "y": 0})
                 relier(arret["id"])
@@ -218,10 +218,11 @@ def depuis_regles(regles: list[dict]) -> dict:
             precedents = [(condition["id"], "non")]
             colonne += 1
             continue
-        actions = [{"id": f"r{rang}-{niveau}", "type": "approbation", "x": x, "y": 160 * (1 + i), "nom": regle.nom, "niveau": niveau} for i, niveau in enumerate(regle.exige)]
+        actions = [{"id": f"r{rang}-{niveau}", "type": "approbation", "x": x + pas // 2 + 140 * i, "y": 160, "nom": regle.nom, "niveau": niveau} for i, niveau in enumerate(regle.exige)]
         if regle.si.toujours:
-            for action in actions:
-                action["y"] -= 160
+            for i, action in enumerate(actions):
+                action["x"], action["y"] = x + 140 * i, 0
+            colonne += len(actions) - 1
             relier(actions[0]["id"])
             precedents = []
         else:

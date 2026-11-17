@@ -1,288 +1,216 @@
-// Le schéma du circuit, dessiné à partir des règles : les étapes fixes, puis un nœud par niveau
-// d'approbation, puis Odoo. Rien ne se déplace à la main ; on zoome et on déplace la vue.
+// Le canevas du circuit, comme n8n : on ajoute des étapes, on les déplace, on les relie à la souris.
+// Début et Odoo sont fixes. Une Condition a deux sorties (Oui, Non) ; les autres étapes une seule.
 import { useEffect, useMemo, useState } from 'react'
-import { Background, Controls, Handle, type Edge, type Node, type NodeChange, type NodeProps, Position, ReactFlow, MarkerType, applyNodeChanges } from '@xyflow/react'
-import type { Catalogue, Niveau, Regle, ResultatTest } from './api'
-import { Icone } from './Icones'
+import {
+  Background,
+  Controls,
+  type Connection,
+  type Edge,
+  type EdgeChange,
+  Handle,
+  MarkerType,
+  type Node,
+  type NodeChange,
+  type NodeProps,
+  Position,
+  ReactFlow,
+  applyNodeChanges,
+} from '@xyflow/react'
+import type { Catalogue, Graphe, LienGraphe, NoeudGraphe, ResultatTest, TypeEtape } from './api'
+import { Icone, type NomIcone } from './Icones'
 
-export type Selection = { genre: 'niveau'; niveau: Niveau } | { genre: 'blocage' } | null
-
-type Etat = 'passe' | 'alerte' | 'arret' | 'attente' | 'hors' | null
-
-interface DonneesNoeud extends Record<string, unknown> {
-  titre: string
-  sous: string
-  etiquette?: string
-  fixe?: boolean
-  vide?: boolean
-  modifie?: boolean
-  choisi?: boolean
-  ia?: boolean
-  resultat?: { texte: string; etat: Etat }
-  sur?: 'gauche' | 'droite' | 'bas' | 'haut'
+export const ICONE_ETAPE: Record<TypeEtape, NomIcone> = {
+  debut: 'reception',
+  condition: 'embranchement',
+  approbation: 'utilisateur',
+  blocage: 'refus',
+  fin: 'sortie',
 }
 
-const LARGEUR = 168
-const ECART = 52
-// Deux lignes : en haut, ce qui arrive à toute facture ; en bas, les approbations puis Odoo.
-const LIGNE_HAUTE = 0
-const LIGNE_BASSE = 200
-const x = (colonne: number) => colonne * (LARGEUR + ECART)
-
-function Poignees() {
-  return (
-    <>
-      <Handle type="target" position={Position.Left} id="gauche" isConnectable={false} />
-      <Handle type="source" position={Position.Right} id="droite" isConnectable={false} />
-      <Handle type="source" position={Position.Bottom} id="bas" isConnectable={false} />
-      <Handle type="target" position={Position.Top} id="haut" isConnectable={false} />
-    </>
-  )
+const LIBELLE_TYPE: Record<TypeEtape, string> = {
+  debut: 'Réception, lecture, contrôles',
+  condition: 'Condition',
+  approbation: 'Approbation',
+  blocage: 'Blocage',
+  fin: 'Fin du circuit',
 }
 
-function Resultat({ resultat }: { resultat?: DonneesNoeud['resultat'] }) {
-  if (!resultat) return null
-  return <span className={`noeud__resultat noeud__resultat--${resultat.etat}`}>{resultat.texte}</span>
+interface DonneesEtape extends Record<string, unknown> {
+  etape: NoeudGraphe
+  nom: string
+  detail: string
+  surChemin: boolean | null // null : pas de test en cours
+  sortieTest: 'oui' | 'non' | null
 }
 
-function NoeudEtape({ data }: NodeProps<Node<DonneesNoeud>>) {
-  const classes = ['noeud', data.fixe && 'noeud--fixe', data.vide && 'noeud--vide', data.choisi && 'noeud--choisi', data.resultat?.etat === 'passe' && 'noeud--passe', data.resultat?.etat === 'hors' && 'noeud--hors']
+export function nomEtape(etape: NoeudGraphe, catalogue: Catalogue) {
+  if (etape.nom?.trim()) return etape.nom.trim()
+  if (etape.type === 'approbation') return catalogue.niveaux.find((n) => n.code === etape.niveau)?.libelle ?? 'Approbation'
+  return { debut: 'Début', fin: 'Enregistrer dans Odoo', condition: 'Condition', blocage: 'Blocage' }[etape.type as 'debut']
+}
+
+function Etape({ data, selected }: NodeProps<Node<DonneesEtape>>) {
+  const { etape, nom, detail, surChemin, sortieTest } = data
+  const classes = [
+    'etape',
+    `etape--${etape.type}`,
+    selected && 'etape--choisie',
+    surChemin === true && 'etape--chemin',
+    surChemin === false && 'etape--hors',
+  ]
   return (
     <div className={classes.filter(Boolean).join(' ')}>
-      <Poignees />
-      <span className="noeud__etiquette">
-        {data.etiquette}
-        {data.fixe && <Icone nom="cadenas" taille={12} />}
-        {data.modifie && <span className="noeud__modifie">Modifiée</span>}
-      </span>
-      <strong className={data.ia ? 'noeud__titre noeud__titre--ia' : 'noeud__titre'}>{data.titre}</strong>
-      <span className="noeud__sous">{data.sous}</span>
-      <Resultat resultat={data.resultat} />
+      {etape.type !== 'debut' && <Handle type="target" position={Position.Left} id="entree" className="poignee" />}
+      <div className="etape__tuile">
+        <Icone nom={ICONE_ETAPE[etape.type]} taille={22} />
+        {(etape.type === 'debut' || etape.type === 'fin') && (
+          <span className="etape__cadenas" title="Étape fixe : protège le paiement">
+            <Icone nom="cadenas" taille={10} />
+          </span>
+        )}
+        {surChemin === true && (
+          <span className="etape__passe" aria-label="Sur le chemin de la facture testée">
+            <Icone nom="coche" taille={10} />
+          </span>
+        )}
+      </div>
+      <div className="etape__nom">{nom}</div>
+      <div className="etape__detail">{detail}</div>
+      {etape.type === 'condition' ? (
+        <>
+          <Handle type="source" position={Position.Right} id="oui" className={`poignee poignee--oui${sortieTest === 'oui' ? ' poignee--prise' : ''}`} style={{ top: '28%' }} />
+          <span className="etape__sortie etape__sortie--oui">Oui</span>
+          <Handle type="source" position={Position.Right} id="non" className={`poignee poignee--non${sortieTest === 'non' ? ' poignee--prise' : ''}`} style={{ top: '62%' }} />
+          <span className="etape__sortie etape__sortie--non">Non</span>
+        </>
+      ) : (
+        etape.type !== 'fin' && etape.type !== 'blocage' && <Handle type="source" position={Position.Right} id="suite" className="poignee" />
+      )}
     </div>
   )
 }
 
-function NoeudDecision({ data }: NodeProps<Node<DonneesNoeud>>) {
-  return (
-    <div className={`losange${data.resultat?.etat === 'passe' ? ' losange--passe' : ''}`}>
-      <Poignees />
-      <span className="losange__forme" aria-hidden="true" />
-      <strong>{data.titre}</strong>
-    </div>
-  )
-}
+const TYPES = { etape: Etape }
 
-function NoeudIssue({ data }: NodeProps<Node<DonneesNoeud>>) {
-  const classes = ['issue', data.fixe ? 'issue--fixe' : 'issue--regle', data.choisi && 'noeud--choisi', data.resultat && `issue--${data.resultat.etat}`, data.modifie && 'issue--modifiee']
-  return (
-    <div className={classes.filter(Boolean).join(' ')}>
-      <Poignees />
-      <span className="noeud__etiquette">
-        {data.etiquette}
-        {data.fixe && <Icone nom="cadenas" taille={12} />}
-        {data.modifie && <span className="noeud__modifie">Modifiée</span>}
-      </span>
-      <strong className="noeud__titre">{data.titre}</strong>
-      <span className="noeud__sous">{data.sous}</span>
-      <Resultat resultat={data.resultat} />
-    </div>
-  )
-}
-
-const TYPES = { etape: NoeudEtape, losange: NoeudDecision, issue: NoeudIssue }
-
-/** Les règles qui exigent un niveau. */
-export const reglesDuNiveau = (regles: Regle[], niveau: Niveau) => regles.filter((regle) => regle.exige?.includes(niveau))
-export const reglesDeBlocage = (regles: Regle[]) => regles.filter((regle) => regle.bloque)
-
-const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`
-
-/** Les nœuds et les liens du schéma, calculés à partir des règles (et du résultat d'un test, s'il y en a un). */
-export function schema(regles: Regle[], catalogue: Catalogue, test: ResultatTest | null, selection: Selection, modifiees: Set<string>, relancesModifiees: Set<Niveau>) {
-  const passe = (texte: string): DonneesNoeud['resultat'] => (test ? { texte, etat: 'passe' } : undefined)
-  const arretee = test?.controles.arretee ?? false
-  const alertes = test?.controles.anomalies.filter((anomalie) => anomalie.gravite !== 'bloquante') ?? []
-
-  const noeuds: Node<DonneesNoeud>[] = [
-    { id: 'reception', type: 'etape', position: { x: x(0), y: LIGNE_HAUTE }, data: { etiquette: 'Étape fixe', fixe: true, titre: 'Réception', sous: 'Mail, dépôt ou API', resultat: passe('✓ Reçue') } },
-    { id: 'lecture', type: 'etape', position: { x: x(1), y: LIGNE_HAUTE }, data: { etiquette: 'Étape fixe', fixe: true, ia: true, titre: 'Lecture IA', sous: 'PDF, scan, photo, Factur-X', resultat: passe('✓ Lue') } },
-    {
-      id: 'controles',
-      type: 'etape',
-      position: { x: x(2), y: LIGNE_HAUTE },
-      data: {
-        etiquette: 'Étape fixe',
-        fixe: true,
-        titre: 'Contrôles',
-        sous: 'Calculs, doublon, SIRET, IBAN, commande',
-        resultat: test
-          ? arretee
-            ? { texte: 'Anomalie bloquante', etat: 'arret' }
-            : alertes.length
-              ? { texte: `${pluriel(alertes.length, 'alerte')} : ${alertes.map((a) => a.libelle).join(', ')}`, etat: 'alerte' }
-              : { texte: '✓ Conforme', etat: 'passe' }
-          : undefined,
-      },
-    },
-    { id: 'conforme', type: 'losange', position: { x: x(3) + 24, y: LIGNE_HAUTE - 4 }, data: { titre: 'Facture conforme ?', sous: '', resultat: test && !arretee ? { texte: '', etat: 'passe' } : undefined } },
-    {
-      id: 'arretee',
-      type: 'issue',
-      position: { x: x(4), y: LIGNE_HAUTE },
-      data: {
-        etiquette: 'Étape fixe',
-        fixe: true,
-        titre: 'Arrêtée aux contrôles',
-        sous: 'Erreur de calcul, doublon, SIRET ou IBAN invalide : à corriger ou rejeter',
-        resultat: test ? (arretee ? { texte: 'La facture s’arrête ici', etat: 'arret' } : { texte: 'Non concernée', etat: 'hors' }) : undefined,
-      },
-    },
-  ]
-
-  const exiges = new Set(test?.niveaux.map((n) => n.niveau) ?? [])
-  catalogue.niveaux.forEach((niveau, rang) => {
-    const siennes = reglesDuNiveau(regles, niveau.code)
-    const raison = test?.niveaux.find((n) => n.niveau === niveau.code)?.raisons.join(', ')
-    noeuds.push({
-      id: niveau.code,
-      type: 'etape',
-      position: { x: x(rang), y: LIGNE_BASSE },
-      data: {
-        etiquette: `Niveau ${rang + 1}`,
-        titre: niveau.libelle,
-        sous: siennes.length === 0 ? 'Non utilisé : cliquez pour l’activer' : siennes.length === 1 ? siennes[0].nom : pluriel(siennes.length, 'règle'),
-        vide: siennes.length === 0,
-        modifie: siennes.some((regle) => modifiees.has(regle.nom)) || relancesModifiees.has(niveau.code),
-        choisi: selection?.genre === 'niveau' && selection.niveau === niveau.code,
-        resultat: test ? (arretee || test.bloque ? { texte: 'Non atteint', etat: 'hors' } : exiges.has(niveau.code) ? { texte: `Exigé : ${raison}`, etat: 'attente' } : { texte: 'Non concerné', etat: 'hors' }) : undefined,
-      },
-    })
-  })
-
-  const blocages = reglesDeBlocage(regles)
-  const bloqueParRegle = Boolean(test && !arretee && test.bloque)
-  noeuds.push(
-    {
-      id: 'blocage',
-      type: 'issue',
-      position: { x: x(catalogue.niveaux.length + 1), y: LIGNE_BASSE },
-      data: {
-        etiquette: 'Réglable',
-        titre: 'Bloquée par règle',
-        sous: blocages.length ? blocages.map((regle) => regle.nom).join(', ') : 'Aucune règle de blocage',
-        choisi: selection?.genre === 'blocage',
-        modifie: blocages.some((regle) => modifiees.has(regle.nom)),
-        resultat: test ? (bloqueParRegle ? { texte: test.bloque!, etat: 'arret' } : { texte: 'Non concernée', etat: 'hors' }) : undefined,
-      },
-    },
-    {
-      id: 'odoo',
-      type: 'etape',
-      position: { x: x(catalogue.niveaux.length), y: LIGNE_BASSE },
-      data: {
-        etiquette: 'Étape fixe',
-        fixe: true,
-        titre: 'Enregistrer dans Odoo',
-        sous: 'Facture fournisseur et PDF',
-        resultat: test ? (arretee || bloqueParRegle ? { texte: 'Non atteint', etat: 'hors' } : { texte: 'Après les approbations', etat: 'attente' }) : undefined,
-      },
-    },
-  )
-
-  const enTest = Boolean(test)
-  const surChemin = (id: string) => {
-    if (!test) return false
-    if (['reception', 'lecture', 'controles'].includes(id)) return true
-    if (arretee) return id === 'arretee'
-    if (id === 'conforme') return true
-    if (test.bloque) return id === 'blocage'
-    // Un niveau non exigé est traversé sans arrêt : le chemin continue jusqu'à Odoo.
-    return id !== 'arretee' && id !== 'blocage'
+function detailEtape(etape: NoeudGraphe) {
+  if (etape.type === 'condition') {
+    const lignes = etape.si?.lignes?.length ?? 0
+    return etape.si?.toujours ? 'Toujours' : `${lignes} critère${lignes > 1 ? 's' : ''}`
   }
-  const lien = (source: string, cible: string, options: Partial<Edge> = {}): Edge => {
-    const vert = enTest && surChemin(source) && surChemin(cible)
-    return {
-      id: `${source}-${cible}`,
-      source,
-      target: cible,
-      sourceHandle: 'droite',
-      targetHandle: 'gauche',
-      type: 'smoothstep',
-      className: vert ? 'lien lien--chemin' : 'lien',
-      markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-      ...options,
-    }
-  }
-  const niveaux = catalogue.niveaux.map((n) => n.code)
-  const liens: Edge[] = [
-    lien('reception', 'lecture'),
-    lien('lecture', 'controles'),
-    lien('controles', 'conforme'),
-    lien('conforme', 'arretee', { label: 'Non', className: `lien lien--non${enTest && arretee ? ' lien--chemin-arret' : ''}` }),
-    lien('conforme', niveaux[0], { sourceHandle: 'bas', targetHandle: 'haut', label: 'Oui' }),
-    ...[...niveaux, 'odoo'].slice(1).map((cible, rang) => lien(niveaux[rang], cible)),
-    lien('conforme', 'blocage', { sourceHandle: 'bas', targetHandle: 'haut', label: 'Si une règle bloque', className: `lien lien--non${bloqueParRegle ? ' lien--chemin-arret' : ''}` }),
-  ]
-  return { noeuds, liens }
+  return LIBELLE_TYPE[etape.type]
 }
+
+const idLien = (lien: LienGraphe) => `${lien.de}:${lien.sortie ?? 'suite'}`
 
 export function SchemaCircuit({
-  regles,
+  graphe,
   catalogue,
   test,
-  selection,
-  modifiees,
-  relancesModifiees,
-  surSelection,
+  choisie,
+  surGraphe,
+  surChoix,
 }: {
-  regles: Regle[]
+  graphe: Graphe
   catalogue: Catalogue
   test: ResultatTest | null
-  selection: Selection
-  modifiees: Set<string>
-  relancesModifiees: Set<Niveau>
-  surSelection: (selection: Selection) => void
+  choisie: string | null
+  surGraphe: (graphe: Graphe) => void
+  surChoix: (id: string | null) => void
 }) {
-  const { noeuds: calcules, liens } = useMemo(() => schema(regles, catalogue, test, selection, modifiees, relancesModifiees), [regles, catalogue, test, selection, modifiees, relancesModifiees])
-  // React Flow mesure chaque étape avant de l'afficher : on garde ces mesures quand le schéma est recalculé,
-  // sinon les étapes recréées restent masquées.
-  const [noeuds, setNoeuds] = useState<Node<DonneesNoeud>[]>(calcules)
+  const parcourues = useMemo(() => (test ? new Map(test.chemin.map((etape) => [etape.id, etape.sortie])) : null), [test])
+
+  const calcules = useMemo<Node<DonneesEtape>[]>(
+    () =>
+      graphe.noeuds.map((etape) => ({
+        id: etape.id,
+        type: 'etape',
+        position: { x: etape.x, y: etape.y },
+        selected: etape.id === choisie,
+        deletable: etape.type !== 'debut' && etape.type !== 'fin',
+        data: {
+          etape,
+          nom: nomEtape(etape, catalogue),
+          detail: detailEtape(etape),
+          surChemin: parcourues ? parcourues.has(etape.id) : null,
+          sortieTest: parcourues?.get(etape.id) ?? null,
+        },
+      })),
+    [graphe, catalogue, parcourues, choisie],
+  )
+  // React Flow mesure chaque étape avant de l'afficher : on garde ces mesures quand le graphe change.
+  const [noeuds, setNoeuds] = useState<Node<DonneesEtape>[]>(calcules)
   useEffect(() => {
     setNoeuds((actuels) => calcules.map((noeud) => ({ ...noeud, measured: actuels.find((a) => a.id === noeud.id)?.measured })))
   }, [calcules])
-  const niveaux = new Set<string>(catalogue.niveaux.map((niveau) => niveau.code))
+
+  const liens: Edge[] = graphe.liens.map((lien) => {
+    const pris = parcourues ? parcourues.has(lien.de) && parcourues.has(lien.vers) && (parcourues.get(lien.de) ?? null) === lien.sortie : false
+    return {
+      id: idLien(lien),
+      source: lien.de,
+      target: lien.vers,
+      sourceHandle: lien.sortie ?? 'suite',
+      targetHandle: 'entree',
+      className: `lien${lien.sortie ? ` lien--${lien.sortie}` : ''}${pris ? ' lien--chemin' : ''}`,
+      markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
+    }
+  })
+
+  const relier = (connexion: Connection) => {
+    const sortie = connexion.sourceHandle === 'oui' || connexion.sourceHandle === 'non' ? connexion.sourceHandle : null
+    // Une sortie ne mène qu'à une étape : relier de nouveau remplace l'ancien lien.
+    const autres = graphe.liens.filter((lien) => !(lien.de === connexion.source && lien.sortie === sortie))
+    surGraphe({ ...graphe, liens: [...autres, { de: connexion.source, vers: connexion.target, sortie }] })
+  }
+
+  const changerNoeuds = (changements: NodeChange<Node<DonneesEtape>>[]) => {
+    setNoeuds((actuels) => applyNodeChanges(changements, actuels))
+    const retires = new Set(changements.flatMap((c) => (c.type === 'remove' ? [c.id] : [])))
+    const deplaces = new Map(changements.flatMap((c) => (c.type === 'position' && c.position && c.dragging === false ? [[c.id, c.position] as const] : [])))
+    if (retires.size || deplaces.size) {
+      surGraphe({
+        noeuds: graphe.noeuds
+          .filter((etape) => !retires.has(etape.id))
+          .map((etape) => {
+            const position = deplaces.get(etape.id)
+            return position ? { ...etape, x: Math.round(position.x), y: Math.round(position.y) } : etape
+          }),
+        liens: graphe.liens.filter((lien) => !retires.has(lien.de) && !retires.has(lien.vers)),
+      })
+      if (choisie && retires.has(choisie)) surChoix(null)
+    }
+    const choix = changements.find((c) => c.type === 'select' && c.selected)
+    if (choix && choix.type === 'select') surChoix(choix.id)
+  }
+
+  const changerLiens = (changements: EdgeChange[]) => {
+    const retires = new Set(changements.flatMap((c) => (c.type === 'remove' ? [c.id] : [])))
+    if (retires.size) surGraphe({ ...graphe, liens: graphe.liens.filter((lien) => !retires.has(idLien(lien))) })
+  }
+
   return (
-    <div className="schema" aria-label="Schéma du circuit">
+    <div className="schema" aria-label="Canevas du circuit">
       <ReactFlow
-        // Une autre largeur (panneau ouvert ou fermé) : le schéma se recadre.
-        key={selection ? 'avec-panneau' : 'sans-panneau'}
         nodes={noeuds}
         edges={liens}
         nodeTypes={TYPES}
-        onNodesChange={(changements: NodeChange<Node<DonneesNoeud>>[]) => setNoeuds((actuels) => applyNodeChanges(changements, actuels))}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        edgesFocusable={false}
+        onNodesChange={changerNoeuds}
+        onEdgesChange={changerLiens}
+        onConnect={relier}
+        onPaneClick={() => surChoix(null)}
+        isValidConnection={(connexion) => connexion.source !== connexion.target && connexion.target !== 'debut'}
+        deleteKeyCode={['Backspace', 'Delete']}
         fitView
-        fitViewOptions={{ padding: 0.12 }}
-        minZoom={0.4}
+        fitViewOptions={{ padding: 0.15, minZoom: 0.6, maxZoom: 1.1 }}
+        minZoom={0.3}
         maxZoom={1.6}
-        attributionPosition="top-right"
-        onNodeClick={(_, noeud) => {
-          if (niveaux.has(noeud.id)) surSelection({ genre: 'niveau', niveau: noeud.id as Niveau })
-          else if (noeud.id === 'blocage') surSelection({ genre: 'blocage' })
-        }}
+        snapToGrid
+        snapGrid={[20, 20]}
+        attributionPosition="bottom-left"
       >
-        <Background gap={18} size={1} />
+        <Background gap={20} size={1.2} />
         <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
-      <ul className="schema__legende">
-        <li>
-          <Icone nom="cadenas" taille={12} /> Étape fixe : protège le paiement
-        </li>
-        <li>Cliquez sur un niveau ou sur « Bloquée par règle » pour le régler</li>
-      </ul>
     </div>
   )
 }

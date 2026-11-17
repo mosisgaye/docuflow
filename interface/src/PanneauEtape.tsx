@@ -1,9 +1,8 @@
 // Le panneau de réglage d'une étape : construit à partir du catalogue du moteur (champs, comparaisons,
 // anomalies, bornes des relances). Aucun champ n'est écrit en dur ici.
-import { useState } from 'react'
-import type { Catalogue, ChampCondition, Condition, LigneCondition, Niveau, Regle, Relance, Relances, ResultatTest } from './api'
+import type { Catalogue, ChampCondition, Condition, LigneCondition, Niveau, NoeudGraphe, Relance, Relances, ResultatTest, TypeEtape } from './api'
 import { Icone } from './Icones'
-import type { Selection } from './SchemaCircuit'
+import { ICONE_ETAPE, nomEtape } from './SchemaCircuit'
 
 export type Statut = { etat: 'repos' } | { etat: 'enregistrement' } | { etat: 'enregistre' } | { etat: 'erreur'; message: string }
 
@@ -12,14 +11,6 @@ type Champ = Catalogue['champs'][number]
 function valeurParDefaut(champ: Champ, catalogue: Catalogue): string | string[] {
   if (champ.genre === 'anomalies') return [catalogue.anomalies.find((anomalie) => anomalie.utilisable)!.code]
   return champ.genre === 'montant' ? '1000' : ''
-}
-
-function nomLibre(regles: Regle[], base: string) {
-  const pris = new Set(regles.map((regle) => regle.nom.trim().toLowerCase()))
-  if (!pris.has(base.toLowerCase())) return base
-  let rang = 2
-  while (pris.has(`${base} ${rang}`.toLowerCase())) rang++
-  return `${base} ${rang}`
 }
 
 function LigneEditee({
@@ -112,7 +103,7 @@ function LigneEditee({
   )
 }
 
-function ConditionEditee({
+export function ConditionEditee({
   condition,
   catalogue,
   verdicts,
@@ -175,188 +166,196 @@ function ConditionEditee({
   )
 }
 
-/** Une règle neuve, au nom libre : pour un niveau (une approbation), ou un blocage si niveau est null. */
-export function nouvelleRegle(regles: Regle[], catalogue: Catalogue, niveau: Niveau | null): Regle {
-  if (niveau) {
-    const libelle = catalogue.niveaux.find((n) => n.code === niveau)!.libelle
-    return { nom: nomLibre(regles, `${libelle} : nouvelle règle`), si: { lignes: [{ champ: 'total_ttc', comparaison: 'superieur_a', valeur: '1000' }], combinaison: 'une' }, exige: [niveau] }
-  }
-  const anomalie = catalogue.anomalies.find((a) => a.code === 'FOURNISSEUR_INCONNU' && a.utilisable) ?? catalogue.anomalies.find((a) => a.utilisable)!
-  return { nom: nomLibre(regles, 'Nouveau blocage'), si: { lignes: [{ champ: 'anomalie', comparaison: 'une_de', valeur: [anomalie.code] }], combinaison: 'une' }, bloque: 'À régler avant toute approbation.' }
+/** Une étape neuve du type demandé, placée à l'endroit donné. */
+export function nouvelleEtape(type: TypeEtape, catalogue: Catalogue, x: number, y: number): NoeudGraphe {
+  const id = `${type}-${Math.random().toString(36).slice(2, 8)}`
+  if (type === 'condition') return { id, type, x, y, nom: 'Montant élevé ?', si: { lignes: [{ champ: 'total_ttc', comparaison: 'superieur_a', valeur: '1000' }], combinaison: 'une' } }
+  if (type === 'approbation') return { id, type, x, y, nom: '', niveau: catalogue.niveaux[0].code }
+  return { id, type, x, y, nom: 'Blocage', message: 'À régler avant toute approbation.' }
+}
+
+function Palette({ catalogue, surAjout }: { catalogue: Catalogue; surAjout: (type: TypeEtape) => void }) {
+  return (
+    <div className="palette">
+      <p className="reglage__aide">Cliquez sur une étape pour l’ajouter au canevas, puis reliez-la en tirant depuis ses points.</p>
+      {catalogue.etapes
+        .filter((etape) => !etape.fixe)
+        .map((etape) => {
+          const disponible = etape.disponible !== false
+          return (
+            <button key={etape.type} className={`palette__etape palette__etape--${etape.type}`} disabled={!disponible} onClick={() => surAjout(etape.type as TypeEtape)}>
+              <span className="palette__tuile">
+                <Icone nom={disponible ? ICONE_ETAPE[etape.type as TypeEtape] : 'horloge'} taille={18} />
+              </span>
+              <span>
+                <strong>
+                  {etape.libelle}
+                  {!disponible && <span className="pastille-bientot">Bientôt</span>}
+                </strong>
+                <small>{etape.description}</small>
+              </span>
+            </button>
+          )
+        })}
+      <p className="palette__astuce">
+        <Icone nom="cadenas" taille={14} /> Début et Odoo sont fixes : ils protègent le paiement.
+        <br />
+        Supprimer : choisir une étape ou un lien, puis la touche Suppr.
+      </p>
+    </div>
+  )
 }
 
 export function PanneauEtape({
-  selection,
-  regles,
-  relances,
+  etape,
   catalogue,
+  relances,
   test,
   statut,
-  surRegles,
+  surEtape,
   surRelances,
+  surRetrait,
+  surAjout,
   surFermer,
 }: {
-  selection: Exclude<Selection, null>
-  regles: Regle[]
-  relances: Relances | null
+  etape: NoeudGraphe | null
   catalogue: Catalogue
+  relances: Relances | null
   test: ResultatTest | null
   statut: Statut
-  surRegles: (regles: Regle[]) => void
+  surEtape: (etape: NoeudGraphe) => void
   surRelances: (relances: Relances) => void
+  surRetrait: () => void
+  surAjout: (type: TypeEtape) => void
   surFermer: () => void
 }) {
-  const [onglet, setOnglet] = useState<'reglages' | 'test'>('reglages')
-  const niveau = selection.genre === 'niveau' ? selection.niveau : null
   const libelle = (code: Niveau) => catalogue.niveaux.find((n) => n.code === code)!.libelle
-  const rangNiveau = niveau ? catalogue.niveaux.findIndex((n) => n.code === niveau) + 1 : 0
-  const siennes = regles.map((regle, rang) => ({ regle, rang })).filter(({ regle }) => (niveau ? regle.exige?.includes(niveau) : regle.bloque))
-  const ongletEffectif = test ? onglet : 'reglages'
-
-  const changer = (rang: number, regle: Regle) => surRegles(regles.map((r, i) => (i === rang ? regle : r)))
-  const retirer = (rang: number) => {
-    const regle = regles[rang]
-    if (niveau && regle.exige && regle.exige.length > 1) return changer(rang, { ...regle, exige: regle.exige.filter((n) => n !== niveau) })
-    surRegles(regles.filter((_, i) => i !== rang))
-  }
-  const ajouter = () => surRegles([...regles, nouvelleRegle(regles, catalogue, niveau)])
-  const reglage: Relance | null = niveau ? { ...Object.fromEntries(catalogue.relances.map((r) => [r.nom, r.defaut])), ...relances?.[niveau] } as Relance : null
-
-  const resultatsTest = test?.regles ?? []
-  const verdictsDe = (nom: string) => resultatsTest.find((r) => r.nom === nom)
+  const verdict = etape && test?.conditions.find((condition) => condition.id === etape.id)
+  const surLeChemin = etape && test ? test.chemin.some((pas) => pas.id === etape.id) : null
+  const niveau = etape?.type === 'approbation' ? etape.niveau! : null
+  const reglage: Relance | null = niveau ? ({ ...Object.fromEntries(catalogue.relances.map((r) => [r.nom, r.defaut])), ...relances?.[niveau] } as Relance) : null
+  const fixe = etape?.type === 'debut' || etape?.type === 'fin'
 
   return (
-    <aside className="panneau panneau--etape" aria-label="Réglage de l’étape">
+    <aside className="panneau panneau--etape" aria-label={etape ? 'Réglage de l’étape' : 'Ajouter une étape'}>
       <header className="panneau__tete">
-        <div className="panneau__titre">
-          <p className="panneau__surtitre">{niveau ? `Niveau ${rangNiveau}` : 'Réglable'}</p>
-          <h2>{niveau ? libelle(niveau) : 'Bloquée par règle'}</h2>
-        </div>
-        <div className="panneau__boutons">
-          <button className="bouton bouton--fantome bouton--icone" onClick={surFermer} aria-label="Fermer le réglage" title="Fermer (Échap)">
-            <Icone nom="fermer" />
-          </button>
-        </div>
-      </header>
-      <div className="onglets" role="tablist">
-        <button role="tab" aria-selected={ongletEffectif === 'reglages'} onClick={() => setOnglet('reglages')}>
-          <Icone nom="reglages" taille={14} /> Réglages
-        </button>
-        <button role="tab" aria-selected={ongletEffectif === 'test'} onClick={() => setOnglet('test')} disabled={!test} title={test ? undefined : 'Testez une facture pour voir le résultat'}>
-          <Icone nom="test" taille={14} /> Résultat du test
-        </button>
-      </div>
-
-      <div className="panneau__corps reglage">
-        {ongletEffectif === 'reglages' ? (
+        {etape ? (
           <>
-            <p className="reglage__aide">
-              {niveau
-                ? `${libelle(niveau)} approuve la facture quand une de ces règles s’applique.`
-                : 'Une facture qui remplit une de ces règles ne peut pas être approuvée : elle attend qu’on règle le problème.'}
-            </p>
-            {siennes.length === 0 && <p className="reglage__vide">{niveau ? 'Aucune règle : ce niveau n’intervient jamais.' : 'Aucune règle de blocage.'}</p>}
-            {siennes.map(({ regle, rang }) => {
-              const verdicts = verdictsDe(regle.nom)
-              const autres = niveau ? (regle.exige ?? []).filter((n) => n !== niveau) : []
-              return (
-                <section key={rang} className={`regle${verdicts?.vraie ? ' regle--vraie' : ''}`}>
-                  <label className="regle__nom">
-                    <span className="visuellement-cache">Nom de la règle</span>
-                    <input className="champ" value={regle.nom} maxLength={200} onChange={(evenement) => changer(rang, { ...regle, nom: evenement.target.value })} />
-                  </label>
-                  {autres.length > 0 && <p className="regle__note">Exige aussi : {autres.map((n) => libelle(n).toLowerCase()).join(', ')}.</p>}
-                  <ConditionEditee
-                    condition={regle.si}
-                    catalogue={catalogue}
-                    verdicts={verdicts?.lignes.map((ligne) => ligne.vraie)}
-                    surChangement={(si) => changer(rang, { ...regle, si })}
-                  />
-                  {regle.bloque !== undefined && (
-                    <label className="regle__message">
-                      Message affiché
-                      <input className="champ" value={regle.bloque} maxLength={300} onChange={(evenement) => changer(rang, { ...regle, bloque: evenement.target.value })} />
-                    </label>
-                  )}
-                  <button className="lien-bouton lien-bouton--danger" onClick={() => retirer(rang)}>
-                    {autres.length > 0 ? `Retirer ce niveau de la règle` : 'Retirer la règle'}
-                  </button>
-                </section>
-              )
-            })}
-            <button className="bouton" onClick={ajouter}>
-              <Icone nom="plus" /> {niveau ? 'Ajouter une règle' : 'Ajouter un blocage'}
-            </button>
-
-            {niveau && reglage && (
-              <section className="reglage__relances">
-                <h3>Sans réponse</h3>
-                <div className="reglage__grille">
-                  {catalogue.relances.map((champ) => (
-                    <label key={champ.nom}>
-                      {champ.libelle}
-                      <span className="reglage__nombre">
-                        <input
-                          className="champ"
-                          type="number"
-                          min={champ.min}
-                          max={champ.max}
-                          value={reglage[champ.nom]}
-                          onChange={(evenement) => {
-                            const nombre = Number.parseInt(evenement.target.value, 10)
-                            if (Number.isNaN(nombre)) return
-                            surRelances({ ...(relances ?? {}), [niveau]: { ...reglage, [champ.nom]: nombre } })
-                          }}
-                        />
-                        <small>{champ.unite}</small>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {niveau && (
-              <p className="reglage__garde">
-                <Icone nom="cadenas" />
-                <span>
-                  <strong>Toujours une autre personne que le niveau précédent.</strong> Ce réglage protège contre la fraude : il ne se désactive pas.
-                </span>
-              </p>
-            )}
+            <span className={`palette__tuile palette__tuile--${etape.type}`} aria-hidden="true">
+              <Icone nom={ICONE_ETAPE[etape.type]} taille={18} />
+            </span>
+            <div className="panneau__titre">
+              <p className="panneau__surtitre">{catalogue.etapes.find((e) => e.type === etape.type)?.libelle}</p>
+              <h2>{nomEtape(etape, catalogue)}</h2>
+            </div>
+            <div className="panneau__boutons">
+              {!fixe && (
+                <button className="bouton bouton--fantome bouton--icone bouton--danger" onClick={surRetrait} aria-label="Supprimer l’étape" title="Supprimer l’étape (Suppr)">
+                  <Icone nom="corbeille" />
+                </button>
+              )}
+              <button className="bouton bouton--fantome bouton--icone" onClick={surFermer} aria-label="Fermer le réglage" title="Fermer (Échap)">
+                <Icone nom="fermer" />
+              </button>
+            </div>
           </>
         ) : (
-          test && (
-            <div className="reglage__test">
-              <p>
-                Facture <strong>{test.facture.numero ?? test.facture.id.slice(0, 8)}</strong>
-                {test.facture.fournisseur && <> · {test.facture.fournisseur}</>}
-              </p>
-              {siennes.length === 0 && <p className="reglage__vide">Aucune règle à évaluer ici.</p>}
-              {siennes.map(({ regle }) => {
-                const verdicts = verdictsDe(regle.nom)
-                if (!verdicts) return null
-                return (
-                  <section key={regle.nom} className={`regle${verdicts.vraie ? ' regle--vraie' : ''}`}>
-                    <h3>
-                      {regle.nom} <span className={`etat ${verdicts.vraie ? 'etat--validee' : 'etat--recue'}`}>{verdicts.vraie ? 'S’applique' : 'Ne s’applique pas'}</span>
-                    </h3>
-                    {verdicts.lignes.length === 0 ? (
-                      <p>Toujours</p>
-                    ) : (
-                      <ul className="reglage__lignes">
-                        {verdicts.lignes.map((ligne) => (
-                          <li key={ligne.texte} className={ligne.vraie ? 'vraie' : ''}>
-                            <Icone nom={ligne.vraie ? 'coche' : 'fermer'} taille={14} /> {ligne.texte}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                )
-              })}
-            </div>
-          )
+          <div className="panneau__titre">
+            <h2>Ajouter une étape</h2>
+          </div>
+        )}
+      </header>
+
+      <div className="panneau__corps reglage">
+        {!etape && <Palette catalogue={catalogue} surAjout={surAjout} />}
+
+        {etape && test && (
+          <p className={`reglage__test-ligne${surLeChemin ? ' reglage__test-ligne--oui' : ''}`}>
+            <Icone nom="test" taille={14} />
+            {surLeChemin ? 'La facture testée passe par cette étape.' : 'La facture testée ne passe pas par ici.'}
+            {verdict && <strong>{verdict.vraie ? ' Réponse : Oui.' : ' Réponse : Non.'}</strong>}
+          </p>
+        )}
+
+        {etape && fixe && (
+          <p className="reglage__aide">
+            {etape.type === 'debut'
+              ? 'Chaque facture est reçue (mail, dépôt ou API), lue par l’IA et contrôlée (calculs, doublon, SIRET, IBAN, commande). Une anomalie bloquante l’arrête avant le circuit.'
+              : 'Une fois approuvée, la facture est enregistrée dans Odoo avec son PDF.'}
+          </p>
+        )}
+
+        {etape && !fixe && (
+          <label className="reglage__champ">
+            Nom affiché
+            <input
+              className="champ"
+              value={etape.nom ?? ''}
+              maxLength={200}
+              placeholder={nomEtape({ ...etape, nom: '' }, catalogue)}
+              onChange={(evenement) => surEtape({ ...etape, nom: evenement.target.value })}
+            />
+          </label>
+        )}
+
+        {etape?.type === 'condition' && etape.si && (
+          <section className="reglage__bloc">
+            <h3>Si</h3>
+            <ConditionEditee condition={etape.si} catalogue={catalogue} verdicts={verdict?.lignes.map((l) => l.vraie)} surChangement={(si) => surEtape({ ...etape, si })} />
+            <p className="reglage__note">Oui : la facture suit la sortie du haut. Non : celle du bas.</p>
+          </section>
+        )}
+
+        {etape?.type === 'approbation' && niveau && reglage && (
+          <>
+            <label className="reglage__champ">
+              Qui approuve
+              <select className="champ" value={niveau} onChange={(evenement) => surEtape({ ...etape, niveau: evenement.target.value as Niveau })}>
+                {catalogue.niveaux.map((n) => (
+                  <option key={n.code} value={n.code}>
+                    {n.libelle}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <section className="reglage__relances">
+              <h3>Sans réponse ({libelle(niveau).toLowerCase()})</h3>
+              <div className="reglage__grille">
+                {catalogue.relances.map((champ) => (
+                  <label key={champ.nom}>
+                    {champ.libelle}
+                    <span className="reglage__nombre">
+                      <input
+                        className="champ"
+                        type="number"
+                        min={champ.min}
+                        max={champ.max}
+                        value={reglage[champ.nom]}
+                        onChange={(evenement) => {
+                          const nombre = Number.parseInt(evenement.target.value, 10)
+                          if (!Number.isNaN(nombre)) surRelances({ ...(relances ?? {}), [niveau]: { ...reglage, [champ.nom]: nombre } })
+                        }}
+                      />
+                      <small>{champ.unite}</small>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </section>
+            <p className="reglage__garde">
+              <Icone nom="cadenas" />
+              <span>
+                <strong>Toujours une autre personne que le niveau précédent</strong>, et les niveaux s’approuvent dans l’ordre : comptable, directeur financier, gérant.
+              </span>
+            </p>
+          </>
+        )}
+
+        {etape?.type === 'blocage' && (
+          <label className="reglage__champ">
+            Message affiché sur la facture
+            <input className="champ" value={etape.message ?? ''} maxLength={300} onChange={(evenement) => surEtape({ ...etape, message: evenement.target.value })} />
+          </label>
         )}
       </div>
 
@@ -369,7 +368,7 @@ export function PanneauEtape({
         )}
         {statut.etat === 'erreur' && (
           <>
-            <Icone nom="anomalie" taille={14} /> {statut.message}
+            <Icone nom="alerte" taille={14} /> À compléter : {statut.message}
           </>
         )}
         {statut.etat === 'repos' && 'Chaque modification est enregistrée dans le brouillon.'}

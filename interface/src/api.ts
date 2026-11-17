@@ -330,12 +330,37 @@ export interface Catalogue {
   anomalies: { code: string; libelle: string; gravite: 'bloquante' | 'avertissement'; utilisable: boolean }[]
   niveaux: { code: Niveau; libelle: string }[]
   relances: { nom: keyof Relance; libelle: string; unite: string; min: number; max: number; defaut: number }[]
-  etapes: { type: string; libelle: string; fixe: boolean; disponible?: boolean }[]
+  etapes: { type: string; libelle: string; description: string; fixe: boolean; disponible?: boolean }[]
+}
+
+export type TypeEtape = 'debut' | 'condition' | 'approbation' | 'blocage' | 'fin'
+
+/** Une étape du circuit dessiné, comme un nœud de n8n. */
+export interface NoeudGraphe {
+  id: string
+  type: TypeEtape
+  x: number
+  y: number
+  nom?: string
+  si?: Condition
+  niveau?: Niveau
+  message?: string
+}
+
+export interface LienGraphe {
+  de: string
+  vers: string
+  sortie: 'oui' | 'non' | null
+}
+
+export interface Graphe {
+  noeuds: NoeudGraphe[]
+  liens: LienGraphe[]
 }
 
 export interface BrouillonCircuit {
   version_en_service: number | null
-  regles: Regle[]
+  graphe: Graphe
   relances: Relances | null
   modifie: boolean
   modifie_par: string | null
@@ -343,8 +368,8 @@ export interface BrouillonCircuit {
 }
 
 export interface Changement {
-  genre: 'ajout' | 'retrait' | 'modification' | 'relances'
-  regle: string | null
+  genre: 'ajout' | 'retrait' | 'modification' | 'lien' | 'relances'
+  etape: string | null
   niveau?: Niveau
   avant: string | null
   apres: string | null
@@ -355,7 +380,8 @@ export interface ResultatTest {
   facture: { id: string; fournisseur: string | null; numero: string | null; total_ttc: string | null }
   circuit_teste: 'brouillon' | 'en_service'
   controles: { arretee: boolean; anomalies: { code: string; libelle: string; gravite: string | null }[] }
-  regles: { nom: string; condition: string; lignes: { texte: string; vraie: boolean }[]; vraie: boolean; effet: string }[]
+  chemin: { id: string; sortie: 'oui' | 'non' | null }[]
+  conditions: { id: string; nom: string; vraie: boolean; lignes: { texte: string; vraie: boolean }[] }[]
   niveaux: { niveau: Niveau; raisons: string[] }[]
   bloque: string | null
   relances: Relances
@@ -368,6 +394,7 @@ export interface VersionCircuit {
   en_service: boolean
   publie_par: string
   publie_le: string
+  nombre_etapes: number | null
   nombre_regles: number
   changements: string[] | null
   relances_reglees: boolean
@@ -389,8 +416,8 @@ export interface Execution {
 
 export const catalogueCircuit = () => appeler<Catalogue>('/circuit/catalogue')
 export const brouillon = () => appeler<BrouillonCircuit>('/circuit/brouillon')
-export const enregistrerBrouillon = (regles: Regle[], relances: Relances | null, auteur: string) =>
-  appeler<BrouillonCircuit>('/circuit/brouillon', { ...enJson({ auteur, regles, relances }), method: 'PUT' })
+export const enregistrerBrouillon = (graphe: Graphe, relances: Relances | null, auteur: string) =>
+  appeler<BrouillonCircuit>('/circuit/brouillon', { ...enJson({ auteur, graphe, relances }), method: 'PUT' })
 export const annulerBrouillon = () => appeler<BrouillonCircuit>('/circuit/brouillon', supprimer)
 export const differences = () => appeler<{ version_en_service: number | null; modifie: boolean; changements: Changement[] }>('/circuit/differences')
 export const publierCircuit = (auteur: string) => appeler<{ version: number; publie_par: string; changements: string[] }>('/circuit/publier', enJson({ auteur }))
