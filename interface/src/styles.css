@@ -3264,3 +3264,992 @@ kbd {
     grid-template-columns: 1fr;
   }
 }
+
+/* ───────── Éditeur de circuit (page Workflow) ───────── */
+
+.visuellement-cache {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.lien-bouton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--texte-2);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.lien-bouton:hover {
+  color: var(--texte);
+  text-decoration: underline;
+}
+
+.lien-bouton--vert {
+  color: var(--vert-texte);
+}
+
+.lien-bouton--danger {
+  color: var(--rouge);
+}
+
+.lien-bouton--vert:hover,
+.lien-bouton--danger:hover {
+  color: inherit;
+  filter: brightness(0.85);
+}
+
+.bouton--vert-pale {
+  background: var(--vert-pale);
+  border-color: var(--vert-trait);
+  color: var(--vert-texte);
+}
+
+.editeur {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.editeur__principal {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.25rem 1.5rem 1rem;
+  overflow-y: auto;
+}
+
+.editeur__tete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.editeur__titre h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.editeur__pastilles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.375rem;
+}
+
+.editeur__aide {
+  margin-top: 0.25rem;
+  color: var(--texte-2);
+}
+
+.editeur__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.editeur__test {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  border: var(--trait) solid var(--vert-trait);
+  border-radius: var(--rayon-panneau);
+  background: var(--vert-pale);
+  color: var(--texte-2);
+}
+
+.editeur__test > .icone {
+  color: var(--vert-texte);
+  flex-shrink: 0;
+}
+
+.editeur__test p {
+  flex: 1;
+}
+
+.editeur__test strong {
+  color: var(--texte);
+}
+
+.editeur__test--change {
+  border-color: var(--ambre);
+  background: var(--ambre-pale);
+}
+
+.editeur__test--change > .icone {
+  color: var(--ambre);
+}
+
+.editeur__outils {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Menus déroulants : tester une facture, ajouter une étape. */
+.menu-deroulant {
+  position: relative;
+}
+
+.menu-deroulant__liste {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 15;
+  width: 19rem;
+  max-height: 22rem;
+  overflow-y: auto;
+  padding: 0.375rem;
+  border-radius: var(--rayon-panneau);
+  background: var(--carte);
+  box-shadow: var(--ombre-forte);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menu-deroulant__liste--gauche {
+  left: 0;
+  right: auto;
+}
+
+.menu-deroulant__liste button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 0.4375rem 0.5rem;
+  border: 0;
+  border-radius: var(--rayon);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-deroulant__liste button:hover:not(:disabled) {
+  background: var(--survol);
+}
+
+.menu-deroulant__liste button:disabled {
+  cursor: default;
+  color: var(--texte-3);
+}
+
+.menu-deroulant__liste small {
+  color: var(--texte-3);
+  font-size: 0.75rem;
+}
+
+.menu-deroulant__section {
+  padding: 0.375rem 0.5rem 0.125rem;
+  color: var(--texte-3);
+  font-size: 0.75rem;
+}
+
+.menu-deroulant__vide {
+  padding: 0.5rem;
+  color: var(--texte-3);
+}
+
+.pastille-bientot {
+  margin-left: 0.25rem;
+  padding: 0 0.375rem;
+  border-radius: 0.3125rem;
+  background: var(--gris-pale);
+  color: var(--texte-2);
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+/* Le schéma (React Flow), aux couleurs de Verifac dans les deux thèmes. */
+.schema {
+  position: relative;
+  flex: 1;
+  min-height: 25rem;
+  border: var(--trait) solid var(--bordure);
+  border-radius: var(--rayon-panneau);
+  background: var(--creux);
+  overflow: hidden;
+}
+
+.schema .react-flow {
+  --xy-background-pattern-dots-color-default: var(--bordure-forte);
+  --xy-edge-stroke-default: var(--bordure-forte);
+  --xy-controls-button-background-color-default: var(--carte);
+  --xy-controls-button-background-color-hover-default: var(--survol);
+  --xy-controls-button-color-default: var(--texte-2);
+  --xy-controls-button-border-color-default: var(--bordure);
+  background: transparent;
+}
+
+.schema .react-flow__attribution {
+  background: transparent;
+}
+
+.schema .react-flow__attribution a {
+  color: var(--texte-2);
+}
+
+.schema .react-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.schema .react-flow__node {
+  cursor: default;
+}
+
+.schema .react-flow__node-etape:has(.noeud:not(.noeud--fixe)),
+.schema .react-flow__node-issue:has(.issue--regle) {
+  cursor: pointer;
+}
+
+.schema__legende {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.625rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  list-style: none;
+  color: var(--texte-2);
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+
+.schema__legende li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+}
+
+.noeud,
+.issue {
+  width: 10.5rem;
+  min-height: 6.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  padding: 0.625rem 0.75rem;
+  border: var(--trait) solid var(--vert-trait);
+  border-radius: 0.625rem;
+  background: var(--carte);
+  color: var(--texte);
+  font-size: 0.8125rem;
+  transition:
+    border-color var(--duree) var(--courbe),
+    box-shadow var(--duree) var(--courbe);
+}
+
+.noeud:not(.noeud--fixe):hover,
+.issue--regle:hover {
+  border-color: var(--vert);
+}
+
+.noeud--fixe {
+  border-color: var(--bordure-forte);
+}
+
+.noeud--vide {
+  border-style: dashed;
+  border-color: var(--bordure-forte);
+  color: var(--texte-2);
+}
+
+.noeud--choisi {
+  border: 2px solid var(--vert);
+  box-shadow: 0 0 0 0.25rem var(--vert-pale);
+}
+
+.noeud--passe {
+  border-color: var(--vert);
+}
+
+.noeud--hors {
+  /* Hors du chemin testé : fond creux et bord en pointillés, sans transparence (le texte garde son contraste). */
+  border-style: dashed;
+  border-color: var(--bordure-forte);
+  background: var(--creux);
+}
+
+.noeud__etiquette {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--texte-3);
+  font-size: 0.6875rem;
+}
+
+.noeud__etiquette .icone {
+  margin-left: auto;
+}
+
+.noeud__modifie {
+  margin-left: auto;
+  padding: 0 0.3125rem;
+  border-radius: 0.25rem;
+  background: var(--ambre-pale);
+  color: var(--ambre);
+  font-weight: 500;
+}
+
+.noeud__titre {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.noeud__titre--ia {
+  color: var(--violet);
+}
+
+.noeud__sous {
+  color: var(--texte-2);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.noeud__resultat {
+  margin-top: auto;
+  padding-top: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.noeud__resultat--passe {
+  color: var(--vert-texte);
+}
+
+.noeud__resultat--alerte {
+  color: var(--ambre);
+}
+
+.noeud__resultat--arret {
+  color: var(--rouge);
+}
+
+.noeud__resultat--attente {
+  color: var(--bleu);
+}
+
+.noeud__resultat--hors {
+  color: var(--texte-2);
+}
+
+.issue--fixe {
+  border-color: var(--bordure-forte);
+}
+
+.issue--regle {
+  border-color: var(--rouge);
+  border-style: dashed;
+  background: var(--rouge-pale);
+}
+
+.issue--arret {
+  border-style: solid;
+  border-color: var(--rouge);
+  box-shadow: 0 0 0 0.25rem var(--rouge-pale);
+}
+
+.issue--hors {
+  border-color: var(--bordure-forte);
+  background: var(--creux);
+  box-shadow: none;
+}
+
+.losange {
+  position: relative;
+  width: 7.5rem;
+  height: 6.75rem;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.losange strong {
+  position: relative;
+  max-width: 4.5rem;
+  font-weight: 600;
+}
+
+.losange__forme {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4.75rem;
+  height: 4.75rem;
+  translate: -50% -50%;
+  rotate: 45deg;
+  border: var(--trait) solid var(--bordure-forte);
+  border-radius: 0.5rem;
+  background: var(--carte);
+}
+
+.losange--passe .losange__forme {
+  border-color: var(--vert);
+}
+
+.schema .lien .react-flow__edge-path {
+  stroke: var(--bordure-forte);
+  stroke-width: 1.5;
+}
+
+.schema .lien--non .react-flow__edge-path {
+  stroke-dasharray: 5 4;
+}
+
+.schema .lien--chemin .react-flow__edge-path {
+  stroke: var(--vert);
+  stroke-width: 2.5;
+}
+
+.schema .lien--chemin-arret .react-flow__edge-path {
+  stroke: var(--rouge);
+  stroke-width: 2.5;
+}
+
+.schema .react-flow__edge-text {
+  fill: var(--texte-2);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.schema .react-flow__edge-textbg {
+  fill: var(--creux);
+}
+
+/* Le panneau de réglage d'une étape. */
+.panneau--etape {
+  width: min(25rem, 42%);
+}
+
+.panneau__surtitre {
+  color: var(--vert-texte);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.reglage {
+  position: relative; /* les textes cachés aux yeux restent dans la zone qui défile */
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.125rem;
+}
+
+.reglage__aide {
+  color: var(--texte-2);
+}
+
+.reglage__vide {
+  padding: 0.75rem;
+  border: var(--trait) dashed var(--bordure-forte);
+  border-radius: var(--rayon-panneau);
+  color: var(--texte-2);
+}
+
+.regle {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: var(--trait) solid var(--bordure);
+  border-radius: var(--rayon-panneau);
+  background: var(--carte);
+}
+
+.regle--vraie {
+  border-color: var(--vert-trait);
+}
+
+.regle h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.regle__nom .champ {
+  font-weight: 600;
+}
+
+.regle__note {
+  color: var(--texte-3);
+  font-size: 0.75rem;
+}
+
+.regle__message {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--texte-2);
+  font-size: 0.75rem;
+}
+
+.regle > .lien-bouton--danger {
+  align-self: flex-start;
+  font-size: 0.75rem;
+}
+
+.segment {
+  display: flex;
+  padding: 2px;
+  border: var(--trait) solid var(--bordure);
+  border-radius: var(--rayon-panneau);
+  background: var(--creux);
+}
+
+.segment button {
+  flex: 1;
+  height: 1.625rem;
+  border: 0;
+  border-radius: 0.375rem;
+  background: none;
+  color: var(--texte-2);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.segment button[aria-checked='true'] {
+  background: var(--carte);
+  color: var(--texte);
+  box-shadow: var(--ombre-flottant);
+}
+
+.condition {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.5rem;
+  border: var(--trait) solid var(--bordure);
+  border-radius: var(--rayon);
+  background: var(--surface);
+}
+
+.condition--vraie {
+  border-color: var(--vert-trait);
+  background: var(--vert-pale);
+}
+
+.condition--toujours {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.condition__champs {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 0.25rem;
+}
+
+/* Le champ sur toute la largeur, puis la comparaison et la valeur côte à côte. */
+.condition__champs > :first-child {
+  grid-column: 1 / -1;
+}
+
+.condition__champs .champ {
+  padding: 0 0.375rem;
+  font-size: 0.8125rem;
+}
+
+.condition__valeur {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.condition__valeur span {
+  position: absolute;
+  right: 0.4375rem;
+  color: var(--texte-3);
+  pointer-events: none;
+}
+
+.condition__anomalies {
+  position: relative; /* la légende cachée reste dans ce bloc, sans allonger la page */
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  border: 0;
+  font-size: 0.8125rem;
+}
+
+.condition__anomalies label {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  cursor: pointer;
+}
+
+.condition__anomalies input {
+  accent-color: var(--vert);
+}
+
+.condition__pied {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+}
+
+.condition__pied .lien-bouton {
+  font-size: 0.75rem;
+}
+
+.condition__verdict {
+  color: var(--texte-3);
+}
+
+.condition__verdict--vraie {
+  color: var(--vert-texte);
+  font-weight: 600;
+}
+
+.reglage__relances h3 {
+  margin-bottom: 0.375rem;
+  color: var(--texte-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.reglage__grille {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.reglage__grille label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--texte-2);
+  font-size: 0.8125rem;
+}
+
+.reglage__nombre {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.reglage__nombre .champ {
+  width: 4.5rem;
+  text-align: right;
+}
+
+.reglage__nombre small {
+  width: 3.75rem;
+  color: var(--texte-3);
+  font-size: 0.75rem;
+}
+
+.reglage__garde {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.625rem;
+  border: var(--trait) solid var(--bordure);
+  border-radius: var(--rayon-panneau);
+  background: var(--carte);
+  color: var(--texte-2);
+  font-size: 0.8125rem;
+}
+
+.reglage__garde strong {
+  color: var(--texte);
+}
+
+.reglage__test {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.reglage__lignes {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--texte-3);
+  font-size: 0.8125rem;
+}
+
+.reglage__lignes li {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.reglage__lignes li.vraie {
+  color: var(--vert-texte);
+  font-weight: 500;
+}
+
+.reglage__statut {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.625rem 1.125rem;
+  border-top: var(--trait) solid var(--bordure);
+  color: var(--texte-3);
+  font-size: 0.75rem;
+}
+
+.reglage__statut--enregistre {
+  color: var(--vert-texte);
+}
+
+.reglage__statut--erreur {
+  color: var(--rouge);
+  background: var(--rouge-pale);
+}
+
+/* Fenêtres de confirmation (différences, annuler, publier). */
+.voile {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 0.35);
+}
+
+.fenetre {
+  width: min(34rem, 100%);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.25rem;
+  border-radius: 0.75rem;
+  background: var(--carte);
+  box-shadow: var(--ombre-forte);
+  animation: glisse 0.2s var(--courbe);
+}
+
+.fenetre h2 {
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.fenetre__corps {
+  overflow-y: auto;
+  color: var(--texte-2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.fenetre__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.differences {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding-left: 1.125rem;
+  color: var(--texte);
+}
+
+.differences li::marker {
+  color: var(--texte-3);
+}
+
+.differences__ajout::marker {
+  color: var(--vert-texte);
+}
+
+.differences__retrait::marker {
+  color: var(--rouge);
+}
+
+/* Versions publiées et exécutions. */
+.versions {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border: var(--trait) solid var(--bordure);
+  border-radius: var(--rayon-panneau);
+  background: var(--carte);
+}
+
+.versions__ligne {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.75rem 1rem;
+}
+
+.versions__ligne + .versions__ligne {
+  border-top: var(--trait) solid var(--bordure);
+}
+
+.versions__tete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.versions__qui {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--texte-2);
+}
+
+.versions__compte {
+  margin-left: auto;
+  color: var(--texte-3);
+  font-size: 0.75rem;
+}
+
+.versions__avant {
+  color: var(--texte-3);
+  font-size: 0.8125rem;
+}
+
+.versions__details summary {
+  cursor: pointer;
+  color: var(--texte-2);
+  font-size: 0.8125rem;
+}
+
+.versions__details .differences {
+  margin-top: 0.375rem;
+}
+
+.executions {
+  overflow-x: auto;
+  border: var(--trait) solid var(--bordure);
+  border-radius: var(--rayon-panneau);
+  background: var(--carte);
+}
+
+.executions table {
+  width: 100%;
+  min-width: 46rem;
+  border-collapse: collapse;
+}
+
+.executions th {
+  padding: 0.5rem 0.875rem;
+  color: var(--texte-3);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-align: left;
+}
+
+.executions td {
+  padding: 0.5rem 0.875rem;
+  border-top: var(--trait) solid var(--bordure);
+  vertical-align: top;
+}
+
+.executions__facture {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.executions__facture:hover strong {
+  text-decoration: underline;
+}
+
+.executions__facture small {
+  color: var(--texte-3);
+  font-size: 0.75rem;
+}
+
+.executions__chemin {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem 0;
+  color: var(--texte-2);
+  font-size: 0.8125rem;
+}
+
+.executions__chemin li + li::before {
+  content: '›';
+  margin: 0 0.375rem;
+  color: var(--texte-3);
+}
+
+.executions__duree {
+  color: var(--texte-2);
+  white-space: nowrap;
+}
+
+.executions__duree small {
+  color: var(--texte-3);
+}
+
+.executions__version {
+  color: var(--texte-3);
+}
+
+@media (max-width: 760px) {
+  /* Sept entrées dans la barre du bas : un libellé un peu plus serré pour qu'aucun ne soit coupé. */
+  .rail__bouton {
+    min-width: 0;
+  }
+
+  .rail__libelle {
+    padding: 0;
+    font-size: 0.625rem;
+    letter-spacing: -0.02em;
+  }
+
+  .editeur__principal {
+    padding: 1rem;
+  }
+
+  .schema {
+    min-height: 28rem;
+  }
+
+  .panneau--etape {
+    width: auto;
+  }
+
+  .menu-deroulant__liste {
+    position: fixed;
+    left: 0.75rem;
+    right: 0.75rem;
+    top: auto;
+    bottom: 4.5rem;
+    width: auto;
+  }
+}

@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react'
 import * as api from './api'
 import type { Execution, VersionCircuit } from './api'
 import { duree, euros, initiales, jourEtHeure, teinte } from './format'
-import { Icone } from './Icones'
 
 export function Versions() {
   const [versions, setVersions] = useState<VersionCircuit[] | null>(null)
@@ -130,12 +129,12 @@ export function Executions({ surFacture }: { surFacture: (id: string) => void })
                   </td>
                   <td className="executions__duree">
                     {duree(ligne.duree_s)}
-                    {ligne.en_cours && <small> et ça continue</small>}
+                    {ligne.en_cours && <small>, en cours</small>}
                   </td>
                   <td>
                     <span className={`etat ${ETAT_PASTILLE[ligne.etat] ?? 'etat--en_approbation'}`}>{ligne.resultat}</span>
                   </td>
-                  <td className="executions__version">{ligne.version_circuit ? `v${ligne.version_circuit}` : <Icone nom="fermer" taille={12} />}</td>
+                  <td className="executions__version">{ligne.version_circuit ? `v${ligne.version_circuit}` : 'aucune'}</td>
                 </tr>
               ))}
             </tbody>

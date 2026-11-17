@@ -196,12 +196,12 @@ export function Circuit({
   }
 
   return (
-    <div className={`circuit${selection ? ' circuit--panneau' : ''}`}>
-      <div className="circuit__principal">
-        <header className="circuit__tete">
-          <div className="circuit__titre">
+    <div className={`editeur${selection ? ' editeur--panneau' : ''}`}>
+      <div className="editeur__principal">
+        <header className="editeur__tete">
+          <div className="editeur__titre">
             <h1>Circuit de validation des factures</h1>
-            <p className="circuit__pastilles">
+            <p className="editeur__pastilles">
               <span className="etat etat--validee">{enService ? `Version ${enService} en service` : 'Aucune version publiée'}</span>
               {brouillon.modifie && (
                 <span className="etat etat--en_anomalie">
@@ -214,9 +214,9 @@ export function Circuit({
                 </button>
               )}
             </p>
-            <p className="circuit__aide">Qui approuve, quand, et ce qui bloque une facture avant le paiement.</p>
+            <p className="editeur__aide">Qui approuve, quand, et ce qui bloque une facture avant le paiement.</p>
           </div>
-          <div className="circuit__actions">
+          <div className="editeur__actions">
             {brouillon.modifie && (
               <button className="bouton bouton--fantome" onClick={() => setFenetre('annuler')} disabled={occupe}>
                 Annuler les modifications
@@ -262,7 +262,7 @@ export function Circuit({
         )}
 
         {test && (
-          <div className={`circuit__test${test.change ? ' circuit__test--change' : ''}`} role="status">
+          <div className={`editeur__test${test.change ? ' editeur__test--change' : ''}`} role="status">
             <Icone nom="test" />
             <p>
               <strong>Test : </strong>
@@ -290,7 +290,7 @@ export function Circuit({
           </div>
         )}
 
-        <div className="circuit__outils">
+        <div className="editeur__outils">
           <div className="menu-deroulant">
             <button className="bouton bouton--vert-pale" aria-expanded={menu === 'ajout'} aria-haspopup="menu" onClick={() => setMenu(menu === 'ajout' ? null : 'ajout')}>
               <Icone nom="plus" /> Ajouter une étape

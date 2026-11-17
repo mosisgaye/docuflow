@@ -1,6 +1,7 @@
 // Le schéma du circuit, dessiné à partir des règles : les étapes fixes, puis un nœud par niveau
 // d'approbation, puis Odoo. Rien ne se déplace à la main ; on zoome et on déplace la vue.
-import { Background, Controls, Handle, type Edge, type Node, type NodeProps, Position, ReactFlow, MarkerType } from '@xyflow/react'
+import { useEffect, useMemo, useState } from 'react'
+import { Background, Controls, Handle, type Edge, type Node, type NodeChange, type NodeProps, Position, ReactFlow, MarkerType, applyNodeChanges } from '@xyflow/react'
 import type { Catalogue, Niveau, Regle, ResultatTest } from './api'
 import { Icone } from './Icones'
 
@@ -23,8 +24,9 @@ interface DonneesNoeud extends Record<string, unknown> {
 
 const LARGEUR = 168
 const ECART = 52
-const LIGNE_HAUTE = 40
-const LIGNE_BASSE = 230
+// Deux lignes : en haut, ce qui arrive à toute facture ; en bas, les approbations puis Odoo.
+const LIGNE_HAUTE = 0
+const LIGNE_BASSE = 200
 const x = (colonne: number) => colonne * (LARGEUR + ECART)
 
 function Poignees() {
@@ -62,9 +64,9 @@ function NoeudEtape({ data }: NodeProps<Node<DonneesNoeud>>) {
 
 function NoeudDecision({ data }: NodeProps<Node<DonneesNoeud>>) {
   return (
-    <div className={`decision${data.resultat?.etat === 'passe' ? ' decision--passe' : ''}`}>
+    <div className={`losange${data.resultat?.etat === 'passe' ? ' losange--passe' : ''}`}>
       <Poignees />
-      <span className="decision__forme" aria-hidden="true" />
+      <span className="losange__forme" aria-hidden="true" />
       <strong>{data.titre}</strong>
     </div>
   )
@@ -87,7 +89,7 @@ function NoeudIssue({ data }: NodeProps<Node<DonneesNoeud>>) {
   )
 }
 
-const TYPES = { etape: NoeudEtape, decision: NoeudDecision, issue: NoeudIssue }
+const TYPES = { etape: NoeudEtape, losange: NoeudDecision, issue: NoeudIssue }
 
 /** Les règles qui exigent un niveau. */
 export const reglesDuNiveau = (regles: Regle[], niveau: Niveau) => regles.filter((regle) => regle.exige?.includes(niveau))
@@ -122,11 +124,11 @@ export function schema(regles: Regle[], catalogue: Catalogue, test: ResultatTest
           : undefined,
       },
     },
-    { id: 'conforme', type: 'decision', position: { x: x(3) + 24, y: LIGNE_HAUTE + 4 }, data: { titre: 'Facture conforme ?', sous: '', resultat: test && !arretee ? { texte: '', etat: 'passe' } : undefined } },
+    { id: 'conforme', type: 'losange', position: { x: x(3) + 24, y: LIGNE_HAUTE - 4 }, data: { titre: 'Facture conforme ?', sous: '', resultat: test && !arretee ? { texte: '', etat: 'passe' } : undefined } },
     {
       id: 'arretee',
       type: 'issue',
-      position: { x: x(3), y: LIGNE_BASSE },
+      position: { x: x(4), y: LIGNE_HAUTE },
       data: {
         etiquette: 'Étape fixe',
         fixe: true,
@@ -144,7 +146,7 @@ export function schema(regles: Regle[], catalogue: Catalogue, test: ResultatTest
     noeuds.push({
       id: niveau.code,
       type: 'etape',
-      position: { x: x(4 + rang), y: LIGNE_HAUTE },
+      position: { x: x(rang), y: LIGNE_BASSE },
       data: {
         etiquette: `Niveau ${rang + 1}`,
         titre: niveau.libelle,
@@ -163,7 +165,7 @@ export function schema(regles: Regle[], catalogue: Catalogue, test: ResultatTest
     {
       id: 'blocage',
       type: 'issue',
-      position: { x: x(4), y: LIGNE_BASSE },
+      position: { x: x(catalogue.niveaux.length + 1), y: LIGNE_BASSE },
       data: {
         etiquette: 'Réglable',
         titre: 'Bloquée par règle',
@@ -176,7 +178,7 @@ export function schema(regles: Regle[], catalogue: Catalogue, test: ResultatTest
     {
       id: 'odoo',
       type: 'etape',
-      position: { x: x(4 + catalogue.niveaux.length), y: LIGNE_HAUTE },
+      position: { x: x(catalogue.niveaux.length), y: LIGNE_BASSE },
       data: {
         etiquette: 'Étape fixe',
         fixe: true,
@@ -194,7 +196,8 @@ export function schema(regles: Regle[], catalogue: Catalogue, test: ResultatTest
     if (arretee) return id === 'arretee'
     if (id === 'conforme') return true
     if (test.bloque) return id === 'blocage'
-    return exiges.has(id as Niveau) || id === 'odoo'
+    // Un niveau non exigé est traversé sans arrêt : le chemin continue jusqu'à Odoo.
+    return id !== 'arretee' && id !== 'blocage'
   }
   const lien = (source: string, cible: string, options: Partial<Edge> = {}): Edge => {
     const vert = enTest && surChemin(source) && surChemin(cible)
@@ -210,12 +213,16 @@ export function schema(regles: Regle[], catalogue: Catalogue, test: ResultatTest
       ...options,
     }
   }
-  const chaine = ['reception', 'lecture', 'controles', 'conforme', ...catalogue.niveaux.map((n) => n.code), 'odoo']
-  const liens: Edge[] = chaine.slice(1).map((cible, rang) => lien(chaine[rang], cible, chaine[rang] === 'conforme' ? { label: 'Oui', labelClassName: 'lien__etiquette lien__etiquette--oui' } as Partial<Edge> : {}))
-  liens.push(
-    lien('conforme', 'arretee', { sourceHandle: 'bas', targetHandle: 'haut', label: 'Non', className: `lien lien--non${enTest && arretee ? ' lien--chemin-arret' : ''}` }),
+  const niveaux = catalogue.niveaux.map((n) => n.code)
+  const liens: Edge[] = [
+    lien('reception', 'lecture'),
+    lien('lecture', 'controles'),
+    lien('controles', 'conforme'),
+    lien('conforme', 'arretee', { label: 'Non', className: `lien lien--non${enTest && arretee ? ' lien--chemin-arret' : ''}` }),
+    lien('conforme', niveaux[0], { sourceHandle: 'bas', targetHandle: 'haut', label: 'Oui' }),
+    ...[...niveaux, 'odoo'].slice(1).map((cible, rang) => lien(niveaux[rang], cible)),
     lien('conforme', 'blocage', { sourceHandle: 'bas', targetHandle: 'haut', label: 'Si une règle bloque', className: `lien lien--non${bloqueParRegle ? ' lien--chemin-arret' : ''}` }),
-  )
+  ]
   return { noeuds, liens }
 }
 
@@ -236,14 +243,23 @@ export function SchemaCircuit({
   relancesModifiees: Set<Niveau>
   surSelection: (selection: Selection) => void
 }) {
-  const { noeuds, liens } = schema(regles, catalogue, test, selection, modifiees, relancesModifiees)
+  const { noeuds: calcules, liens } = useMemo(() => schema(regles, catalogue, test, selection, modifiees, relancesModifiees), [regles, catalogue, test, selection, modifiees, relancesModifiees])
+  // React Flow mesure chaque étape avant de l'afficher : on garde ces mesures quand le schéma est recalculé,
+  // sinon les étapes recréées restent masquées.
+  const [noeuds, setNoeuds] = useState<Node<DonneesNoeud>[]>(calcules)
+  useEffect(() => {
+    setNoeuds((actuels) => calcules.map((noeud) => ({ ...noeud, measured: actuels.find((a) => a.id === noeud.id)?.measured })))
+  }, [calcules])
   const niveaux = new Set<string>(catalogue.niveaux.map((niveau) => niveau.code))
   return (
     <div className="schema" aria-label="Schéma du circuit">
       <ReactFlow
+        // Une autre largeur (panneau ouvert ou fermé) : le schéma se recadre.
+        key={selection ? 'avec-panneau' : 'sans-panneau'}
         nodes={noeuds}
         edges={liens}
         nodeTypes={TYPES}
+        onNodesChange={(changements: NodeChange<Node<DonneesNoeud>>[]) => setNoeuds((actuels) => applyNodeChanges(changements, actuels))}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
@@ -252,7 +268,7 @@ export function SchemaCircuit({
         fitViewOptions={{ padding: 0.12 }}
         minZoom={0.4}
         maxZoom={1.6}
-        proOptions={{ hideAttribution: true }}
+        attributionPosition="top-right"
         onNodeClick={(_, noeud) => {
           if (niveaux.has(noeud.id)) surSelection({ genre: 'niveau', niveau: noeud.id as Niveau })
           else if (noeud.id === 'blocage') surSelection({ genre: 'blocage' })
