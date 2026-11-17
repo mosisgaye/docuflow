@@ -9,6 +9,7 @@ Sans brouillon, l'éditeur s'ouvre sur la version en service, réécrite en lign
 """
 
 from decimal import Decimal
+from types import SimpleNamespace
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -19,12 +20,13 @@ from moteur.approbation import (
     RELANCES_DEFAUT,
     Regle,
     Relance,
+    circuit,
     en_lignes,
     publier,
     verifier_relances,
     version_en_vigueur,
 )
-from moteur.base import BrouillonCircuit, ReglesApprobation
+from moteur.base import BrouillonCircuit, FactureEnBase, ReglesApprobation
 from moteur.catalogue_circuit import ANOMALIES, CHAMPS, COMPARAISONS
 
 REGLES_MAX = 50
@@ -245,3 +247,70 @@ def publier_brouillon(session: Session, auteur: str) -> ReglesApprobation:
     session.delete(brouillon)
     session.flush()
     return version
+
+
+# ───────── Tester le brouillon sur une facture déjà reçue (rien n'est écrit) ─────────
+
+
+class TestImpossible(ValueError):
+    """La facture ne peut pas servir de test (pas encore lue)."""
+
+
+def _niveaux(calcule: dict) -> list[str]:
+    return [n["niveau"] for n in calcule["niveaux"]]
+
+
+def tester(session: Session, facture: FactureEnBase) -> dict:
+    """Le chemin que prendrait cette facture avec le brouillon (ou la version en service s'il n'y en a pas).
+
+    Lecture seule : rien n'est écrit, ni sur la facture, ni dans le journal. Le calcul est celui du
+    moteur (approbation.circuit), sur les données et les anomalies que la facture a déjà.
+    """
+    if facture.donnees is None:
+        raise TestImpossible("Cette facture n'est pas encore lue : elle ne peut pas servir de test.")
+    brouillon = lire(session)
+    donnees, anomalies = facture.donnees, facture.anomalies or []
+    codes = {a["code"] for a in anomalies}
+    libelles = {a["code"]: a["libelle"] for a in ANOMALIES}
+    arretee = any(a.get("gravite") == "bloquante" for a in anomalies)
+
+    regles = []
+    for brute in brouillon["regles"]:
+        regle = Regle.model_validate(brute)
+        lignes = [{"texte": _ligne(l.model_dump(mode="json")), "vraie": l.vraie(donnees, codes)} for l in regle.si.lignes or []]
+        regles.append({
+            "nom": regle.nom,
+            "condition": resume_condition(brute["si"]),
+            "lignes": lignes,
+            "vraie": regle.si.vraie(donnees, anomalies),
+            "effet": resume_regle(brute).removeprefix(resume_condition(brute["si"]) + ", "),
+        })
+
+    essai = SimpleNamespace(version="brouillon", regles=brouillon["regles"], relances=brouillon["relances"])
+    calcule = circuit(donnees, anomalies, essai)
+    service = circuit(donnees, anomalies, version_en_vigueur(session))
+    if arretee:
+        bloquantes = ", ".join(libelles.get(a["code"], a["code"]).lower() for a in anomalies if a.get("gravite") == "bloquante")
+        calcule = {**calcule, "niveaux": [], "bloque": f"Arrêtée aux contrôles ({bloquantes}) : à corriger ou rejeter."}
+        service = {**service, "niveaux": [], "bloque": calcule["bloque"]}
+
+    relances = {n: (brouillon["relances"] or {}).get(n) or RELANCES_DEFAUT for n in _niveaux(calcule)}
+    return {
+        "facture": {
+            "id": str(facture.id),
+            "fournisseur": donnees.get("fournisseur_nom"),
+            "numero": donnees.get("numero_facture"),
+            "total_ttc": donnees.get("total_ttc"),
+        },
+        "circuit_teste": "brouillon" if brouillon["modifie"] else "en_service",
+        "controles": {
+            "arretee": arretee,
+            "anomalies": [{"code": a["code"], "libelle": libelles.get(a["code"], a["code"]), "gravite": a.get("gravite")} for a in anomalies],
+        },
+        "regles": regles,
+        "niveaux": calcule["niveaux"],
+        "bloque": calcule["bloque"],
+        "relances": relances,
+        "en_service": {"version": service["version"], "niveaux": _niveaux(service), "bloque": service["bloque"]},
+        "change": (_niveaux(calcule), calcule["bloque"]) != (_niveaux(service), service["bloque"]),
+    }
