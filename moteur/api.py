@@ -48,6 +48,8 @@ from datetime import datetime
 
 import httpx
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile, status
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pypdf.errors import PyPdfError
@@ -310,7 +312,11 @@ def creer_application(
                 raise HTTPException(status.HTTP_403_FORBIDDEN, f"Votre rôle ({comptes.LIBELLES_ROLES[compte.role]}) ne permet pas cette action.")
             CONNECTE.set({"id": str(compte.id), "nom": compte.nom, "role": compte.role, "niveaux": list(compte.niveaux or [])})
 
-    application = FastAPI(title="Moteur de factures", version="0.1.0", dependencies=[Depends(controle_des_comptes)])
+    # Pas de documentation complète en ligne : elle montrerait toutes les adresses internes (comptes, console…).
+    # Seule l'API publique /v1 est documentée, sur /v1/docs (voir plus bas).
+    application = FastAPI(
+        title="Moteur de factures", version="0.1.0", dependencies=[Depends(controle_des_comptes)], docs_url=None, redoc_url=None, openapi_url=None
+    )
     def avec_comptes() -> bool:
         with fabrique_session() as session:
             return comptes.existe_un_compte(session)
@@ -1011,6 +1017,26 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
         if resultat.deja_vue:
             reponse.status_code = status.HTTP_200_OK
         return {**_publique(resultat.facture), "deja_vue": resultat.deja_vue}
+
+    @application.get("/v1/openapi.json", include_in_schema=False)
+    def v1_schema() -> dict:
+        """La description OpenAPI de la seule API publique, avec l'authentification par clé (bouton Authorize)."""
+        publiques = [route for route in application.routes if "API publique" in (getattr(route, "tags", None) or [])]
+        schema = get_openapi(
+            title="API Verifac",
+            version="1",
+            description="Déposer des factures et suivre leur état. Chaque appel porte l'en-tête « Authorization: Bearer dfk_… » "
+            "(clé créée dans Connecteurs › Accès développeurs).",
+            routes=publiques,
+            servers=[{"url": "/api"}],
+        )
+        schema.setdefault("components", {})["securitySchemes"] = {"cle": {"type": "http", "scheme": "bearer", "description": "Clé dfk_…"}}
+        schema["security"] = [{"cle": []}]
+        return schema
+
+    @application.get("/v1/docs", include_in_schema=False)
+    def v1_documentation() -> HTMLResponse:
+        return get_swagger_ui_html(openapi_url="/api/v1/openapi.json", title="API Verifac")
 
     # ───────── Réglages : l'équipe qui approuve, et la réception des factures ─────────
 

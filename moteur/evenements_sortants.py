@@ -11,10 +11,11 @@ Comment c'est fiable :
 - le travailleur envoie les livraisons, et retente en cas d'échec : 30 s, 2 min, 10 min,
   1 h, 6 h, puis abandon (visible dans Verifac) ;
 - chaque envoi est signé : HMAC-SHA256 de « horodatage.corps » avec le secret de
-  l'abonnement (en-têtes X-DocuFlow-Horodatage et X-DocuFlow-Signature). Le destinataire
+  l'abonnement (en-têtes X-Verifac-Horodatage et X-Verifac-Signature). Le destinataire
   vérifie la signature et refuse un envoi trop ancien ;
-- l'identifiant de livraison (X-DocuFlow-Livraison) est le même à chaque nouvel essai :
+- l'identifiant de livraison (X-Verifac-Livraison) est le même à chaque nouvel essai :
   le destinataire peut ignorer un doublon.
+- pendant la transition, les mêmes en-têtes partent aussi sous l'ancien nom X-DocuFlow-*.
 """
 
 import hashlib
@@ -129,6 +130,13 @@ def signer(secret: str, horodatage: str, corps: bytes) -> str:
     return hmac.new(secret.encode(), horodatage.encode() + b"." + corps, hashlib.sha256).hexdigest()
 
 
+def entetes_signes(evenement: str, livraison: str, horodatage: str, signature: str) -> dict[str, str]:
+    """Les en-têtes X-Verifac-*. Les mêmes valeurs partent aussi en X-DocuFlow-* (l'ancien nom du produit),
+    le temps que les abonnés existants passent au nouveau nom : à retirer ensuite."""
+    valeurs = {"Evenement": evenement, "Livraison": livraison, "Horodatage": horodatage, "Signature": signature}
+    return {f"X-{marque}-{nom}": valeur for marque in ("Verifac", "DocuFlow") for nom, valeur in valeurs.items()}
+
+
 def livrer_une(session: Session, client: httpx.Client | None = None) -> Livraison | None:
     """Envoie la plus ancienne livraison due. Ne valide pas la transaction : c'est à l'appelant."""
     livraison = session.scalars(
@@ -152,13 +160,7 @@ def livrer_une(session: Session, client: httpx.Client | None = None) -> Livraiso
         reponse = (client or httpx.Client(timeout=10, follow_redirects=False)).post(
             abonnement.url,
             content=corps,
-            headers={
-                "Content-Type": "application/json",
-                "X-DocuFlow-Evenement": livraison.evenement,
-                "X-DocuFlow-Livraison": str(livraison.id),
-                "X-DocuFlow-Horodatage": horodatage,
-                "X-DocuFlow-Signature": signer(secret, horodatage, corps),
-            },
+            headers={"Content-Type": "application/json", **entetes_signes(livraison.evenement, str(livraison.id), horodatage, signer(secret, horodatage, corps))},
         )
         resultat = f"HTTP {reponse.status_code}"
         reussi = 200 <= reponse.status_code < 300

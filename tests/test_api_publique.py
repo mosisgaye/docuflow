@@ -165,10 +165,27 @@ def test_un_evenement_est_prepare_signe_et_livre(client, fabrique):
     corps = json.loads(requete.content)
     assert corps["evenement"] == "facture.a_valider"
     assert corps["facture"]["numero"] == "FA-2026-0412"
-    horodatage = requete.headers["X-DocuFlow-Horodatage"]
+    horodatage = requete.headers["X-Verifac-Horodatage"]
     # Le destinataire vérifie la signature avec le secret reçu à la création de l'abonnement.
-    assert requete.headers["X-DocuFlow-Signature"] == evenements_sortants.signer(abonnement["secret"], horodatage, requete.content)
-    assert requete.headers["X-DocuFlow-Livraison"] == identifiant
+    assert requete.headers["X-Verifac-Signature"] == evenements_sortants.signer(abonnement["secret"], horodatage, requete.content)
+    assert requete.headers["X-Verifac-Livraison"] == identifiant
+    assert requete.headers["X-Verifac-Evenement"] == "facture.a_valider"
+    # Transition : les abonnés d'avant le changement de nom lisent encore les en-têtes X-DocuFlow-*, mêmes valeurs.
+    for nom in ("Horodatage", "Signature", "Livraison", "Evenement"):
+        assert requete.headers[f"X-DocuFlow-{nom}"] == requete.headers[f"X-Verifac-{nom}"]
+
+
+def test_la_documentation_ne_montre_que_l_api_publique(client):
+    # La documentation complète listait toutes les adresses internes (comptes, console…) : elle n'existe plus.
+    assert client.get("/docs").status_code == 404
+    assert client.get("/openapi.json").status_code == 404
+
+    schema = client.get("/v1/openapi.json")
+    assert schema.status_code == 200
+    assert set(schema.json()["paths"]) == {"/v1/factures", "/v1/factures/{facture_id}"}
+    assert schema.json()["components"]["securitySchemes"]["cle"]["scheme"] == "bearer"
+    page = client.get("/v1/docs")
+    assert page.status_code == 200 and "/api/v1/openapi.json" in page.text
 
 
 def test_seuls_les_evenements_choisis_partent(client, fabrique):
