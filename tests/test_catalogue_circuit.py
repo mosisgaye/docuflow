@@ -84,8 +84,19 @@ def test_les_bornes_des_relances_sont_celles_du_moteur(reglage):
 def test_les_etapes_fixes_ne_se_reglent_pas_et_les_futures_sont_annoncees():
     etapes = {e["type"]: e for e in CATALOGUE["etapes"]}
 
-    assert all(etapes[t]["fixe"] for t in ("reception", "lecture", "controles", "odoo"))
-    assert etapes["approbation"]["disponible"] and not etapes["prevenir"]["disponible"]
+    assert all(etapes[t]["fixe"] for t in ("debut", "fin"))
+    assert all(etapes[t]["disponible"] for t in ("condition", "approbation", "blocage"))
+    assert not etapes["prevenir"]["disponible"]
+
+
+def test_les_types_disponibles_sont_ceux_que_le_graphe_accepte():
+    import typing
+
+    from moteur.graphe_circuit import Noeud
+
+    acceptes = set(typing.get_args(Noeud.model_fields["type"].annotation))
+    proposes = {e["type"] for e in CATALOGUE["etapes"] if e["fixe"] or e["disponible"]}
+    assert proposes == acceptes
 
 
 def test_par_l_api(connexion, tmp_path):

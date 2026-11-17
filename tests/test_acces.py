@@ -111,7 +111,7 @@ def test_derriere_vercel_l_adresse_du_visiteur_est_comptee_et_la_limite_totale_t
 CIRCUIT = [
     ("get", "/circuit/catalogue", None),
     ("get", "/circuit/brouillon", None),
-    ("put", "/circuit/brouillon", {"auteur": "x", "regles": [{"nom": "x", "si": {"toujours": True}, "exige": ["gerant"]}]}),
+    ("put", "/circuit/brouillon", {"auteur": "x", "graphe": {"noeuds": [{"id": "debut", "type": "debut", "x": 0, "y": 0}, {"id": "fin", "type": "fin", "x": 1, "y": 0}], "liens": [{"de": "debut", "vers": "fin"}]}}),
     ("delete", "/circuit/brouillon", None),
     ("get", "/circuit/differences", None),
     ("post", "/circuit/publier", {"auteur": "x"}),

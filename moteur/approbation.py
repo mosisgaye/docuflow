@@ -229,12 +229,19 @@ REGLES_DEMO = [
 ]
 
 
-def publier(session: Session, regles: list[dict], auteur: str, relances: dict | None = None, changements: list | None = None) -> ReglesApprobation:
-    """Publie une nouvelle version des règles (et des relances), après les avoir vérifiées. Les anciennes restent."""
+def publier(
+    session: Session, regles: list[dict], auteur: str, relances: dict | None = None, changements: list | None = None, graphe: dict | None = None
+) -> ReglesApprobation:
+    """Publie une nouvelle version (règles ou graphe, et relances), après vérification. Les anciennes restent."""
+    from moteur.graphe_circuit import verifier as verifier_graphe  # le graphe s'appuie sur ce module
+
     verifiees = [Regle.model_validate(regle).model_dump(mode="json", exclude_none=True) for regle in regles]
+    graphe_verifie = verifier_graphe(graphe).model_dump(mode="json", exclude_none=True) if graphe is not None else None
     relances_verifiees = verifier_relances(relances)
     suivante = (session.scalar(select(func.max(ReglesApprobation.version))) or 0) + 1
-    version = ReglesApprobation(version=suivante, regles=verifiees, relances=relances_verifiees, changements=changements, publie_par=auteur)
+    version = ReglesApprobation(
+        version=suivante, regles=verifiees, relances=relances_verifiees, changements=changements, graphe=graphe_verifie, publie_par=auteur
+    )
     session.add(version)
     session.flush()
     return version
@@ -251,6 +258,14 @@ def circuit(donnees: dict, anomalies: list[dict], version: ReglesApprobation | N
     """Les niveaux d'approbation exigés pour cette facture, dans l'ordre, avec la règle qui les impose."""
     if version is None:
         return {"version": None, "niveaux": [{"niveau": "comptable", "raisons": ["Validation simple : aucune règle publiée"]}], "bloque": None}
+    if getattr(version, "graphe", None):
+        from moteur.graphe_circuit import Graphe, parcourir
+
+        parcours = parcourir(Graphe.model_validate(version.graphe), donnees, anomalies)
+        calcule = {"version": version.version, "niveaux": parcours["niveaux"], "bloque": parcours["bloque"], "chemin": parcours["chemin"]}
+        if version.relances:
+            calcule["relances"] = version.relances
+        return calcule
     raisons: dict[str, list[str]] = {}
     bloque = None
     for regle in (Regle.model_validate(brute) for brute in version.regles):

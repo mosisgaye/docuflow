@@ -20,7 +20,7 @@
     POST /regles                      publier une nouvelle version des règles
     GET  /circuit/catalogue           ce que l'éditeur de circuit peut régler (champs, comparaisons, anomalies…)
     GET  /circuit/brouillon           le brouillon du circuit, ou la version en service s'il n'y en a pas
-    PUT  /circuit/brouillon           enregistrer le brouillon (vérifié ; aucune facture n'est touchée)
+    PUT  /circuit/brouillon           enregistrer le graphe du brouillon (vérifié ; aucune facture n'est touchée)
     DELETE /circuit/brouillon         annuler les modifications : retour à la version en service
     GET  /circuit/differences         ce que le brouillon change, en phrases
     POST /circuit/publier             faire du brouillon la version suivante (les factures en cours gardent la leur)
@@ -523,7 +523,7 @@ def creer_application(
 
     class Brouillon(BaseModel):
         auteur: str = Field(min_length=1, max_length=100)
-        regles: list = Field(max_length=editeur_circuit.REGLES_MAX)
+        graphe: dict  # les étapes et les liens dessinés (moteur/graphe_circuit.py), vérifiés par le moteur
         relances: dict | None = None
 
     @application.put("/circuit/brouillon")
@@ -531,7 +531,7 @@ def creer_application(
         if not demande.auteur.strip():
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Indiquez votre nom : chaque modification est inscrite à un nom.")
         try:
-            return editeur_circuit.enregistrer(session, demande.regles, demande.relances, demande.auteur.strip())
+            return editeur_circuit.enregistrer(session, demande.graphe, demande.relances, demande.auteur.strip())
         except editeur_circuit.BrouillonInvalide as erreur:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erreur)) from erreur
 

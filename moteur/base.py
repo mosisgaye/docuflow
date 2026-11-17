@@ -199,6 +199,9 @@ class ReglesApprobation(Base):
     relances: Mapped[dict | None] = mapped_column(JSONB)
     # Ce que cette version a changé, en phrases lisibles (publiée depuis l'éditeur). Absent avant l'éditeur.
     changements: Mapped[list | None] = mapped_column(JSONB)
+    # Le circuit dessiné dans l'éditeur (étapes et liens, moteur/graphe_circuit.py). S'il est là, il fait foi
+    # et « regles » reste vide ; sinon (versions d'avant), le circuit se calcule par les règles.
+    graphe: Mapped[dict | None] = mapped_column(JSONB)
     publie_par: Mapped[str] = mapped_column(String(100))
     publie_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -214,6 +217,7 @@ class BrouillonCircuit(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False, default=1)
     regles: Mapped[list] = mapped_column(JSONB)
     relances: Mapped[dict | None] = mapped_column(JSONB)
+    graphe: Mapped[dict | None] = mapped_column(JSONB)  # le circuit dessiné ; « regles » reste vide
     modifie_par: Mapped[str] = mapped_column(String(100))
     modifie_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

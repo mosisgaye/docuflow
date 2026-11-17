@@ -57,17 +57,17 @@ RELANCES = [
     {"nom": "maximum", "libelle": "Relances au plus", "unite": "relances"},
 ]
 
-# Les étapes du circuit. Les fixes protègent le paiement : elles se voient, elles ne se règlent pas.
+# Les types d'étapes du graphe. Début et Odoo sont fixes (un seul de chaque, ni ajout ni retrait) ;
+# les autres s'ajoutent depuis la palette. « disponible : False » : annoncés, pas encore exécutés.
 ETAPES = [
-    {"type": "reception", "libelle": "Réception", "fixe": True},
-    {"type": "lecture", "libelle": "Lecture IA", "fixe": True},
-    {"type": "controles", "libelle": "Contrôles", "fixe": True},
-    {"type": "approbation", "libelle": "Approbation", "fixe": False, "disponible": True},
-    {"type": "blocage", "libelle": "Blocage par règle", "fixe": False, "disponible": True},
-    {"type": "prevenir", "libelle": "Prévenir par mail", "fixe": False, "disponible": False},
-    {"type": "envoyer", "libelle": "Envoyer à un logiciel", "fixe": False, "disponible": False},
-    {"type": "attendre", "libelle": "Attendre", "fixe": False, "disponible": False},
-    {"type": "odoo", "libelle": "Enregistrer dans Odoo", "fixe": True},
+    {"type": "debut", "libelle": "Début", "description": "Réception, lecture IA et contrôles", "fixe": True},
+    {"type": "condition", "libelle": "Condition", "description": "Deux chemins : Oui et Non", "fixe": False, "disponible": True},
+    {"type": "approbation", "libelle": "Approbation", "description": "Une personne de l'équipe approuve", "fixe": False, "disponible": True},
+    {"type": "blocage", "libelle": "Blocage", "description": "Arrête la facture tant que le problème n'est pas réglé", "fixe": False, "disponible": True},
+    {"type": "prevenir", "libelle": "Prévenir par mail", "description": "Informer quelqu'un, sans lui demander d'agir", "fixe": False, "disponible": False},
+    {"type": "envoyer", "libelle": "Envoyer à un logiciel", "description": "Événement signé vers votre outil", "fixe": False, "disponible": False},
+    {"type": "attendre", "libelle": "Attendre", "description": "Jusqu'à une date, par exemple avant l'échéance", "fixe": False, "disponible": False},
+    {"type": "fin", "libelle": "Enregistrer dans Odoo", "description": "Facture fournisseur et PDF", "fixe": True},
 ]
 
 

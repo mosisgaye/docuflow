@@ -1,4 +1,4 @@
-"""Différences et publication : ce que le brouillon change, en phrases, puis la version suivante."""
+"""Différences et publication : ce que le brouillon (un graphe) change, en phrases, puis la version suivante."""
 
 import copy
 import json
@@ -6,11 +6,12 @@ import pathlib
 
 import pytest
 from fastapi.testclient import TestClient
+from graphes_exemples import avec_blocage_iban, circuit_simple, seuil
 from sqlalchemy.orm import Session
 
 from moteur import editeur_circuit
 from moteur.api import creer_application
-from moteur.approbation import REGLES_DEMO, en_lignes, publier, version_en_vigueur
+from moteur.approbation import REGLES_DEMO, publier, version_en_vigueur
 from moteur.base import BrouillonCircuit
 from moteur.extraction_llm import ResultatExtraction
 from moteur.modeles import Facture
@@ -18,13 +19,6 @@ from moteur.modeles import Facture
 FACTURES = pathlib.Path(__file__).resolve().parent.parent / "factures"
 ATTENDU = json.loads((FACTURES / "attendu.json").read_text(encoding="utf-8"))
 MOYENNE = "facture-FA-2026-0412.pdf"  # 3 166,20 € TTC
-
-
-def seuil_dfi(seuil: str) -> list[dict]:
-    """Les règles de démonstration, avec un autre seuil pour le directeur financier."""
-    regles = copy.deepcopy(REGLES_DEMO)
-    regles[1]["si"] = {"lignes": [{"champ": "total_ttc", "comparaison": "superieur_a", "valeur": seuil}], "combinaison": "une"}
-    return regles
 
 
 # ───────── Les phrases ─────────
@@ -56,52 +50,62 @@ def test_une_condition_se_lit_en_francais(condition, attendu):
 
 
 def test_sans_brouillon_aucune_difference(session):
-    publier(session, REGLES_DEMO, "Moussa")
+    publier(session, [], "Moussa", graphe=circuit_simple())
 
     assert editeur_circuit.differences(session) == {"version_en_service": 1, "modifie": False, "changements": []}
 
 
 def test_un_seuil_change_se_dit_en_une_phrase(session):
-    publier(session, REGLES_DEMO, "Moussa")
-    editeur_circuit.enregistrer(session, seuil_dfi("2500"), None, "Claire")
+    publier(session, [], "Moussa", graphe=circuit_simple())
+    editeur_circuit.enregistrer(session, circuit_simple("2500"), None, "Claire")
 
     changements = editeur_circuit.differences(session)["changements"]
 
     assert [c["genre"] for c in changements] == ["modification"]
-    assert changements[0]["texte"] == (
-        "Plus de 1 000 € TTC : Montant TTC supérieur à 1 000 €, exige directeur financier"
-        " → Montant TTC supérieur à 2 500 €, exige directeur financier."
-    )
+    assert changements[0]["texte"] == "Plus de 1 000 € : si Montant TTC supérieur à 1 000 € → si Montant TTC supérieur à 2 500 €."
 
 
-def test_ajout_retrait_et_relances(session):
-    publier(session, REGLES_DEMO, "Moussa")
-    regles = [r for r in REGLES_DEMO if r["nom"] != "Plus de 5 000 € TTC"]
-    regles.append({"nom": "Garage : toujours le gérant", "si": {"lignes": [{"champ": "fournisseur_nom", "comparaison": "contient", "valeur": "Garage"}]}, "exige": ["gerant"]})
-    editeur_circuit.enregistrer(session, regles, {"comptable": {"delai_h": 24, "delai_urgent_h": 12, "maximum": 2}}, "Claire")
+def test_ajout_lien_et_relances(session):
+    publier(session, [], "Moussa", graphe=circuit_simple())
+    editeur_circuit.enregistrer(session, avec_blocage_iban(circuit_simple()), {"comptable": {"delai_h": 24, "delai_urgent_h": 12, "maximum": 2}}, "Claire")
 
     textes = [c["texte"] for c in editeur_circuit.differences(session)["changements"]]
 
-    assert "Règle retirée : Plus de 5 000 € TTC." in textes
-    assert "Règle ajoutée : Garage : toujours le gérant (Nom du fournisseur contient « Garage », exige gérant)." in textes
+    assert "Étape ajoutée : IBAN changé (si Anomalie : IBAN différent de celui connu ou IBAN jamais vu pour ce fournisseur)." in textes
+    assert "Étape ajoutée : IBAN à vérifier (bloque : Appelez le fournisseur.)." in textes
+    assert "Après « Début », la facture va maintenant vers « IBAN changé » au lieu de « Comptable »." in textes
     assert (
         "Relances du comptable : relance après 48 h (24 h si l'échéance approche), 2 au plus"
         " → relance après 24 h (12 h si l'échéance approche), 2 au plus." in textes
     )
-    assert len(textes) == 3
+    assert len(textes) == 4
 
 
-@pytest.mark.parametrize(
-    "meme_sens",
-    [
-        [{**r, "si": en_lignes(r["si"])} for r in REGLES_DEMO],  # réécrites en lignes
-        seuil_dfi("1000.00"),  # le même seuil, écrit autrement
-        seuil_dfi("1 000"),
-        list(reversed(REGLES_DEMO)),  # un autre ordre
-    ],
-)
-def test_le_meme_circuit_ecrit_autrement_n_est_pas_un_changement(session, meme_sens):
-    publier(session, REGLES_DEMO, "Moussa")
+def test_retirer_une_etape(session):
+    publier(session, [], "Moussa", graphe=avec_blocage_iban(circuit_simple()))
+    editeur_circuit.enregistrer(session, circuit_simple(), None, "Claire")
+
+    textes = [c["texte"] for c in editeur_circuit.differences(session)["changements"]]
+
+    assert "Étape retirée : IBAN changé." in textes and "Étape retirée : IBAN à vérifier." in textes
+
+
+def deplace() -> dict:
+    graphe = circuit_simple()
+    for noeud in graphe["noeuds"]:
+        noeud["x"] += 37
+    return graphe
+
+
+def ecrit_autrement() -> dict:
+    graphe = circuit_simple()
+    graphe["noeuds"][2]["si"] = seuil("1 000,00")
+    return graphe
+
+
+@pytest.mark.parametrize("meme_sens", [deplace(), ecrit_autrement()])
+def test_deplacer_ou_ecrire_autrement_n_est_pas_un_changement(session, meme_sens):
+    publier(session, [], "Moussa", graphe=circuit_simple())
     editeur_circuit.enregistrer(session, meme_sens, None, "Claire")
 
     assert editeur_circuit.differences(session)["changements"] == []
@@ -110,32 +114,32 @@ def test_le_meme_circuit_ecrit_autrement_n_est_pas_un_changement(session, meme_s
 # ───────── La publication ─────────
 
 
-def test_publier_cree_la_version_suivante_avec_ses_changements_et_jette_le_brouillon(session):
-    publier(session, REGLES_DEMO, "Moussa")
-    editeur_circuit.enregistrer(session, seuil_dfi("2500"), None, "Claire")
+def test_publier_cree_la_version_suivante_avec_son_graphe_et_jette_le_brouillon(session):
+    publier(session, REGLES_DEMO, "Moussa")  # une version d'avant, en règles
+    editeur_circuit.enregistrer(session, circuit_simple("2500"), None, "Claire")
 
     version = editeur_circuit.publier_brouillon(session, "Paul")
 
-    assert version.version == 2 and version.publie_par == "Paul"
-    assert version_en_vigueur(session).version == 2
-    assert version.changements == [editeur_circuit.comparer({"regles": REGLES_DEMO}, {"regles": seuil_dfi("2500")})[0]["texte"]]
+    assert version.version == 2 and version.publie_par == "Paul" and version.regles == []
+    assert [n["id"] for n in version.graphe["noeuds"]] == [n["id"] for n in circuit_simple()["noeuds"]]
+    assert version.changements and version_en_vigueur(session).version == 2
     assert session.get(BrouillonCircuit, 1) is None
     assert editeur_circuit.lire(session)["modifie"] is False
 
 
 def test_la_premiere_publication_part_de_rien(session):
-    editeur_circuit.enregistrer(session, REGLES_DEMO, None, "Claire")
+    editeur_circuit.enregistrer(session, circuit_simple(), None, "Claire")
 
     version = editeur_circuit.publier_brouillon(session, "Claire")
 
-    assert version.version == 1 and len(version.changements) == 5  # 5 ajouts : la règle du comptable est déjà là
+    assert version.version == 1 and version.graphe is not None
 
 
-@pytest.mark.parametrize("brouillon", [None, "identique"])
+@pytest.mark.parametrize("brouillon", [None, "identique", "deplace"])
 def test_rien_a_publier_est_refuse(session, brouillon):
-    publier(session, REGLES_DEMO, "Moussa")
+    publier(session, [], "Moussa", graphe=circuit_simple())
     if brouillon:
-        editeur_circuit.enregistrer(session, REGLES_DEMO, None, "Claire")
+        editeur_circuit.enregistrer(session, circuit_simple() if brouillon == "identique" else deplace(), None, "Claire")
 
     with pytest.raises(editeur_circuit.PublicationImpossible):
         editeur_circuit.publier_brouillon(session, "Claire")
@@ -156,13 +160,7 @@ def client(connexion, tmp_path):
         return ResultatExtraction(donnees, 0.1, "test", "faux")
 
     return TestClient(
-        creer_application(
-            fabrique_session=fabrique,
-            extracteur=extracteur,
-            dossier_fichiers=tmp_path,
-            traiter_tout_de_suite=True,
-            odoo=None,
-        )
+        creer_application(fabrique_session=fabrique, extracteur=extracteur, dossier_fichiers=tmp_path, traiter_tout_de_suite=True, odoo=None)
     )
 
 
@@ -177,8 +175,8 @@ def test_par_l_api_publier_ne_touche_que_les_factures_suivantes(client):
     avant = deposer(client)  # 3 166,20 € : comptable puis directeur financier
     assert [n["niveau"] for n in avant["circuit"]["niveaux"]] == ["comptable", "directeur_financier"]
 
-    client.put("/circuit/brouillon", json={"auteur": "Claire", "regles": seuil_dfi("5000")})
-    assert len(client.get("/circuit/differences").json()["changements"]) == 1
+    client.put("/circuit/brouillon", json={"auteur": "Claire", "graphe": circuit_simple("5000")})
+    assert client.get("/circuit/differences").json()["changements"]
     publie = client.post("/circuit/publier", json={"auteur": "Paul"})
     assert publie.status_code == 201 and publie.json()["version"] == 2
 
@@ -188,6 +186,7 @@ def test_par_l_api_publier_ne_touche_que_les_factures_suivantes(client):
     assert apres["id"] != avant["id"]
     assert [n["niveau"] for n in apres["circuit"]["niveaux"]] == ["comptable"]  # 3 166,20 € < 5 000 €
     assert apres["circuit"]["version"] == 2
+    assert {"id": "seuil", "sortie": "non"} in apres["circuit"]["chemin"]  # le chemin suivi est gardé avec la facture
     assert toujours["circuit"]["version"] == 1  # la facture en cours n'a pas bougé
     assert [n["niveau"] for n in toujours["circuit"]["niveaux"]] == ["comptable", "directeur_financier"]
 
@@ -196,3 +195,14 @@ def test_par_l_api_rien_a_publier_donne_un_409_et_un_auteur_est_exige(client):
     assert client.post("/circuit/publier", json={"auteur": "Paul"}).status_code == 409
     assert client.post("/circuit/publier", json={"auteur": "  "}).status_code == 422
     assert client.post("/circuit/publier", json={}).status_code == 422
+
+
+def test_le_graphe_publie_est_un_copie_independante(session):
+    graphe = circuit_simple()
+    editeur_circuit.enregistrer(session, graphe, None, "Claire")
+    version = editeur_circuit.publier_brouillon(session, "Claire")
+
+    graphe["noeuds"][2]["si"] = seuil("9999")  # modifier l'objet envoyé ne change pas la version publiée
+
+    assert version.graphe["noeuds"][2]["si"]["lignes"][0]["valeur"] == "1000"
+    assert copy.deepcopy(version.graphe) == version.graphe

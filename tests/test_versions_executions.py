@@ -1,6 +1,5 @@
 """Versions publiées et exécutions : l'historique du circuit, et le chemin réellement suivi par chaque facture."""
 
-import copy
 import json
 import pathlib
 from datetime import UTC, datetime, timedelta
@@ -15,16 +14,11 @@ from moteur.api import creer_application
 from moteur.approbation import REGLES_DEMO, publier
 from moteur.extraction_llm import ResultatExtraction
 from moteur.modeles import Facture
+from graphes_exemples import circuit_simple
 
 FACTURES = pathlib.Path(__file__).resolve().parent.parent / "factures"
 ATTENDU = json.loads((FACTURES / "attendu.json").read_text(encoding="utf-8"))
 MOYENNE = "facture-FA-2026-0412.pdf"  # 3 166,20 € TTC : comptable puis directeur financier
-
-
-def seuil_dfi(seuil: str) -> list[dict]:
-    regles = copy.deepcopy(REGLES_DEMO)
-    regles[1]["si"] = {"lignes": [{"champ": "total_ttc", "comparaison": "superieur_a", "valeur": seuil}], "combinaison": "une"}
-    return regles
 
 
 # ───────── Les versions ─────────
@@ -36,14 +30,15 @@ def test_sans_rien_de_publie_aucune_version(session):
 
 def test_les_versions_vont_de_la_plus_recente_a_la_plus_ancienne(session):
     publier(session, REGLES_DEMO, "Moussa")  # avant l'éditeur : pas de liste de changements
-    editeur_circuit.enregistrer(session, seuil_dfi("2500"), {"comptable": {"delai_h": 24, "delai_urgent_h": 12, "maximum": 2}}, "Claire")
+    editeur_circuit.enregistrer(session, circuit_simple("2500"), {"comptable": {"delai_h": 24, "delai_urgent_h": 12, "maximum": 2}}, "Claire")
     editeur_circuit.publier_brouillon(session, "Paul")
 
     liste = editeur_circuit.versions(session)
 
     assert [(v["version"], v["en_service"], v["publie_par"]) for v in liste] == [(2, True, "Paul"), (1, False, "Moussa")]
-    assert liste[0]["nombre_regles"] == len(REGLES_DEMO) and liste[0]["relances_reglees"] is True
-    assert len(liste[0]["changements"]) == 2  # le seuil, et les relances du comptable
+    assert liste[0]["nombre_etapes"] == 5 and liste[0]["relances_reglees"] is True
+    assert liste[1]["nombre_etapes"] is None and liste[1]["nombre_regles"] == len(REGLES_DEMO)
+    assert liste[0]["changements"]  # depuis les règles : chaque étape du graphe est une nouveauté
     assert liste[1]["changements"] is None and liste[1]["relances_reglees"] is False
 
 

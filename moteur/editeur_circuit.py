@@ -5,12 +5,12 @@ sur un brouillon unique : on l'enregistre autant de fois qu'on veut, on peut l'a
 publication en fait une nouvelle version. Tant qu'il n'est pas publié, aucune facture
 ne le voit.
 
-Sans brouillon, l'éditeur s'ouvre sur la version en service, réécrite en lignes (la forme de l'éditeur).
+Le circuit se dessine en graphe, comme dans n8n (moteur/graphe_circuit.py). Sans brouillon, l'éditeur
+s'ouvre sur la version en service ; une version d'avant (en règles) y est convertie sans changer de sens.
 """
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from types import SimpleNamespace
 
 from pydantic import ValidationError
 from sqlalchemy import func, select
@@ -20,9 +20,7 @@ from moteur.approbation import (
     LIBELLES,
     NIVEAUX,
     RELANCES_DEFAUT,
-    Regle,
     Relance,
-    circuit,
     en_lignes,
     niveau_attendu,
     publier,
@@ -31,8 +29,8 @@ from moteur.approbation import (
 )
 from moteur.base import BrouillonCircuit, Etat, Evenement, FactureEnBase, ReglesApprobation
 from moteur.catalogue_circuit import ANOMALIES, CHAMPS, COMPARAISONS
-
-REGLES_MAX = 50
+from moteur.graphe_circuit import GrapheInvalide, depuis_regles, parcourir
+from moteur.graphe_circuit import verifier as verifier_graphe
 
 # Sans aucune version publiée, le moteur demande une seule validation, celle du comptable : l'éditeur part de là.
 REGLES_DE_DEPART = [{"nom": "Toute facture est approuvée par le comptable", "si": {"toujours": True}, "exige": ["comptable"]}]
@@ -68,28 +66,24 @@ def _message(erreur: ValidationError | ValueError, ou: str) -> str:
     return f"{ou}{f' ({chemin})' if chemin else ''} : {texte}"
 
 
-def _en_lignes(regles: list[dict]) -> list[dict]:
-    return [{**regle, "si": en_lignes(regle["si"])} for regle in regles]
+def _graphe_de_regles(regles: list[dict]) -> dict:
+    return depuis_regles([{**regle, "si": en_lignes(regle["si"])} for regle in regles])
 
 
-def verifier(regles: list[dict], relances: dict | None) -> tuple[list[dict], dict | None]:
-    """Les règles et les relances vérifiées, ou BrouillonInvalide avec un message clair."""
-    if not isinstance(regles, list) or not 1 <= len(regles) <= REGLES_MAX:
-        raise BrouillonInvalide(f"Le circuit compte de 1 à {REGLES_MAX} règles.")
-    verifiees = []
-    for numero, regle in enumerate(regles, start=1):
-        try:
-            verifiees.append(Regle.model_validate(regle).model_dump(mode="json", exclude_none=True))
-        except ValidationError as erreur:
-            nom = regle.get("nom") if isinstance(regle, dict) else None
-            raise BrouillonInvalide(_message(erreur, f"Règle {numero}{f' « {nom} »' if nom else ''}")) from erreur
-    # Les règles se retrouvent par leur nom (différences, résultat du test) : deux règles du même nom se confondraient.
-    vus: dict[str, int] = {}
-    for numero, regle in enumerate(verifiees, start=1):
-        cle = " ".join(regle["nom"].split()).casefold()
-        if cle in vus:
-            raise BrouillonInvalide(f"Règle {numero} « {regle['nom']} » : la règle {vus[cle]} porte déjà ce nom. Donnez-lui un autre nom.")
-        vus[cle] = numero
+def _graphe_de_version(version: ReglesApprobation | None) -> dict:
+    if version is None:
+        return _graphe_de_regles(REGLES_DE_DEPART)
+    return version.graphe or _graphe_de_regles(version.regles)
+
+
+def verifier(graphe: dict, relances: dict | None) -> tuple[dict, dict | None]:
+    """Le graphe et les relances vérifiés, ou BrouillonInvalide avec un message clair."""
+    if not isinstance(graphe, dict):
+        raise BrouillonInvalide("Le circuit est un graphe : des étapes et des liens.")
+    try:
+        verifie = verifier_graphe(graphe).model_dump(mode="json", exclude_none=True)
+    except GrapheInvalide as erreur:
+        raise BrouillonInvalide(str(erreur)) from erreur
     if isinstance(relances, dict):
         for niveau, reglage in relances.items():
             if niveau in LIBELLES:
@@ -101,15 +95,13 @@ def verifier(regles: list[dict], relances: dict | None) -> tuple[list[dict], dic
         relances_verifiees = verifier_relances(relances)
     except ValueError as erreur:
         raise BrouillonInvalide(_message(erreur, "Relances")) from erreur
-    return verifiees, relances_verifiees
+    return verifie, relances_verifiees
 
 
 def en_service(session: Session) -> dict:
-    """La version en service, telle que l'éditeur l'affiche."""
+    """La version en service, en graphe (les versions d'avant sont converties, sans changer leur sens)."""
     version = version_en_vigueur(session)
-    if version is None:
-        return {"version": None, "regles": _en_lignes(REGLES_DE_DEPART), "relances": None}
-    return {"version": version.version, "regles": _en_lignes(version.regles), "relances": version.relances}
+    return {"version": version.version if version else None, "graphe": _graphe_de_version(version), "relances": version.relances if version else None}
 
 
 def lire(session: Session) -> dict:
@@ -120,7 +112,7 @@ def lire(session: Session) -> dict:
         return {**service, "version_en_service": service["version"], "modifie": False, "modifie_par": None, "modifie_le": None}
     return {
         "version_en_service": service["version"],
-        "regles": _en_lignes(brouillon.regles),
+        "graphe": brouillon.graphe or _graphe_de_regles(brouillon.regles),
         "relances": brouillon.relances,
         "modifie": True,
         "modifie_par": brouillon.modifie_par,
@@ -128,15 +120,15 @@ def lire(session: Session) -> dict:
     }
 
 
-def enregistrer(session: Session, regles: list[dict], relances: dict | None, auteur: str) -> dict:
+def enregistrer(session: Session, graphe: dict, relances: dict | None, auteur: str) -> dict:
     """Vérifie puis enregistre le brouillon (le remplace s'il existe). Ne touche à aucune facture."""
-    verifiees, relances_verifiees = verifier(regles, relances)
+    verifie, relances_verifiees = verifier(graphe, relances)
     brouillon = session.get(BrouillonCircuit, 1)
     if brouillon is None:
-        brouillon = BrouillonCircuit(id=1, regles=verifiees, relances=relances_verifiees, modifie_par=auteur)
+        brouillon = BrouillonCircuit(id=1, regles=[], graphe=verifie, relances=relances_verifiees, modifie_par=auteur)
         session.add(brouillon)
     else:
-        brouillon.regles, brouillon.relances, brouillon.modifie_par = verifiees, relances_verifiees, auteur
+        brouillon.regles, brouillon.graphe, brouillon.relances, brouillon.modifie_par = [], verifie, relances_verifiees, auteur
     session.flush()
     session.refresh(brouillon)
     return lire(session)
@@ -189,13 +181,30 @@ def resume_regle(regle: dict) -> str:
     return f"{resume_condition(regle['si'])}, {effet}"
 
 
+def nom_etape(noeud: dict) -> str:
+    return (noeud.get("nom") or "").strip() or {"debut": "Début", "fin": "Enregistrer dans Odoo", "condition": "Condition", "blocage": "Blocage"}.get(
+        noeud["type"], LIBELLES.get(noeud.get("niveau") or "", "Approbation")
+    )
+
+
+def resume_etape(noeud: dict) -> str:
+    """Ce que fait une étape, en une phrase."""
+    if noeud["type"] == "condition":
+        return f"si {resume_condition(noeud['si'])}"
+    if noeud["type"] == "approbation":
+        return f"approbation du {LIBELLES[noeud['niveau']].lower()}"
+    if noeud["type"] == "blocage":
+        return f"bloque : {noeud['message']}"
+    return nom_etape(noeud)
+
+
 def _resume_relance(reglage: dict) -> str:
     return f"relance après {reglage['delai_h']} h ({reglage['delai_urgent_h']} h si l'échéance approche), {reglage['maximum']} au plus"
 
 
-def _comparable(regle: dict) -> dict:
-    """Une règle sous une forme où deux écritures du même sens sont égales (ancienne forme ou lignes)."""
-    si = en_lignes(regle["si"])
+def _comparable_condition(condition: dict) -> dict:
+    """Une condition sous une forme où deux écritures du même sens sont égales."""
+    si = en_lignes(condition)
     if "lignes" in si:
         lignes = []
         for ligne in si["lignes"]:
@@ -206,29 +215,53 @@ def _comparable(regle: dict) -> dict:
                 valeur = sorted(valeur)  # l'ordre des anomalies ne change rien
             lignes.append({**ligne, "valeur": valeur})
         si = {**si, "lignes": lignes, "combinaison": si.get("combinaison") or "une"}
-    return {**regle, "si": si}
+    return si
+
+
+def _sens(noeud: dict) -> dict:
+    """Ce qui compte dans une étape : son type et ses réglages, pas sa position à l'écran."""
+    sens = {cle: noeud.get(cle) for cle in ("type", "nom", "niveau", "message")}
+    if noeud.get("si") is not None:
+        sens["si"] = _comparable_condition(noeud["si"])
+    return sens
 
 
 def comparer(avant: dict, apres: dict) -> list[dict]:
-    """Ce qui change d'un circuit (règles, relances) à l'autre, règle par règle (retrouvée par son nom)."""
-    changements = []
-    anciennes = {r["nom"]: _comparable(r) for r in avant["regles"]}
-    nouvelles = {r["nom"]: _comparable(r) for r in apres["regles"]}
-    for nom, regle in anciennes.items():
-        if nom not in nouvelles:
-            changements.append({"genre": "retrait", "regle": nom, "avant": resume_regle(regle), "apres": None, "texte": f"Règle retirée : {nom}."})
-    for nom, regle in nouvelles.items():
-        if nom not in anciennes:
-            changements.append({"genre": "ajout", "regle": nom, "avant": None, "apres": resume_regle(regle), "texte": f"Règle ajoutée : {nom} ({resume_regle(regle)})."})
-        elif regle != anciennes[nom]:
-            ancien, nouveau = resume_regle(anciennes[nom]), resume_regle(regle)
-            changements.append({"genre": "modification", "regle": nom, "avant": ancien, "apres": nouveau, "texte": f"{nom} : {ancien} → {nouveau}."})
+    """Ce qui change d'un circuit à l'autre : étapes ajoutées, retirées, modifiées, liens, relances.
+
+    Les étapes se retrouvent par leur identifiant ; déplacer une étape à l'écran n'est pas un changement.
+    """
+    changements: list[dict] = []
+    anciennes = {n["id"]: n for n in avant["graphe"]["noeuds"]}
+    nouvelles = {n["id"]: n for n in apres["graphe"]["noeuds"]}
+    for identifiant, noeud in anciennes.items():
+        if identifiant not in nouvelles:
+            changements.append({"genre": "retrait", "etape": identifiant, "avant": resume_etape(noeud), "apres": None, "texte": f"Étape retirée : {nom_etape(noeud)}."})
+    for identifiant, noeud in nouvelles.items():
+        if identifiant not in anciennes:
+            changements.append({"genre": "ajout", "etape": identifiant, "avant": None, "apres": resume_etape(noeud), "texte": f"Étape ajoutée : {nom_etape(noeud)} ({resume_etape(noeud)})."})
+        elif _sens(noeud) != _sens(anciennes[identifiant]):
+            ancien, nouveau = resume_etape(anciennes[identifiant]), resume_etape(noeud)
+            texte = f"{nom_etape(noeud)} : {ancien} → {nouveau}." if ancien != nouveau else f"{nom_etape(anciennes[identifiant])} s'appelle maintenant « {nom_etape(noeud)} »."
+            changements.append({"genre": "modification", "etape": identifiant, "avant": ancien, "apres": nouveau, "texte": texte})
+
+    def suites(graphe: dict) -> dict:
+        return {(lien["de"], lien.get("sortie")): lien["vers"] for lien in graphe["liens"]}
+
+    noms = {**{i: nom_etape(n) for i, n in anciennes.items()}, **{i: nom_etape(n) for i, n in nouvelles.items()}}
+    avant_liens, apres_liens = suites(avant["graphe"]), suites(apres["graphe"])
+    for (de, sortie), vers in apres_liens.items():
+        if de in anciennes and avant_liens.get((de, sortie)) not in (None, vers):
+            branche = f" (sortie {sortie.capitalize()})" if sortie else ""
+            texte = f"Après « {noms[de]} »{branche}, la facture va maintenant vers « {noms[vers]} » au lieu de « {noms[avant_liens[(de, sortie)]]} »."
+            changements.append({"genre": "lien", "etape": de, "avant": noms[avant_liens[(de, sortie)]], "apres": noms[vers], "texte": texte})
+
     for niveau in NIVEAUX:
         ancien = (avant.get("relances") or {}).get(niveau) or RELANCES_DEFAUT
         nouveau = (apres.get("relances") or {}).get(niveau) or RELANCES_DEFAUT
         if ancien != nouveau:
             texte = f"Relances du {LIBELLES[niveau].lower()} : {_resume_relance(ancien)} → {_resume_relance(nouveau)}."
-            changements.append({"genre": "relances", "regle": None, "niveau": niveau, "avant": _resume_relance(ancien), "apres": _resume_relance(nouveau), "texte": texte})
+            changements.append({"genre": "relances", "etape": None, "niveau": niveau, "avant": _resume_relance(ancien), "apres": _resume_relance(nouveau), "texte": texte})
     return changements
 
 
@@ -250,10 +283,11 @@ def publier_brouillon(session: Session, auteur: str) -> ReglesApprobation:
     brouillon = session.get(BrouillonCircuit, 1, with_for_update=True)  # deux publications à la fois : l'une attend l'autre
     if brouillon is None:
         raise PublicationImpossible("Aucune modification à publier.")
-    changements = comparer(en_service(session), {"regles": brouillon.regles, "relances": brouillon.relances})
+    graphe = brouillon.graphe or _graphe_de_regles(brouillon.regles)
+    changements = comparer(en_service(session), {"graphe": graphe, "relances": brouillon.relances})
     if not changements:
         raise PublicationImpossible("Le brouillon est identique à la version en service : rien à publier.")
-    version = publier(session, brouillon.regles, auteur, brouillon.relances, [c["texte"] for c in changements])
+    version = publier(session, [], auteur, brouillon.relances, [c["texte"] for c in changements], graphe=graphe)
     session.delete(brouillon)
     session.flush()
     return version
@@ -273,8 +307,8 @@ def _niveaux(calcule: dict) -> list[str]:
 def tester(session: Session, facture: FactureEnBase) -> dict:
     """Le chemin que prendrait cette facture avec le brouillon (ou la version en service s'il n'y en a pas).
 
-    Lecture seule : rien n'est écrit, ni sur la facture, ni dans le journal. Le calcul est celui du
-    moteur (approbation.circuit), sur les données et les anomalies que la facture a déjà.
+    Lecture seule : rien n'est écrit, ni sur la facture, ni dans le journal. Le parcours est celui du
+    moteur (graphe_circuit.parcourir), sur les données et les anomalies que la facture a déjà.
     """
     if facture.donnees is None:
         raise TestImpossible("Cette facture n'est pas encore lue : elle ne peut pas servir de test.")
@@ -284,27 +318,25 @@ def tester(session: Session, facture: FactureEnBase) -> dict:
     libelles = {a["code"]: a["libelle"] for a in ANOMALIES}
     arretee = any(a.get("gravite") == "bloquante" for a in anomalies)
 
-    regles = []
-    for brute in brouillon["regles"]:
-        regle = Regle.model_validate(brute)
-        lignes = [{"texte": _ligne(l.model_dump(mode="json")), "vraie": l.vraie(donnees, codes)} for l in regle.si.lignes or []]
-        regles.append({
-            "nom": regle.nom,
-            "condition": resume_condition(brute["si"]),
-            "lignes": lignes,
-            "vraie": regle.si.vraie(donnees, anomalies),
-            "effet": resume_regle(brute).removeprefix(resume_condition(brute["si"]) + ", "),
-        })
+    graphe = verifier_graphe(brouillon["graphe"])
+    parcours = parcourir(graphe, donnees, anomalies)
+    service_version = version_en_vigueur(session)
+    service = parcourir(verifier_graphe(_graphe_de_version(service_version)), donnees, anomalies)
 
-    essai = SimpleNamespace(version="brouillon", regles=brouillon["regles"], relances=brouillon["relances"])
-    calcule = circuit(donnees, anomalies, essai)
-    service = circuit(donnees, anomalies, version_en_vigueur(session))
-    if arretee:
+    conditions = []
+    for etape in parcours["chemin"]:
+        noeud = graphe.noeud(etape["id"])
+        if noeud.type == "condition":
+            lignes = [{"texte": _ligne(l.model_dump(mode="json")), "vraie": l.vraie(donnees, codes)} for l in noeud.si.lignes or []]
+            conditions.append({"id": noeud.id, "nom": nom_etape(noeud.model_dump()), "vraie": etape["sortie"] == "oui", "lignes": lignes})
+
+    chemin, bloque, niveaux = parcours["chemin"], parcours["bloque"], parcours["niveaux"]
+    if arretee:  # une anomalie bloquante arrête la facture avant le circuit
         bloquantes = ", ".join(libelles.get(a["code"], a["code"]).lower() for a in anomalies if a.get("gravite") == "bloquante")
-        calcule = {**calcule, "niveaux": [], "bloque": f"Arrêtée aux contrôles ({bloquantes}) : à corriger ou rejeter."}
-        service = {**service, "niveaux": [], "bloque": calcule["bloque"]}
+        bloque, niveaux, chemin, conditions = f"Arrêtée aux contrôles ({bloquantes}) : à corriger ou rejeter.", [], [], []
 
-    relances = {n: (brouillon["relances"] or {}).get(n) or RELANCES_DEFAUT for n in _niveaux(calcule)}
+    relances = {n["niveau"]: (brouillon["relances"] or {}).get(n["niveau"]) or RELANCES_DEFAUT for n in niveaux}
+    a_niveaux = lambda r: [n["niveau"] for n in r["niveaux"]]  # noqa: E731
     return {
         "facture": {
             "id": str(facture.id),
@@ -317,12 +349,13 @@ def tester(session: Session, facture: FactureEnBase) -> dict:
             "arretee": arretee,
             "anomalies": [{"code": a["code"], "libelle": libelles.get(a["code"], a["code"]), "gravite": a.get("gravite")} for a in anomalies],
         },
-        "regles": regles,
-        "niveaux": calcule["niveaux"],
-        "bloque": calcule["bloque"],
+        "chemin": chemin,
+        "conditions": conditions,
+        "niveaux": niveaux,
+        "bloque": bloque,
         "relances": relances,
-        "en_service": {"version": service["version"], "niveaux": _niveaux(service), "bloque": service["bloque"]},
-        "change": (_niveaux(calcule), calcule["bloque"]) != (_niveaux(service), service["bloque"]),
+        "en_service": {"version": service_version.version if service_version else None, "niveaux": [] if arretee else a_niveaux(service), "bloque": bloque if arretee else service["bloque"]},
+        "change": not arretee and (a_niveaux(parcours), parcours["bloque"]) != (a_niveaux(service), service["bloque"]),
     }
 
 
@@ -338,6 +371,7 @@ def versions(session: Session) -> list[dict]:
             "en_service": rang == 0,
             "publie_par": v.publie_par,
             "publie_le": v.publie_le,
+            "nombre_etapes": len(v.graphe["noeuds"]) if v.graphe else None,
             "nombre_regles": len(v.regles),
             "changements": v.changements,  # None : publiée avant l'éditeur
             "relances_reglees": bool(v.relances),
