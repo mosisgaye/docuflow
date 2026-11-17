@@ -2835,6 +2835,14 @@ kbd {
   overflow-wrap: anywhere;
 }
 
+.acces__etapes {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.25rem;
+  color: var(--texte-2);
+}
+
 .acces__code {
   margin: 0;
   border-radius: var(--rayon-panneau);

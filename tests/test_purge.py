@@ -66,7 +66,7 @@ def test_la_purge_retire_le_perime_et_garde_le_reste(session):
 
     supprimees = purge.purger(session, MAINTENANT)
 
-    assert supprimees == {"taches": 1, "demandes_connexion": 1, "demandes_oauth": 1, "appels_connecteurs": 1, "livraisons": 1}
+    assert supprimees == {"taches": 1, "demandes_connexion": 1, "demandes_oauth": 1, "appels_connecteurs": 1, "livraisons": 1, "oauth_codes": 0, "oauth_jetons": 0}
     assert compter(session, Tache) == 2
     assert compter(session, DemandeConnexion) == 1
     assert compter(session, DemandeOAuth) == 1

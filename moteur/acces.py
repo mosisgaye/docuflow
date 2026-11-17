@@ -35,7 +35,10 @@ ESSAIS_MAX_TOTAL = 40  # toutes adresses confondues, par quart d'heure
 FENETRE_ESSAIS_S = 15 * 60
 # La connexion par compte a ses propres protections (lien et code à usage unique, essais limités).
 CHEMINS_LIBRES = {"/acces", "/sante", "/reception/mail", "/oauth/retour", "/moi", "/connexion/demande", "/connexion/lien", "/connexion/code", "/deconnexion"}
-PREFIXES_LIBRES = ("/approbation/", "/v1/")
+# Le connecteur Claude (moteur/mcp_verifac.py) a sa propre protection : jeton OAuth sur /mcp, compte connecté
+# sur la page d'accord. Ces adresses ne doivent donc ni exiger le code d'accès ni la session de l'interface.
+CHEMINS_LIBRES |= {"/mcp", "/authorize", "/token", "/register", "/revoke", "/oauth/consentement"}
+PREFIXES_LIBRES = ("/approbation/", "/v1/", "/.well-known/")
 
 
 def code() -> str:

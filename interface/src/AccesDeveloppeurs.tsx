@@ -141,6 +141,25 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
       {secret && <SecretUneFois titre={secret.titre} valeur={secret.valeur} surFermer={() => setSecret(null)} />}
 
       <section className="bloc acces__bloc">
+        <h2>Claude</h2>
+        <p className="acces__explication">
+          Posez vos questions sur les factures directement dans Claude : « Qu’est-ce qui attend mon approbation ? », « Pourquoi la facture F26-1240 est-elle
+          en anomalie ? ». Claude lit seulement, avec les droits de votre compte : rien n’est approuvé ni modifié depuis Claude.
+        </p>
+        <div className="acces__demarrer">
+          <h3>Ajouter Verifac à Claude</h3>
+          <ol className="acces__etapes">
+            <li>Dans Claude : Paramètres › Connecteurs › Ajouter un connecteur personnalisé.</li>
+            <li>
+              Nom : <code>Verifac</code>. Adresse : <code>{`${window.location.origin}/api/mcp`}</code>
+            </li>
+            <li>Cliquez sur Se connecter : Verifac vous demande votre adresse mail, puis votre accord.</li>
+          </ol>
+          <BlocCode titre="Adresse du connecteur" code={`${window.location.origin}/api/mcp`} />
+        </div>
+      </section>
+
+      <section className="bloc acces__bloc">
         <h2>Clés d’API</h2>
         <p className="acces__explication">
           Un autre logiciel (ERP, outil d’automatisation, script) peut déposer des factures et lire leur état avec une clé. Chaque clé a des droits précis
@@ -221,7 +240,7 @@ export function AccesDeveloppeurs({ auteur, surSansAuteur }: Props) {
           <p className="acces__explication">
             Chaque message porte <code>X-Verifac-Horodatage</code> et <code>X-Verifac-Signature</code> : le HMAC-SHA256 de « horodatage.corps » avec le
             secret donné à la création de l’adresse. <code>X-Verifac-Livraison</code> reste le même à chaque nouvel essai : ignorez un identifiant déjà
-            traité. Pour l’instant, les mêmes en-têtes partent aussi sous l’ancien nom <code>X-DocuFlow-*</code>.
+            traité.
           </p>
           <BlocCode titre="En Python" code={VERIFIER_SIGNATURE} />
         </details>

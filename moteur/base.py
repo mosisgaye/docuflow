@@ -408,3 +408,52 @@ class DemandeConnexion(Base):
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (UniqueConstraint("empreinte_jeton", name="uq_demandes_connexion_jeton"),)
+
+
+# ───────── Connecteur Claude (serveur MCP de Verifac) : OAuth 2.1, voir moteur/mcp_verifac.py ─────────
+
+
+class ClientOAuth(Base):
+    """Un logiciel qui s'est enregistré tout seul pour demander l'accès (Claude, par enregistrement dynamique RFC 7591)."""
+
+    __tablename__ = "oauth_clients"
+
+    client_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    infos: Mapped[dict] = mapped_column(JSONB)  # la fiche d'enregistrement : nom, adresses de retour, méthode d'authentification
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CodeOAuth(Base):
+    """Le code remis après l'accord de la personne : usage unique, 5 minutes, empreinte seulement."""
+
+    __tablename__ = "oauth_codes"
+
+    empreinte: Mapped[str] = mapped_column(String(64), primary_key=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("oauth_clients.client_id"), index=True)
+    compte_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("comptes.id"), index=True)
+    scopes: Mapped[list] = mapped_column(JSONB)
+    code_challenge: Mapped[str] = mapped_column(String(128))
+    redirect_uri: Mapped[str] = mapped_column(Text)
+    redirect_explicite: Mapped[bool] = mapped_column(Boolean)
+    resource: Mapped[str | None] = mapped_column(Text)
+    expire_le: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    utilise_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class JetonOAuth(Base):
+    """Un jeton d'accès (1 h) ou de renouvellement (30 jours) donné à un client pour un compte. Empreinte seulement."""
+
+    __tablename__ = "oauth_jetons"
+
+    empreinte: Mapped[str] = mapped_column(String(64), primary_key=True)
+    sorte: Mapped[str] = mapped_column(String(20))  # acces, renouvellement
+    client_id: Mapped[str] = mapped_column(ForeignKey("oauth_clients.client_id"), index=True)
+    compte_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("comptes.id"), index=True)
+    scopes: Mapped[list] = mapped_column(JSONB)
+    resource: Mapped[str | None] = mapped_column(Text)
+    expire_le: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoque_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (CheckConstraint("sorte IN ('acces', 'renouvellement')", name="ck_oauth_jetons_sorte"),)

@@ -48,8 +48,11 @@ from datetime import datetime
 
 import httpx
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile, status
+from contextlib import asynccontextmanager
+
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
+from starlette.routing import Route as StarletteRoute
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pypdf.errors import PyPdfError
@@ -70,7 +73,7 @@ from moteur import oauth
 from moteur.approbation import LIBELLES, approbations_valides, empreinte, niveau_attendu, publier, version_en_vigueur
 from moteur.catalogue_circuit import catalogue
 from moteur.controles import a_risque
-from moteur import acces, cles_api, evenements_sortants, notifications
+from moteur import acces, cles_api, evenements_sortants, mcp_verifac, notifications
 from moteur.base import Abonnement, CleApi, Livraison, MailRecu, MembreEquipe
 from moteur.approbation import NIVEAUX
 from moteur.connecteurs import CATALOGUE, ErreurConnecteur, Passerelle, adresse_serveur, fiche_catalogue
@@ -314,8 +317,29 @@ def creer_application(
 
     # Pas de documentation complète en ligne : elle montrerait toutes les adresses internes (comptes, console…).
     # Seule l'API publique /v1 est documentée, sur /v1/docs (voir plus bas).
+    # Le serveur MCP de Verifac (connecteur Claude) : son transport et sa connexion OAuth viennent du SDK,
+    # montés à la racine du moteur à la fin (voir moteur/mcp_verifac.py). Réponses JSON sans flux ni session :
+    # elles traversent la redirection /api de Vercel comme n'importe quelle requête.
+    serveur_mcp, _ = mcp_verifac.creer_serveur(fabrique_session)
+    application_mcp = serveur_mcp.streamable_http_app(streamable_http_path="/mcp", json_response=True, stateless_http=True, host="0.0.0.0")
+    # Claude cherche les métadonnées de l'émetteur https://…/api en insérant le chemin après /.well-known (RFC 8414).
+    for route in list(application_mcp.router.routes):
+        if getattr(route, "path", None) == "/.well-known/oauth-authorization-server":
+            application_mcp.router.routes.append(StarletteRoute("/.well-known/oauth-authorization-server/api", endpoint=route.endpoint, methods=["GET", "OPTIONS"]))
+
+    @asynccontextmanager
+    async def vie(_application):
+        async with serveur_mcp.session_manager.run():
+            yield
+
     application = FastAPI(
-        title="Moteur de factures", version="0.1.0", dependencies=[Depends(controle_des_comptes)], docs_url=None, redoc_url=None, openapi_url=None
+        title="Moteur de factures",
+        version="0.1.0",
+        dependencies=[Depends(controle_des_comptes)],
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+        lifespan=vie,
     )
     def avec_comptes() -> bool:
         with fabrique_session() as session:
@@ -1254,5 +1278,32 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
                 session.close()
 
         return StreamingResponse(flux(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    # ───────── Connecteur Claude : la page où la personne donne (ou refuse) l'accès ─────────
+
+    @application.get("/oauth/consentement", include_in_schema=False)
+    def consentement(requete: Request, demande: str = "", session: Session = Depends(session_de_requete, scope="function")) -> HTMLResponse:
+        compte = comptes.lire_session(session, requete.cookies.get(comptes.COOKIE))
+        lue = mcp_verifac.lire_demande(demande)
+        if compte is not None and not comptes.peut(compte, "voir"):
+            compte = None
+        return HTMLResponse(mcp_verifac.page_consentement(demande, lue, compte), headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})
+
+    @application.post("/oauth/consentement", include_in_schema=False)
+    def decider_consentement(
+        requete: Request, demande: str = Form(...), decision: str = Form(...), session: Session = Depends(session_de_requete, scope="function")
+    ) -> RedirectResponse:
+        lue = mcp_verifac.lire_demande(demande)
+        compte = comptes.lire_session(session, requete.cookies.get(comptes.COOKIE))
+        if lue is None or compte is None or not comptes.peut(compte, "voir"):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Demande expirée ou session absente : recommencez depuis Claude.")
+        if decision != "autoriser":
+            return RedirectResponse(mcp_verifac.refuser(lue), status_code=status.HTTP_303_SEE_OTHER)
+        adresse = mcp_verifac.donner_code(session, lue, compte)
+        session.commit()
+        return RedirectResponse(adresse, status_code=status.HTTP_303_SEE_OTHER)
+
+    # En dernier : tout ce que FastAPI ne connaît pas va au serveur MCP (/mcp, /authorize, /token, /register, /.well-known/…).
+    application.mount("/", application_mcp)
 
     return application

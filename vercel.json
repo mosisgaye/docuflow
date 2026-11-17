@@ -6,6 +6,7 @@
   "outputDirectory": "interface/dist",
   "rewrites": [
     { "source": "/api/:chemin*", "destination": "https://api-docuflow.moussagaye.com/:chemin*" },
+    { "source": "/.well-known/:chemin*", "destination": "https://api-docuflow.moussagaye.com/.well-known/:chemin*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

@@ -8,6 +8,8 @@ export default defineConfig({
     port: 5180,
     proxy: {
       '/api': { target: 'http://127.0.0.1:8010', rewrite: (chemin) => chemin.replace(/^\/api/, '') },
+      // Découverte OAuth du connecteur Claude (comme la redirection de vercel.json en ligne).
+      '/.well-known': { target: 'http://127.0.0.1:8010' },
     },
   },
 })

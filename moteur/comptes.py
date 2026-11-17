@@ -28,7 +28,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from moteur import config
@@ -138,6 +138,7 @@ def modifier(session: Session, compte: Compte, role: str | None = None, niveaux:
     compte.role, compte.niveaux, compte.actif = nouveau_role, nouveaux_niveaux, nouvel_actif
     if retire:
         compte.version_session += 1  # un rôle retiré ou un compte désactivé : ses sessions tombent
+        _retirer_acces_claude(session, compte)
     session.flush()
     return compte
 
@@ -281,7 +282,15 @@ def lire_session(session: Session, valeur: str | None, maintenant: datetime | No
 
 def deconnecter_partout(session: Session, compte: Compte) -> None:
     compte.version_session += 1
+    _retirer_acces_claude(session, compte)
     session.flush()
+
+
+def _retirer_acces_claude(session: Session, compte: Compte) -> None:
+    """Déconnecter un compte coupe aussi l'accès qu'il a donné à Claude (jetons du connecteur MCP)."""
+    from moteur.base import JetonOAuth
+
+    session.execute(update(JetonOAuth).where(JetonOAuth.compte_id == compte.id, JetonOAuth.revoque_le.is_(None)).values(revoque_le=datetime.now(UTC)))
 
 
 # ───────── Le mail de connexion ─────────
