@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Background,
-  Controls,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -12,12 +11,15 @@ import {
   type Node,
   type NodeChange,
   type NodeProps,
+  Panel,
   Position,
   ReactFlow,
   applyNodeChanges,
+  useReactFlow,
 } from '@xyflow/react'
 import type { Catalogue, Graphe, LienGraphe, NoeudGraphe, ResultatTest, TypeEtape } from './api'
 import { Icone, type NomIcone } from './Icones'
+import { ranger, type Taille } from './rangerCircuit'
 
 export const ICONE_ETAPE: Record<TypeEtape, NomIcone> = {
   debut: 'reception',
@@ -91,6 +93,36 @@ function Etape({ data, selected }: NodeProps<Node<DonneesEtape>>) {
 }
 
 const TYPES = { etape: Etape }
+
+/** La barre d'outils du canevas, en bas à gauche comme chez n8n : tout voir, zoomer, ranger. */
+function BarreOutils({ surRanger }: { surRanger: (() => void) | null }) {
+  const { fitView, zoomIn, zoomOut } = useReactFlow()
+  const toutVoir = () => fitView({ padding: 0.15, maxZoom: 1.1 })
+  const outils: { nom: NomIcone; libelle: string; action: () => void }[] = [
+    { nom: 'toutVoir', libelle: 'Tout voir', action: toutVoir },
+    { nom: 'zoomPlus', libelle: 'Zoomer', action: () => zoomIn() },
+    { nom: 'zoomMoins', libelle: 'Dézoomer', action: () => zoomOut() },
+  ]
+  if (surRanger) {
+    outils.push({
+      nom: 'ranger',
+      libelle: 'Ranger : placer les étapes de gauche à droite, dans l’ordre du circuit',
+      action: () => {
+        surRanger()
+        window.setTimeout(toutVoir, 50)
+      },
+    })
+  }
+  return (
+    <Panel position="bottom-left" className="schema__outils" aria-label="Outils du canevas">
+      {outils.map((outil) => (
+        <button key={outil.nom} type="button" className="schema__outil" title={outil.libelle} aria-label={outil.libelle} onClick={outil.action}>
+          <Icone nom={outil.nom} taille={18} />
+        </button>
+      ))}
+    </Panel>
+  )
+}
 
 function detailEtape(etape: NoeudGraphe) {
   if (etape.type === 'condition') {
@@ -185,6 +217,13 @@ export function SchemaCircuit({
     if (choix && choix.type === 'select') surChoix(choix.id)
   }
 
+  const rangerTout = () => {
+    const tailles = new Map<string, Taille>(
+      noeuds.flatMap((noeud) => (noeud.measured?.width && noeud.measured?.height ? [[noeud.id, { width: noeud.measured.width, height: noeud.measured.height }] as const] : [])),
+    )
+    surGraphe(ranger(graphe, tailles))
+  }
+
   const changerLiens = (changements: EdgeChange[]) => {
     const retires = new Set(changements.flatMap((c) => (c.type === 'remove' ? [c.id] : [])))
     if (retires.size) surGraphe({ ...graphe, liens: graphe.liens.filter((lien) => !retires.has(idLien(lien))) })
@@ -210,10 +249,10 @@ export function SchemaCircuit({
         maxZoom={1.6}
         snapToGrid
         snapGrid={[20, 20]}
-        attributionPosition="bottom-left"
+        attributionPosition="bottom-right"
       >
         <Background gap={20} size={1.2} />
-        <Controls showInteractive={false} position="bottom-right" />
+        <BarreOutils surRanger={lectureSeule ? null : rangerTout} />
       </ReactFlow>
     </div>
   )

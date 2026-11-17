@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Ban,
   Bot,
+  BrushCleaning,
   Building2,
   Check,
   ChevronDown,
@@ -27,6 +28,7 @@ import {
   LayoutGrid,
   ListFilter,
   Mail,
+  Maximize,
   MessageSquarePlus,
   Moon,
   PanelLeft,
@@ -51,6 +53,8 @@ import {
   Workflow,
   X,
   Zap,
+  ZoomIn,
+  ZoomOut,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -106,6 +110,10 @@ const ICONES = {
   test: FlaskConical,
   embranchement: Split,
   corbeille: Trash2,
+  toutVoir: Maximize,
+  zoomPlus: ZoomIn,
+  zoomMoins: ZoomOut,
+  ranger: BrushCleaning,
 } satisfies Record<string, LucideIcon>
 
 export type NomIcone = keyof typeof ICONES
