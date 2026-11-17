@@ -14,14 +14,14 @@ import { TableauDeBord } from './TableauDeBord'
 import { type OngletWorkflow, Workflow } from './Workflow'
 import { type Theme, retenirTheme } from './theme'
 
-type Page = 'tableau' | 'documents' | 'validations' | 'assistant' | 'workflow' | 'connecteurs' | 'reglages'
-type Vue = Etat | 'toutes'
+type Page = 'tableau' | 'documents' | 'assistant' | 'workflow' | 'connecteurs' | 'reglages'
+// « À traiter » est un filtre des factures (comme « Non lus » dans une boîte mail), pas une page à part.
+type Vue = Etat | 'toutes' | 'a_traiter'
 
 const CLE_AUTEUR = 'factures.auteur'
 const MENU: { page: Page; nom: string; icone: NomIcone }[] = [
   { page: 'tableau', nom: 'Accueil', icone: 'accueil' },
   { page: 'documents', nom: 'Factures', icone: 'document' },
-  { page: 'validations', nom: 'À traiter', icone: 'validation' },
   { page: 'assistant', nom: 'Assistant', icone: 'assistant' },
   { page: 'workflow', nom: 'Workflow', icone: 'workflow' },
   { page: 'connecteurs', nom: 'Connecteurs', icone: 'integration' },
@@ -79,7 +79,7 @@ export function Application() {
   const [vedette, setVedette] = useState<FactureDetail | null>(null)
   const [detail, setDetail] = useState<FactureDetail | null>(null)
   const [onglet, setOnglet] = useState<'donnees' | 'document' | 'journal'>('donnees')
-  const [vue, setVue] = useState<Vue>('toutes')
+  const [vue, setVue] = useState<Vue>('a_traiter')
   const [ongletConnecteurs, setOngletConnecteurs] = useState<OngletConnecteurs | null>(null)
   const [ongletReglages, setOngletReglages] = useState<OngletReglages>('equipe')
   const [ongletWorkflow, setOngletWorkflow] = useState<OngletWorkflow>('circuit')
@@ -377,7 +377,7 @@ export function Application() {
   const numeros = useMemo(() => new Map(factures.filter((facture) => facture.numero_facture).map((facture) => [facture.numero_facture!, facture.id])), [factures])
 
   const listeAffichee = useMemo(() => {
-    const base = page === 'validations' ? aTraiter : vue === 'toutes' ? factures : factures.filter((facture) => facture.etat === vue)
+    const base = vue === 'a_traiter' ? aTraiter : vue === 'toutes' ? factures : factures.filter((facture) => facture.etat === vue)
     const mots = recherche.trim().toLowerCase()
     const trouvees = mots
       ? base.filter((facture) =>
@@ -389,7 +389,7 @@ export function Application() {
   }, [page, vue, factures, aTraiter, recherche])
 
   // Précédente et suivante : dans la liste affichée si la facture y est, sinon dans toutes.
-  const voisines = page === 'documents' || page === 'validations' ? listeAffichee : factures
+  const voisines = page === 'documents' ? listeAffichee : factures
   const rang = detail ? voisines.findIndex((facture) => facture.id === detail.id) : -1
   const precedente = rang > 0 ? voisines[rang - 1] : null
   const suivante = rang >= 0 && rang < voisines.length - 1 ? voisines[rang + 1] : null
@@ -448,8 +448,8 @@ export function Application() {
   // La fiche s'ouvre à côté des listes et de l'assistant ; l'accueil et les connecteurs gardent toute la largeur.
   const panneauFacture = detail && page !== 'connecteurs' && page !== 'tableau' && page !== 'reglages' && page !== 'workflow'
 
-  // Accueil, À traiter et Workflow prennent toute la largeur : leur contenu suffit, une barre latérale le répéterait.
-  const lateraleAffichee = laterale && page !== 'workflow' && page !== 'tableau' && page !== 'validations'
+  // L'accueil et le Workflow prennent toute la largeur : leur contenu suffit, une barre latérale le répéterait.
+  const lateraleAffichee = laterale && page !== 'workflow' && page !== 'tableau'
 
   if (verrouille === null) return null
   if (verrouille) return <EcranAcces surOuverture={() => setVerrouille(false)} />
@@ -487,7 +487,7 @@ export function Application() {
             aria-label="Rechercher une facture"
             onChange={(evenement) => {
               setRecherche(evenement.target.value)
-              if (page !== 'validations' && page !== 'documents') setPage('documents')
+              if (page !== 'documents') setPage('documents')
             }}
           />
           <kbd>Ctrl K</kbd>
@@ -530,14 +530,14 @@ export function Application() {
             onClick={() => {
               // Recliquer sur la page ouverte replie ou déplie sa barre latérale (comme la touche « [ »).
               if (entree.page === page) return basculerLaterale()
-              if (entree.page === 'documents') setVue('toutes')
+              if (entree.page === 'documents') setVue('a_traiter')
               setPage(entree.page)
             }}
             title={entree.page === page ? 'Replier ou déplier la barre latérale ( [ )' : undefined}
           >
             <Icone nom={entree.icone} taille={18} />
             <span className="rail__libelle">{entree.nom}</span>
-            {entree.page === 'validations' && aTraiter.length > 0 && <span className="rail__compte">{aTraiter.length}</span>}
+            {entree.page === 'documents' && aTraiter.length > 0 && <span className="rail__compte">{aTraiter.length}</span>}
           </button>
         ))}
         <div className="rail__bas">
@@ -619,6 +619,11 @@ export function Application() {
               <h2>Filtres</h2>
             </div>
             <div className="laterale__corps">
+              <button className="laterale__ligne" aria-current={(page === 'documents' && vue === 'a_traiter') || undefined} onClick={() => allerVue('a_traiter')} tabIndex={laterale ? 0 : -1}>
+                <Icone nom="validation" />
+                <span>À traiter</span>
+                <span className="laterale__compte">{aTraiter.length}</span>
+              </button>
               <button className="laterale__ligne" aria-current={(page === 'documents' && vue === 'toutes') || undefined} onClick={() => allerVue('toutes')} tabIndex={laterale ? 0 : -1}>
                 <Icone nom="document" />
                 <span>Toutes</span>
@@ -639,12 +644,12 @@ export function Application() {
 
       <main className="espace">
         {/* Cette ligne n'apparaît que pour la recherche en cours ; sinon elle ne contenait qu'un bouton et prenait une ligne. */}
-        <div className="espace__tete" hidden={!((page === 'documents' || page === 'validations') && recherche.trim())}>
+        <div className="espace__tete" hidden={!(page === 'documents' && recherche.trim())}>
           <button className="bouton bouton--fantome bouton--icone" onClick={basculerLaterale} aria-label={laterale ? 'Replier la barre latérale' : 'Déplier la barre latérale'} title="Barre latérale ( [ )">
             <Icone nom="panneau" />
           </button>
           {/* Pas de fil d'Ariane : chaque page porte déjà son titre, il le répétait. */}
-          {(page === 'documents' || page === 'validations') && recherche.trim() && (
+          {page === 'documents' && recherche.trim() && (
             <div className="espace__outils">
               <button className="pastille-filtre" aria-pressed="true" onClick={() => setRecherche('')}>
                 « {recherche.trim()} » <Icone nom="fermer" taille={12} />
@@ -698,12 +703,12 @@ export function Application() {
                 ) : (
                   <p className="note">{enService === false ? 'Le moteur ne répond pas.' : 'Chargement…'}</p>
                 ))}
-              {(page === 'documents' || page === 'validations') && (
+              {page === 'documents' && (
                 <>
                   <header className="page__titre">
                     <div>
-                      <h1>{page === 'validations' ? 'À traiter' : vue === 'toutes' ? 'Toutes les factures' : LIBELLE_ETAT[vue]}</h1>
-                      <p>{page === 'validations' ? 'Les factures qui attendent une décision, les anomalies en premier.' : 'Cliquez sur une facture pour l’ouvrir à côté de la liste.'}</p>
+                      <h1>{vue === 'a_traiter' ? 'À traiter' : vue === 'toutes' ? 'Toutes les factures' : LIBELLE_ETAT[vue]}</h1>
+                      <p>{vue === 'a_traiter' ? 'Les factures qui attendent une décision, les anomalies en premier.' : 'Cliquez sur une facture pour l’ouvrir à côté de la liste.'}</p>
                     </div>
                   </header>
                   <Documents factures={listeAffichee} recherche={recherche} ouverte={detail?.id ?? null} surOuverture={ouvrir} surDepot={() => champFichier.current?.click()} />
