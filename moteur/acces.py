@@ -33,7 +33,8 @@ DUREE_COOKIE_S = 30 * 24 * 3600
 ESSAIS_MAX = 8
 ESSAIS_MAX_TOTAL = 40  # toutes adresses confondues, par quart d'heure
 FENETRE_ESSAIS_S = 15 * 60
-CHEMINS_LIBRES = {"/acces", "/sante", "/reception/mail", "/oauth/retour"}
+# La connexion par compte a ses propres protections (lien et code à usage unique, essais limités).
+CHEMINS_LIBRES = {"/acces", "/sante", "/reception/mail", "/oauth/retour", "/moi", "/connexion/demande", "/connexion/lien", "/connexion/code", "/deconnexion"}
 PREFIXES_LIBRES = ("/approbation/", "/v1/")
 
 

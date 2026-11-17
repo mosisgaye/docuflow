@@ -53,7 +53,7 @@ from pypdf.errors import PyPdfError
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, object_session, sessionmaker
 
-from moteur import config, editeur_circuit
+from moteur import comptes, config, editeur_circuit
 from moteur.agent import converser, flux_openai
 from moteur.agent import version_consigne as consigne_assistant
 from moteur.consignes import enregistrer as enregistrer_consigne
@@ -339,6 +339,81 @@ def creer_application(
             raise
         finally:
             session.close()
+
+    # ───────── Les comptes : connexion par lien ou par code, session ─────────
+
+    tentatives_connexion = acces.Tentatives(maximum=20)
+
+    class DemandeConnexion(BaseModel):
+        email: str = Field(min_length=3, max_length=320)
+
+    class ConnexionLien(BaseModel):
+        jeton: str = Field(min_length=20, max_length=200)
+
+    class ConnexionCode(BaseModel):
+        email: str = Field(min_length=3, max_length=320)
+        code: str = Field(min_length=6, max_length=12)
+
+    def poser_session(requete: Request, reponse: Response, compte) -> None:
+        securise = requete.url.scheme == "https" or requete.headers.get("x-forwarded-proto") == "https"
+        reponse.set_cookie(
+            comptes.COOKIE, comptes.jeton_session(compte), max_age=int(comptes.DUREE_SESSION.total_seconds()), httponly=True, secure=securise, samesite="lax", path="/"
+        )
+
+    @application.get("/moi")
+    def moi(requete: Request, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        compte = comptes.lire_session(session, requete.cookies.get(comptes.COOKIE))
+        return {"compte": comptes.vue(compte) if compte else None, "comptes": comptes.existe_un_compte(session)}
+
+    @application.post("/connexion/demande")
+    def demander_connexion(demande: DemandeConnexion, requete: Request, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        adresse = adresse_client(requete)
+        if tentatives_connexion.bloquee(adresse):
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Trop de demandes. Réessayez dans un quart d’heure.")
+        tentatives_connexion.noter_echec(adresse)  # chaque demande compte : on ne peut pas inonder une boîte mail
+        try:
+            envoi = comptes.demander(session, demande.email)
+        except comptes.ConnexionRefusee as erreur:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(erreur)) from erreur
+        if envoi is not None:
+            session.commit()  # le lien doit exister avant que le mail parte
+            try:
+                (envoyeur_mail or notifications.envoyer_par_resend)(comptes.composer_mail(envoi))
+            except Exception as erreur:  # noqa: BLE001 - même réponse dans tous les cas, l'échec va au journal
+                logging.getLogger("moteur.api").warning("Mail de connexion non envoyé : %s", erreur)
+        # La même réponse, qu'il existe un compte ou non : on ne révèle pas qui a un compte.
+        return {"message": "Si un compte existe pour cette adresse, un lien et un code viennent de partir. Ils expirent dans 15 minutes."}
+
+    def connecter(requete: Request, reponse: Response, ouvrir: Callable[[], object]) -> dict:
+        adresse = adresse_client(requete)
+        if tentatives.bloquee(adresse):
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Trop d’essais. Réessayez dans un quart d’heure.")
+        try:
+            compte = ouvrir()
+        except comptes.ConnexionRefusee as erreur:
+            tentatives.noter_echec(adresse)
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(erreur)) from erreur
+        poser_session(requete, reponse, compte)
+        return {"compte": comptes.vue(compte)}
+
+    @application.post("/connexion/lien")
+    def connexion_par_lien(demande: ConnexionLien, requete: Request, reponse: Response, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        resultat = connecter(requete, reponse, lambda: comptes.par_lien(session, demande.jeton))
+        session.commit()
+        return resultat
+
+    @application.post("/connexion/code")
+    def connexion_par_code(demande: ConnexionCode, requete: Request, reponse: Response, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        try:
+            resultat = connecter(requete, reponse, lambda: comptes.par_code(session, demande.email, demande.code))
+        finally:
+            session.commit()  # un code faux compte un essai, même quand la réponse est un refus
+        return resultat
+
+    @application.post("/deconnexion")
+    def deconnexion(reponse: Response) -> dict:
+        reponse.delete_cookie(comptes.COOKIE, path="/")
+        return {"compte": None}
 
     def facture_ou_404(session: Session, facture_id: uuid.UUID) -> FactureEnBase:
         facture = session.get(FactureEnBase, facture_id)

@@ -10,6 +10,7 @@ Les tables :
 - demandes_oauth et jetons_connecteurs : les connexions par compte (OAuth), jetons chiffrés ;
 - regles_approbation et approbations : qui doit approuver une facture, et qui l'a fait ;
 - brouillon_circuit : le circuit en cours de modification dans l'éditeur, pas encore publié ;
+- comptes et demandes_connexion : qui utilise Verifac (rôle, niveaux d'approbation) et ses connexions ;
 - cles_api, abonnements et livraisons : l'API publique et les événements envoyés aux autres logiciels.
 
 Toute modification de ces modèles demande une migration (dossier migrations/).
@@ -19,7 +20,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, create_engine, func, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, create_engine, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -340,3 +341,40 @@ class MembreEquipe(Base):
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (UniqueConstraint("email", "niveau", name="uq_membres_equipe_email_niveau"),)
+
+
+class Compte(Base):
+    """Une personne qui utilise Verifac : son rôle d'accès et ses niveaux d'approbation (moteur/comptes.py)."""
+
+    __tablename__ = "comptes"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    nom: Mapped[str] = mapped_column(String(100))
+    email: Mapped[str] = mapped_column(String(320))
+    role: Mapped[str] = mapped_column(String(20))  # administrateur, membre, approbateur, lecture, operateur
+    niveaux: Mapped[list] = mapped_column(JSONB, default=list)  # comptable, directeur_financier, gerant
+    actif: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Augmenter ce nombre déconnecte toutes les sessions du compte (elles le portent, signé).
+    version_session: Mapped[int] = mapped_column(Integer, default=1)
+    cree_par: Mapped[str] = mapped_column(String(100))
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    derniere_connexion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (UniqueConstraint("email", name="uq_comptes_email"),)
+
+
+class DemandeConnexion(Base):
+    """Un lien et un code de connexion envoyés par mail : usage unique, courte durée, empreintes seulement."""
+
+    __tablename__ = "demandes_connexion"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    compte_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("comptes.id"), index=True)
+    empreinte_jeton: Mapped[str] = mapped_column(String(64))
+    empreinte_code: Mapped[str] = mapped_column(String(64))
+    essais: Mapped[int] = mapped_column(Integer, default=0)
+    expire_le: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    utilisee_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("empreinte_jeton", name="uq_demandes_connexion_jeton"),)
