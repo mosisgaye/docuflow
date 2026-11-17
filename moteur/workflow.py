@@ -28,7 +28,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from moteur.base import Etat, EtatTache, Evenement, FactureEnBase, Tache
-from moteur.controles import Anomalie, Gravite, controler, est_validable, iban_normalise, iban_valide
+from moteur.controles import Anomalie, Gravite, a_risque, controler, est_validable, iban_normalise, iban_valide
 from moteur.export import ErreurExport, ecriture, en_csv, en_json, envoyer_au_logiciel, nom_fichier
 from moteur.extraction_llm import ErreurExtraction, ResultatExtraction, extraire, extraire_images
 from moteur.consignes import enregistrer as enregistrer_consigne
@@ -383,22 +383,31 @@ def _charger(session: Session, facture_id: uuid.UUID) -> FactureEnBase:
     return facture
 
 
-def valider(session: Session, facture_id: uuid.UUID, auteur: str) -> FactureEnBase:
+def valider(session: Session, facture_id: uuid.UUID, auteur: str, fournisseur_appele: bool = False) -> FactureEnBase:
     """Approbation par une personne, au niveau attendu du circuit. Impossible si un contrôle bloquant a échoué.
 
     La facture devient « validée » quand tous les niveaux du circuit ont approuvé ; avant, elle est
     « en approbation ». Deux approbations simultanées passent l'une après l'autre.
+
+    Une facture à risque de fraude (IBAN différent ou jamais vu) ne s'approuve que si la personne
+    confirme avoir appelé le fournisseur : `fournisseur_appele`, inscrit au journal à son nom.
     """
     facture = session.get(FactureEnBase, facture_id, with_for_update=True)
     if facture is None:
         raise FactureIntrouvable(str(facture_id))
     if facture.etat not in (Etat.A_VALIDER.value, Etat.EN_APPROBATION.value):
         raise TransitionInterdite(f"Passage interdit de « {facture.etat} » à « {Etat.VALIDEE.value} ».")
+    risque = a_risque(facture.anomalies)
+    if risque and not fournisseur_appele:
+        raise TransitionInterdite(
+            "L'IBAN de cette facture n'est pas confirmé : appelez le fournisseur au numéro habituel, "
+            "puis cochez « J'ai appelé le fournisseur » avant d'approuver."
+        )
     try:
         approbation, termine = approuver(session, facture, auteur)
     except ApprobationRefusee as erreur:
         raise TransitionInterdite(str(erreur)) from erreur
-    detail = {"niveau": approbation.niveau, "libelle": LIBELLES[approbation.niveau]}
+    detail = {"niveau": approbation.niveau, "libelle": LIBELLES[approbation.niveau], **({"fournisseur_appele": True} if risque else {})}
     if termine:
         _passer(session, facture, Etat.VALIDEE, "VALIDATION", auteur, detail)
     elif facture.etat == Etat.A_VALIDER.value:

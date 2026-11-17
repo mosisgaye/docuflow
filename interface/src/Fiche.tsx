@@ -2,14 +2,15 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { usePeut } from './droits'
 import * as api from './api'
 import type { Evenement, FactureDetail } from './api'
-import { LIBELLE_ETAT, LIBELLE_NIVEAU, euros, heure, jour, jourEtHeure, nombre, raconter, siret } from './format'
+import { CODES_RISQUE, LIBELLE_ETAT, LIBELLE_NIVEAU, euros, heure, jour, jourEtHeure, nombre, raconter, siret } from './format'
 import { Icone } from './Icones'
 import { ICONE_ETAPE } from './SchemaCircuit'
 
 interface Props {
   facture: FactureDetail
   occupe: boolean
-  surValidation: () => void
+  /** `fournisseurAppele` : la case cochée sur une facture à risque de fraude à l'IBAN. */
+  surValidation: (fournisseurAppele: boolean) => void
   surRejet: (motif: string) => void
   surExport: () => void
 }
@@ -264,6 +265,9 @@ export function Journal({ facture }: { facture: FactureDetail }) {
 export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: Props) {
   const [rejetOuvert, setRejetOuvert] = useState(false)
   const [motif, setMotif] = useState('')
+  // Risque de fraude à l'IBAN : on n'approuve qu'après avoir confirmé l'appel au fournisseur.
+  const risque = facture.anomalies.some((anomalie) => CODES_RISQUE.includes(anomalie.code))
+  const [appele, setAppele] = useState(false)
   const donnees = facture.donnees
   const fautifs = new Set(facture.anomalies.map((anomalie) => anomalie.champ))
   const marque = (champ: string) => (fautifs.has(champ) ? 'fautif' : undefined)
@@ -271,6 +275,7 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
   const peut = usePeut()
   const decidable = peut('approuver') && (facture.etat === 'a_valider' || facture.etat === 'en_approbation' || facture.etat === 'en_anomalie')
   const approuvable = decidable && (facture.etat === 'a_valider' || facture.etat === 'en_approbation') && !facture.circuit?.bloque
+  const pret = approuvable && (!risque || appele)
   const avecRegles = facture.circuit?.version != null
   const libelleDecision = avecRegles && facture.niveau_attendu ? `Approuver (${LIBELLE_NIVEAU[facture.niveau_attendu].toLowerCase()})` : 'Valider'
 
@@ -280,9 +285,9 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
       const cible = evenement.target as HTMLElement | null
       if (occupe || rejetOuvert || evenement.ctrlKey || evenement.metaKey || evenement.altKey || cible?.matches?.('input, textarea, select, [contenteditable]')) return
       const lettre = evenement.key.toLowerCase()
-      if (lettre === 'a' && approuvable) {
+      if (lettre === 'a' && pret) {
         evenement.preventDefault()
-        surValidation()
+        surValidation(appele)
       } else if (lettre === 'r' && decidable) {
         evenement.preventDefault()
         setRejetOuvert(true)
@@ -290,7 +295,7 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
     }
     window.addEventListener('keydown', touche)
     return () => window.removeEventListener('keydown', touche)
-  }, [occupe, rejetOuvert, approuvable, decidable, surValidation])
+  }, [occupe, rejetOuvert, pret, appele, decidable, surValidation])
 
   return (
     <article className="fiche" aria-label="Données de la facture">
@@ -432,11 +437,17 @@ export function Fiche({ facture, occupe, surValidation, surRejet, surExport }: P
               {bloquantes.length > 0 && (
                 <p className="decision__note">{bloquantes.length > 1 ? 'Des anomalies bloquantes empêchent' : 'Une anomalie bloquante empêche'} la validation.</p>
               )}
+              {risque && approuvable && (
+                <label className="decision__confirmation">
+                  <input type="checkbox" checked={appele} onChange={(evenement) => setAppele(evenement.target.checked)} />
+                  <span>J’ai appelé le fournisseur au numéro habituel : il confirme cet IBAN.</span>
+                </label>
+              )}
               <div className="decision__boutons">
                 <button className="bouton bouton--danger" onClick={() => setRejetOuvert(true)} disabled={occupe}>
                   <Icone nom="refus" /> Rejeter <kbd className="raccourci">R</kbd>
                 </button>
-                <button className="bouton bouton--plein" onClick={surValidation} disabled={occupe || !approuvable}>
+                <button className="bouton bouton--plein" onClick={() => surValidation(appele)} disabled={occupe || !pret}>
                   <Icone nom="coche" /> {libelleDecision} <kbd className="raccourci">A</kbd>
                 </button>
               </div>

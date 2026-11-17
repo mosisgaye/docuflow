@@ -1,6 +1,6 @@
 import type { FactureDetail, FactureResume, Statistiques } from './api'
 import * as api from './api'
-import { ETAPES, LIBELLE_ETAT, aRegler, attenteLongue, avancement, echeanceProche, duree, euros, heureCourte, ilYA, initiales, jour, manquant, raconter, teinte } from './format'
+import { ETAPES, LIBELLE_ETAT, aRegler, aRisque, attenteLongue, avancement, echeanceProche, duree, euros, heureCourte, ilYA, initiales, jour, manquant, raconter, teinte } from './format'
 import { Icone } from './Icones'
 
 interface Props {
@@ -127,7 +127,7 @@ function AFaire({ factures, monTour, surVue }: { factures: FactureResume[]; monT
     ...(monTour !== null
       ? [{ vue: 'mon_tour' as const, nombre: monTour, un: 'facture à approuver par vous', plusieurs: 'factures à approuver par vous', detail: 'C’est votre tour dans le circuit', icone: 'utilisateur' as const, ton: 'vert' }]
       : []),
-    { vue: 'a_regler' as const, nombre: factures.filter((f) => aRegler(f)).length, un: 'anomalie à régler', plusieurs: 'anomalies à régler', detail: 'Arrêtées aux contrôles ou illisibles', icone: 'anomalie' as const, ton: 'ambre' },
+    { vue: 'a_regler' as const, nombre: factures.filter((f) => aRegler(f)).length, un: 'anomalie ou risque à régler', plusieurs: 'anomalies et risques à régler', detail: factures.some((f) => aRisque(f)) ? 'Dont un risque de fraude à l’IBAN' : 'Arrêtées aux contrôles ou illisibles', icone: 'anomalie' as const, ton: 'ambre' },
     { vue: 'echeances' as const, nombre: factures.filter((f) => echeanceProche(f)).length, un: 'échéance sous 7 jours', plusieurs: 'échéances sous 7 jours', detail: 'Ou déjà passées : risque de pénalités', icone: 'horloge' as const, ton: 'rouge' },
     { vue: 'attente' as const, nombre: factures.filter((f) => attenteLongue(f)).length, un: 'approbation en attente depuis 48 h', plusieurs: 'approbations en attente depuis 48 h', detail: 'Une relance est partie toute seule', icone: 'utilisateur' as const, ton: 'bleu' },
   ]

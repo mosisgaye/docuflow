@@ -67,6 +67,7 @@ from moteur.base import AppelConnecteur, ConnecteurBranche
 from moteur import oauth
 from moteur.approbation import LIBELLES, approbations_valides, empreinte, niveau_attendu, publier, version_en_vigueur
 from moteur.catalogue_circuit import catalogue
+from moteur.controles import a_risque
 from moteur import acces, cles_api, evenements_sortants, notifications
 from moteur.base import Abonnement, CleApi, Livraison, MailRecu, MembreEquipe
 from moteur.approbation import NIVEAUX
@@ -101,6 +102,8 @@ class FactureResume(BaseModel):
     total_ttc: str | None = None
     date_echeance: str | None = None
     nb_anomalies: int = 0
+    # Risque de fraude au changement d'IBAN : la facture passe en tête, son approbation demande une confirmation.
+    risque: bool = False
     cree_le: datetime
     # Pour « Mon tour » : le niveau qui doit approuver maintenant, et qui a déjà approuvé (personne n'approuve deux niveaux).
     niveau_attendu: str | None = None
@@ -122,6 +125,8 @@ class FactureDeposee(FactureDetail):
 
 class Validation(BaseModel):
     auteur: str = Field(min_length=1, max_length=100)
+    # À cocher pour approuver une facture à risque (IBAN différent ou jamais vu) : « J'ai appelé le fournisseur ».
+    fournisseur_appele: bool = False
 
 
 class Rejet(Validation):
@@ -205,6 +210,7 @@ def _resume(facture: FactureEnBase) -> dict:
         "total_ttc": donnees.get("total_ttc"),
         "date_echeance": donnees.get("date_echeance"),
         "nb_anomalies": len(facture.anomalies),
+        "risque": a_risque(facture.anomalies),
         "cree_le": facture.cree_le,
         **_tour(facture),
     }
@@ -587,7 +593,7 @@ def creer_application(
         if connecte and attendu and attendu not in connecte["niveaux"]:
             # Avec des comptes, on n'approuve que son propre niveau : le nom tapé ne suffit plus.
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"C'est au niveau « {LIBELLES[attendu].lower()} » d'approuver : ce n'est pas le vôtre.")
-        return decider(lambda: valider(session, facture_id, qui(demande.auteur)))
+        return decider(lambda: valider(session, facture_id, qui(demande.auteur), demande.fournisseur_appele))
 
     @application.post("/factures/{facture_id}/rejet", response_model=FactureDetail)
     def rejeter_facture(facture_id: uuid.UUID, demande: Rejet, session: Session = Depends(session_de_requete, scope="function")) -> dict:
@@ -630,6 +636,8 @@ def creer_application(
             "par_etat": par_etat,
             "conformes": conformes,
             "anomalies_detectees": sum(len(facture.anomalies) for facture in factures),
+            # Les factures encore à décider qui portent un risque de fraude à l'IBAN.
+            "a_risque": sum(1 for facture in factures if facture.etat in (Etat.A_VALIDER.value, Etat.EN_APPROBATION.value) and a_risque(facture.anomalies)),
             "duree_moyenne_s": round(sum(durees) / len(durees), 2) if durees else None,
             "lues_sans_ia": lues_sans_ia,
             "lues_par_ia": lues_par_ia,
@@ -740,7 +748,7 @@ def creer_application(
 <title>{titre} | Verifac</title><style>
 body{{font:16px/1.55 Arial,sans-serif;background:#f4f6fb;color:#13203a;margin:0;padding:32px 16px}}
 main{{max-width:560px;margin:0 auto;background:#fff;border:1px solid #dfe5ef;border-radius:16px;padding:24px}}
-h1{{font-size:22px;margin:0 0 12px}} .doux{{color:#55627b}} .alerte{{background:#fdeed6;color:#8a4a00;padding:8px 12px;border-radius:8px}}
+h1{{font-size:22px;margin:0 0 12px}} .doux{{color:#55627b}} .alerte{{background:#fdeed6;color:#8a4a00;padding:8px 12px;border-radius:8px}} .confirmation{{display:block;margin:0 0 12px;font-weight:600}}
 .erreur{{background:#fdecea;color:#b3261e;padding:10px 14px;border-radius:8px}}
 button{{font:600 16px Arial,sans-serif;border:0;border-radius:10px;padding:12px 18px;cursor:pointer}}
 .oui{{background:#1f5bff;color:#fff}} .non{{background:#fdecea;color:#b3261e}}
@@ -786,7 +794,14 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
         return page(
             "Décision",
             resume_html(facture, charge)
-            + '<form method="post"><input type="hidden" name="decision" value="approuver"><button class="oui">Approuver la facture</button></form>'
+            + '<form method="post"><input type="hidden" name="decision" value="approuver">'
+            + (
+                '<label class="confirmation"><input type="checkbox" name="fournisseur_appele" value="oui" required> '
+                "J'ai appelé le fournisseur au numéro habituel, il confirme cet IBAN.</label>"
+                if a_risque(facture.anomalies)
+                else ""
+            )
+            + '<button class="oui">Approuver la facture</button></form>'
             + '<form method="post"><input type="hidden" name="decision" value="rejeter">'
             + '<label for="motif" class="doux">Ou rejeter, avec le motif :</label><textarea id="motif" name="motif" rows="2" maxlength="500" required></textarea>'
             + '<button class="non">Rejeter la facture</button></form>',
@@ -794,7 +809,11 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
 
     @application.post("/approbation/{jeton}", response_class=HTMLResponse)
     def decider_approbation(
-        jeton: str, decision: str = Form(...), motif: str = Form(""), session: Session = Depends(session_de_requete, scope="function")
+        jeton: str,
+        decision: str = Form(...),
+        motif: str = Form(""),
+        fournisseur_appele: str = Form(""),
+        session: Session = Depends(session_de_requete, scope="function"),
     ) -> HTMLResponse:
         try:
             facture, charge = facture_du_lien(session, jeton)
@@ -803,7 +822,7 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
                     raise notifications.LienInvalide("Un rejet demande un motif.")
                 rejeter(session, facture.id, charge["p"], motif.strip()[:500])
                 return page("Facture rejetée", f"<h1>Facture rejetée</h1><p>Motif enregistré au journal, à votre nom ({html_escape(charge['p'])}).</p>")
-            valider(session, facture.id, charge["p"])
+            valider(session, facture.id, charge["p"], fournisseur_appele == "oui")
         except (notifications.LienInvalide, TransitionInterdite) as erreur:
             return page("Décision impossible", f'<h1>Décision impossible</h1><p class="erreur">{html_escape(str(erreur))}</p>', 409)
         suite = "La facture est validée : tous les niveaux ont approuvé." if facture.etat == Etat.VALIDEE.value else "Le niveau suivant vient d'être prévenu par mail."

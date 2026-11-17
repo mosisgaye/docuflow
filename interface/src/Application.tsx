@@ -4,7 +4,7 @@ import * as api from './api'
 import type { Etat, FactureDetail, FactureResume, Statistiques } from './api'
 import { Conversation, type Tour } from './Conversation'
 import { Fiche, Journal, Tampon } from './Fiche'
-import { A_TRAITER, LIBELLE_ETAT, ORDRE_ETATS, aRegler, attenteLongue, echeanceProche, euros, initiales, raconter, teinte } from './format'
+import { A_TRAITER, LIBELLE_ETAT, ORDRE_ETATS, aRegler, attenteLongue, echeanceProche, euros, initiales, raconter, risqueDabord, teinte } from './format'
 import { Icone, type NomIcone } from './Icones'
 import { IconeAgent } from './IconeAgent'
 import { Connecteurs, type OngletConnecteurs } from './Connecteurs'
@@ -40,13 +40,13 @@ const ONGLETS_CONNECTEURS: { onglet: OngletConnecteurs; nom: string; icone: NomI
 ]
 // Les filtres qui viennent des cartes de l'accueil : affichés seulement s'ils ont des factures.
 const AUTRES_FILTRES: { vue: 'a_regler' | 'echeances' | 'attente'; nom: string; icone: NomIcone; garder: (facture: FactureResume) => boolean }[] = [
-  { vue: 'a_regler', nom: 'Anomalies à régler', icone: 'anomalie', garder: (facture) => aRegler(facture) },
+  { vue: 'a_regler', nom: 'Anomalies et risques', icone: 'anomalie', garder: (facture) => aRegler(facture) },
   { vue: 'echeances', nom: 'Échéance sous 7 jours', icone: 'horloge', garder: (facture) => echeanceProche(facture) },
   { vue: 'attente', nom: 'En attente depuis 48 h', icone: 'utilisateur', garder: (facture) => attenteLongue(facture) },
 ]
 const TITRES_VUES = {
   mon_tour: ['Mon tour', 'Les factures où c’est à vous d’approuver maintenant. A approuve, R rejette, les flèches passent à la suivante.'],
-  a_traiter: ['À traiter', 'Les factures qui attendent une décision, les anomalies en premier.'],
+  a_traiter: ['À traiter', 'Les factures qui attendent une décision : les risques de fraude d’abord, puis les anomalies.'],
   toutes: ['Toutes les factures', 'Cliquez sur une facture pour l’ouvrir à côté de la liste.'],
   a_regler: ['Anomalies à régler', 'Arrêtées aux contrôles ou illisibles : à corriger, ou à rejeter avec un motif.'],
   echeances: ['Échéance sous 7 jours', 'À traiter en priorité : une facture payée en retard coûte des pénalités.'],
@@ -159,10 +159,13 @@ export function Application() {
       Boolean(facture.niveau_attendu && mesNiveaux.includes(facture.niveau_attendu) && !(facture.approuve_par ?? []).some((nom) => normaliser(nom) === normaliser(auteur))),
     [mesNiveaux, auteur],
   )
-  const aMonTour = useMemo(() => factures.filter(monTour), [factures, monTour])
+  const aMonTour = useMemo(() => factures.filter(monTour).sort(risqueDabord), [factures, monTour])
 
   const aTraiter = useMemo(
-    () => factures.filter((facture) => A_TRAITER.includes(facture.etat)).sort((a, b) => A_TRAITER.indexOf(a.etat) - A_TRAITER.indexOf(b.etat)),
+    () =>
+      factures
+        .filter((facture) => A_TRAITER.includes(facture.etat))
+        .sort((a, b) => risqueDabord(a, b) || A_TRAITER.indexOf(a.etat) - A_TRAITER.indexOf(b.etat)),
     [factures],
   )
 
@@ -471,7 +474,7 @@ export function Application() {
         : vue === 'toutes'
           ? factures
           : vue === 'a_regler'
-            ? factures.filter((facture) => aRegler(facture))
+            ? factures.filter((facture) => aRegler(facture)).sort(risqueDabord)
             : vue === 'echeances'
               ? factures.filter((facture) => echeanceProche(facture))
               : vue === 'attente'
@@ -937,7 +940,7 @@ export function Application() {
                     key={detail.id + detail.etat}
                     facture={detail}
                     occupe={decision}
-                    surValidation={() => deciderPuisSuivante(detail.id, api.valider)}
+                    surValidation={(fournisseurAppele) => deciderPuisSuivante(detail.id, (id, nom) => api.valider(id, nom, fournisseurAppele))}
                     surRejet={(motif) => deciderPuisSuivante(detail.id, (id, nom) => api.rejeter(id, nom, motif))}
                     surExport={() => decider(detail.id, api.exporter)}
                   />

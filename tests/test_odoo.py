@@ -398,3 +398,72 @@ def test_une_facture_sans_iban_ne_declenche_rien(session, odoo):
 
     assert not {"IBAN_DIFFERENT", "IBAN_NOUVEAU"} & {a["code"] for a in facture.anomalies}
     assert next(e for e in facture.evenements if e.type == "FOURNISSEUR_ODOO").detail["iban"] == "absent"
+
+
+# ───────── Approuver une facture à risque : il faut avoir appelé le fournisseur ─────────
+
+
+def test_une_facture_a_risque_ne_s_approuve_pas_sans_avoir_appele_le_fournisseur(session, odoo):
+    from moteur.workflow import TransitionInterdite
+
+    facture = traiter(session, (FACTURES / FRAUDE).read_bytes(), FRAUDE, extracteur(FRAUDE), AUJOURD_HUI, odoo=odoo).facture
+
+    with pytest.raises(TransitionInterdite, match="appelez le fournisseur"):
+        valider(session, facture.id, "Claire")
+
+    assert facture.etat == "a_valider"
+    assert "VALIDATION" not in [e.type for e in facture.evenements]
+
+
+def test_la_confirmation_de_l_appel_est_inscrite_au_journal(session, odoo):
+    facture = traiter(session, (FACTURES / FRAUDE).read_bytes(), FRAUDE, extracteur(FRAUDE), AUJOURD_HUI, odoo=odoo).facture
+
+    valider(session, facture.id, "Claire", fournisseur_appele=True)
+
+    assert facture.etat == "validee"
+    decision = facture.evenements[-1]
+    assert (decision.type, decision.auteur, decision.detail["fournisseur_appele"]) == ("VALIDATION", "Claire", True)
+
+
+def test_une_facture_sans_risque_s_approuve_comme_avant(session, odoo):
+    facture = traiter(session, (FACTURES / GARAGE).read_bytes(), GARAGE, extracteur(GARAGE), AUJOURD_HUI, odoo=odoo).facture
+
+    valider(session, facture.id, "Claire")
+
+    assert facture.etat == "validee"
+    assert "fournisseur_appele" not in facture.evenements[-1].detail
+
+
+def test_par_l_api_le_risque_est_dit_et_la_case_est_exigee(connexion, odoo, tmp_path):
+    fabrique = lambda: Session(bind=connexion, join_transaction_mode="create_savepoint")  # noqa: E731
+    client = TestClient(creer_application(fabrique_session=fabrique, extracteur=extracteur(FRAUDE), dossier_fichiers=tmp_path, traiter_tout_de_suite=True, odoo=odoo))
+    facture = client.post("/factures", files={"fichier": (FRAUDE, (FACTURES / FRAUDE).read_bytes(), "application/pdf")}).json()
+
+    assert facture["risque"] is True
+    assert client.get("/factures").json()[0]["risque"] is True
+    assert client.get("/statistiques").json()["a_risque"] == 1
+
+    refus = client.post(f"/factures/{facture['id']}/validation", json={"auteur": "Claire"})
+    assert refus.status_code == 409
+    assert "J'ai appelé le fournisseur" in refus.json()["detail"]
+
+    accord = client.post(f"/factures/{facture['id']}/validation", json={"auteur": "Claire", "fournisseur_appele": True})
+    assert accord.json()["etat"] == "validee"
+    assert client.get("/statistiques").json()["a_risque"] == 0  # décidée : elle n'est plus à traiter
+
+
+def test_l_agent_voit_le_risque_et_ne_propose_pas_de_valider(session, odoo):
+    from moteur.agent import executer_outil
+
+    facture = traiter(session, (FACTURES / FRAUDE).read_bytes(), FRAUDE, extracteur(FRAUDE), AUJOURD_HUI, odoo=odoo).facture
+    lues: set[str] = set()
+
+    liste, _ = executer_outil(session, "lister_factures", {})
+    assert [(f["etat"], f["risque_fraude"]) for f in liste["factures"]] == [("a_valider", True)]
+
+    executer_outil(session, "consulter_facture", {"reference": str(facture.id)}, lues)
+    resultat, _ = executer_outil(session, "proposer_decision", {"reference": str(facture.id), "decision": "valider", "motif": "conforme"}, lues)
+    assert "Risque de fraude" in resultat["erreur"]
+
+    rejet, evenements = executer_outil(session, "proposer_decision", {"reference": str(facture.id), "decision": "rejeter", "motif": "IBAN non confirmé"}, lues)
+    assert rejet["affiche"] is True and evenements[-1]["decision"] == "rejeter"

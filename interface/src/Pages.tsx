@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { usePeut } from './droits'
 import type { Etat, FactureResume, Statistiques } from './api'
-import { LIBELLE_ETAT, ORDRE_ETATS, euros, ilYA, initiales, jour, manquant, teinte, urgence } from './format'
+import { LIBELLE_ETAT, ORDRE_ETATS, aRisque, euros, ilYA, initiales, jour, manquant, teinte, urgence } from './format'
 import { Icone, type NomIcone } from './Icones'
 
 interface PropsDocuments {
@@ -25,6 +25,11 @@ function Ligne({ facture, ouverte, surOuverture, avecEtat }: { facture: FactureR
           <button className="liste__nom" onClick={() => surOuverture(facture.id)}>
             {facture.fournisseur_nom ?? facture.nom_fichier}
           </button>
+          {aRisque(facture) && (
+            <span className="liste__risque" title="IBAN différent de celui connu, ou jamais vu : appelez le fournisseur avant de payer">
+              <Icone nom="alerte" taille={12} /> IBAN
+            </span>
+          )}
         </span>
       </td>
       <td className="liste__col-numero liste__secondaire">{facture.numero_facture ?? manquant(facture.etat)}</td>

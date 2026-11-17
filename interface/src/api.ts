@@ -51,6 +51,7 @@ export interface FactureResume {
   total_ttc: string | null
   date_echeance?: string | null
   nb_anomalies: number
+  risque?: boolean // risque de fraude à l'IBAN : en tête des listes, approbation avec confirmation
   cree_le: string
   niveau_attendu?: Niveau | null // à qui c'est le tour d'approuver
   approuve_par?: string[] // qui a déjà approuvé (personne n'approuve deux niveaux)
@@ -143,7 +144,8 @@ const enJson = (corps: unknown): RequestInit => ({
 export const statistiques = () => appeler<Statistiques>('/statistiques')
 export const lister = () => appeler<FactureResume[]>('/factures')
 export const detailler = (id: string) => appeler<FactureDetail>(`/factures/${id}`)
-export const valider = (id: string, auteur: string) => appeler<FactureDetail>(`/factures/${id}/validation`, enJson({ auteur }))
+export const valider = (id: string, auteur: string, fournisseurAppele = false) =>
+  appeler<FactureDetail>(`/factures/${id}/validation`, enJson({ auteur, fournisseur_appele: fournisseurAppele }))
 export const rejeter = (id: string, auteur: string, motif: string) =>
   appeler<FactureDetail>(`/factures/${id}/rejet`, enJson({ auteur, motif }))
 export const exporter = (id: string, auteur: string) => appeler<FactureDetail>(`/factures/${id}/export`, enJson({ auteur }))

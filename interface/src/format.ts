@@ -170,8 +170,17 @@ export function urgence(iso: string | null | undefined, maintenant = new Date())
 
 const HEURE_MS = 3600 * 1000
 
-/** Une anomalie à régler : la facture est arrêtée aux contrôles, ou n'a pas pu être lue. */
-export const aRegler = (facture: FactureResume) => facture.etat === 'en_anomalie' || facture.etat === 'echec'
+/** Les anomalies qui signalent un risque de fraude au changement d'IBAN (les mêmes codes que moteur/controles.py). */
+export const CODES_RISQUE = ['IBAN_DIFFERENT', 'IBAN_NOUVEAU']
+
+/** Un risque de fraude à l'IBAN sur une facture qui attend encore une décision. */
+export const aRisque = (facture: FactureResume) => Boolean(facture.risque) && (facture.etat === 'a_valider' || facture.etat === 'en_approbation')
+
+/** À régler : la facture est arrêtée aux contrôles, n'a pas pu être lue, ou porte un risque de fraude à l'IBAN. */
+export const aRegler = (facture: FactureResume) => facture.etat === 'en_anomalie' || facture.etat === 'echec' || aRisque(facture)
+
+/** Pour trier une liste : les factures à risque d'abord, l'ordre des autres inchangé (le tri est stable). */
+export const risqueDabord = (a: FactureResume, b: FactureResume) => Number(aRisque(b)) - Number(aRisque(a))
 
 /** L'échéance tombe dans 7 jours ou moins (ou est passée), et la facture n'est ni envoyée en comptabilité ni rejetée. */
 export function echeanceProche(facture: FactureResume, maintenant = new Date()) {

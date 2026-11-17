@@ -273,3 +273,14 @@ def controler(facture: Facture, aujourd_hui: date | None = None) -> list[Anomali
 
 def est_validable(anomalies: list[Anomalie]) -> bool:
     return not any(anomalie.gravite == Gravite.BLOQUANTE for anomalie in anomalies)
+
+
+# Les avertissements qui signalent un risque de fraude au changement de coordonnées bancaires.
+# La facture reste approuvable (un fournisseur change vraiment de banque), mais elle passe en tête
+# des listes et son approbation exige de confirmer que le fournisseur a été appelé.
+CODES_RISQUE = frozenset({"IBAN_DIFFERENT", "IBAN_NOUVEAU"})
+
+
+def a_risque(anomalies: list[dict]) -> bool:
+    """Vrai si une anomalie enregistrée (telle que rangée en base) signale un risque de fraude."""
+    return any(anomalie.get("code") in CODES_RISQUE for anomalie in anomalies or [])

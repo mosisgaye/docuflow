@@ -199,3 +199,26 @@ def test_si_la_facture_change_le_lien_ne_vaut_plus(client, boite, connexion):
 
 def test_le_message_d_erreur_n_injecte_pas_de_html(client, boite):
     assert "<script>" not in client.get("/approbation/<script>alert(1)</script>.x").text
+
+
+def test_par_le_lien_une_facture_a_risque_exige_la_case(client, boite, connexion):
+    facture = deposer(client)
+    with Session(bind=connexion, join_transaction_mode="create_savepoint") as session:
+        enregistree = session.get(FactureEnBase, facture["id"])
+        enregistree.anomalies = [*enregistree.anomalies, {"code": "IBAN_DIFFERENT", "gravite": "avertissement", "message": "IBAN différent.", "champ": "fournisseur_iban"}]
+        session.commit()
+    jeton = boite.jeton()
+
+    page = client.get(f"/approbation/{jeton}")
+    sans = client.post(f"/approbation/{jeton}", data={"decision": "approuver"})
+    avec = client.post(f"/approbation/{jeton}", data={"decision": "approuver", "fournisseur_appele": "oui"})
+
+    assert 'name="fournisseur_appele"' in page.text
+    assert sans.status_code == 409 and "appelez le fournisseur" in sans.text
+    assert avec.status_code == 200 and "approuvé" in avec.text
+
+
+def test_par_le_lien_une_facture_sans_risque_n_a_pas_de_case(client, boite):
+    deposer(client)
+
+    assert 'name="fournisseur_appele"' not in client.get(f"/approbation/{boite.jeton()}").text
