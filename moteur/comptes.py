@@ -32,7 +32,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from moteur import config
-from moteur.base import Compte, DemandeConnexion
+from moteur.base import Compte, DemandeConnexion  # noqa: F401 - Compte sert aussi à l'API
 
 ROLES = ("administrateur", "membre", "approbateur", "lecture", "operateur")
 LIBELLES_ROLES = {
@@ -43,6 +43,8 @@ LIBELLES_ROLES = {
     "operateur": "Opérateur Verifac",
 }
 NIVEAUX = ("comptable", "directeur_financier", "gerant")
+# Les rôles qu'un administrateur du client peut donner. L'opérateur se crée seulement depuis le serveur.
+ROLES_CLIENT = ("administrateur", "membre", "approbateur", "lecture")
 
 # Ce que chaque rôle peut faire. Les adresses de l'API exigent un de ces droits.
 DROITS = {

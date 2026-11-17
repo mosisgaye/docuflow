@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from moteur import config
 from moteur.approbation import LIBELLES, empreinte
-from moteur.base import FactureEnBase, MembreEquipe
+from moteur.base import Compte, FactureEnBase, MembreEquipe
 
 DUREE_LIEN_S = 7 * 24 * 3600
 CLE_SESSION = "notifications_en_attente"
@@ -109,7 +109,15 @@ def destinataire(niveau: str) -> str | None:
 
 
 def destinataires(session: Session, niveau: str) -> list[str]:
-    """Qui prévenir pour ce niveau : l'équipe saisie dans les réglages, sinon l'adresse du fichier de réglages."""
+    """Qui prévenir pour ce niveau : les comptes actifs de ce niveau, sinon l'équipe saisie dans les réglages
+    (installation sans comptes), sinon l'adresse du fichier de réglages."""
+    titulaires = [
+        compte.email
+        for compte in session.scalars(select(Compte).where(Compte.actif.is_(True)).order_by(Compte.cree_le))
+        if niveau in (compte.niveaux or [])
+    ]
+    if titulaires:
+        return titulaires
     equipe = session.scalars(select(MembreEquipe.email).where(MembreEquipe.niveau == niveau).order_by(MembreEquipe.cree_le)).all()
     if equipe:
         return list(equipe)

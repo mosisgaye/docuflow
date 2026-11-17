@@ -1024,6 +1024,60 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
         session.delete(membre)
         return {"id": str(membre_id)}
 
+    # ───────── Les comptes (Réglages › Équipe, avec des comptes) ─────────
+
+    class NouveauCompte(BaseModel):
+        nom: str = Field(min_length=1, max_length=100)
+        email: str = Field(min_length=3, max_length=320)
+        role: str
+        niveaux: list[str] = []
+
+    class ChangementCompte(BaseModel):
+        role: str | None = None
+        niveaux: list[str] | None = None
+        actif: bool | None = None
+
+    def compte_ou_404(session: Session, compte_id: uuid.UUID):
+        compte = session.get(comptes.Compte, compte_id)
+        if compte is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Compte introuvable.")
+        return compte
+
+    @application.get("/comptes")
+    def lister_comptes(session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        tous = session.scalars(select(comptes.Compte).order_by(comptes.Compte.cree_le))
+        return {
+            "roles": {role: comptes.LIBELLES_ROLES[role] for role in comptes.ROLES_CLIENT},
+            "niveaux": {niveau: LIBELLES[niveau] for niveau in NIVEAUX},
+            "comptes": [comptes.vue(compte) for compte in tous],
+        }
+
+    @application.post("/comptes", status_code=status.HTTP_201_CREATED)
+    def creer_compte(demande: NouveauCompte, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        if demande.role not in comptes.ROLES_CLIENT:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Ce rôle ne se donne pas depuis Verifac.")
+        try:
+            return comptes.vue(comptes.creer(session, demande.nom, demande.email, demande.role, demande.niveaux, qui("")))
+        except comptes.CompteInvalide as erreur:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erreur)) from erreur
+
+    @application.put("/comptes/{compte_id}")
+    def modifier_compte(compte_id: uuid.UUID, demande: ChangementCompte, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        compte = compte_ou_404(session, compte_id)
+        # L'opérateur (le prestataire) se crée et se change depuis le serveur ; le client peut seulement le désactiver.
+        if demande.role is not None and (demande.role not in comptes.ROLES_CLIENT or compte.role == "operateur"):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Ce rôle ne se donne pas depuis Verifac.")
+        try:
+            return comptes.vue(comptes.modifier(session, compte, demande.role, demande.niveaux, demande.actif))
+        except comptes.CompteInvalide as erreur:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erreur)) from erreur
+
+    @application.post("/comptes/{compte_id}/deconnexion")
+    def deconnecter_compte(compte_id: uuid.UUID, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        compte = compte_ou_404(session, compte_id)
+        comptes.deconnecter_partout(session, compte)
+        return comptes.vue(compte)
+
     @application.get("/reglages/reception")
     def lire_reception(session: Session = Depends(session_de_requete, scope="function")) -> dict:
         """L'adresse où envoyer les factures, et les derniers mails reçus (avec le texte de ceux sans facture)."""
