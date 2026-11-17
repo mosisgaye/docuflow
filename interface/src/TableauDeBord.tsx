@@ -1,6 +1,6 @@
-import type { FactureDetail, Statistiques } from './api'
+import type { FactureDetail, FactureResume, Statistiques } from './api'
 import * as api from './api'
-import { ETAPES, LIBELLE_ETAT, avancement, duree, euros, heureCourte, ilYA, initiales, jour, manquant, raconter, teinte } from './format'
+import { ETAPES, LIBELLE_ETAT, aRegler, attenteLongue, avancement, echeanceProche, duree, euros, heureCourte, ilYA, initiales, jour, manquant, raconter, teinte } from './format'
 import { Icone } from './Icones'
 
 interface Props {
@@ -11,6 +11,8 @@ interface Props {
   surOuverture: (id: string) => void
   surAssistant: (question?: string) => void
   surDocuments: () => void
+  factures: FactureResume[]
+  surVue: (vue: 'a_regler' | 'echeances' | 'attente') => void
 }
 
 const POURCENT = new Intl.NumberFormat('fr-FR', { style: 'percent', maximumFractionDigits: 1 })
@@ -118,7 +120,32 @@ function Repartition({ statistiques }: { statistiques: Statistiques }) {
   )
 }
 
-export function TableauDeBord({ statistiques, vedette, depotEnCours, auteur, surOuverture, surAssistant, surDocuments }: Props) {
+/** Ce qui demande une action aujourd'hui : trois cartes, chacune ouvre la liste des factures concernées. */
+function AFaire({ factures, surVue }: { factures: FactureResume[]; surVue: Props['surVue'] }) {
+  const cartes = [
+    { vue: 'a_regler' as const, nombre: factures.filter((f) => aRegler(f)).length, un: 'anomalie à régler', plusieurs: 'anomalies à régler', detail: 'Arrêtées aux contrôles ou illisibles', icone: 'anomalie' as const, ton: 'ambre' },
+    { vue: 'echeances' as const, nombre: factures.filter((f) => echeanceProche(f)).length, un: 'échéance sous 7 jours', plusieurs: 'échéances sous 7 jours', detail: 'Ou déjà passées : risque de pénalités', icone: 'horloge' as const, ton: 'rouge' },
+    { vue: 'attente' as const, nombre: factures.filter((f) => attenteLongue(f)).length, un: 'approbation en attente depuis 48 h', plusieurs: 'approbations en attente depuis 48 h', detail: 'Une relance est partie toute seule', icone: 'utilisateur' as const, ton: 'bleu' },
+  ]
+  return (
+    <section className="a-faire" aria-label="À faire aujourd’hui">
+      {cartes.map((carte) => (
+        <button key={carte.vue} className={`a-faire__carte a-faire__carte--${carte.nombre ? carte.ton : 'calme'}`} onClick={() => surVue(carte.vue)} disabled={carte.nombre === 0}>
+          <span className="a-faire__icone" aria-hidden="true">
+            <Icone nom={carte.nombre ? carte.icone : 'coche'} taille={18} />
+          </span>
+          <span className="a-faire__texte">
+            <strong>{carte.nombre === 0 ? `Aucune ${carte.un}` : `${carte.nombre} ${carte.nombre > 1 ? carte.plusieurs : carte.un}`}</strong>
+            <small>{carte.nombre === 0 ? 'Rien à faire ici' : carte.detail}</small>
+          </span>
+          {carte.nombre > 0 && <Icone nom="suivant" taille={16} />}
+        </button>
+      ))}
+    </section>
+  )
+}
+
+export function TableauDeBord({ statistiques, vedette, depotEnCours, auteur, surOuverture, surAssistant, surDocuments, factures, surVue }: Props) {
   const total = statistiques.total
   const progression = vedette ? avancement(vedette.etat) : { faites: 1, alerte: false }
   const prenom = auteur.trim().split(/\s+/)[0]
@@ -131,6 +158,8 @@ export function TableauDeBord({ statistiques, vedette, depotEnCours, auteur, sur
           <p>Vos factures fournisseurs, lues par l’IA, contrôlées par des règles, validées par vous.</p>
         </div>
       </header>
+
+      <AFaire factures={factures} surVue={surVue} />
 
       <section className="indicateurs" aria-label="Chiffres clés">
         <div className="indicateur">

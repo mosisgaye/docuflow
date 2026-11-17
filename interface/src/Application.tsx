@@ -4,7 +4,7 @@ import * as api from './api'
 import type { Etat, FactureDetail, FactureResume, Statistiques } from './api'
 import { Conversation, type Tour } from './Conversation'
 import { Fiche, Journal, Tampon } from './Fiche'
-import { A_TRAITER, LIBELLE_ETAT, ORDRE_ETATS, euros, initiales, raconter, teinte } from './format'
+import { A_TRAITER, LIBELLE_ETAT, ORDRE_ETATS, aRegler, attenteLongue, echeanceProche, euros, initiales, raconter, teinte } from './format'
 import { Icone, type NomIcone } from './Icones'
 import { Connecteurs, type OngletConnecteurs } from './Connecteurs'
 import { Documents } from './Pages'
@@ -16,7 +16,7 @@ import { type Theme, retenirTheme } from './theme'
 
 type Page = 'tableau' | 'documents' | 'assistant' | 'workflow' | 'connecteurs' | 'reglages'
 // « À traiter » est un filtre des factures (comme « Non lus » dans une boîte mail), pas une page à part.
-type Vue = Etat | 'toutes' | 'a_traiter'
+type Vue = Etat | 'toutes' | 'a_traiter' | 'a_regler' | 'echeances' | 'attente'
 
 const CLE_AUTEUR = 'factures.auteur'
 const MENU: { page: Page; nom: string; icone: NomIcone }[] = [
@@ -33,6 +33,19 @@ const ONGLETS_CONNECTEURS: { onglet: OngletConnecteurs; nom: string; icone: NomI
   { onglet: 'integres', nom: 'Intégrés à Verifac', icone: 'bouclier' },
   { onglet: 'developpeurs', nom: 'Accès développeurs', icone: 'code' },
 ]
+// Les filtres qui viennent des cartes de l'accueil : affichés seulement s'ils ont des factures.
+const AUTRES_FILTRES: { vue: 'a_regler' | 'echeances' | 'attente'; nom: string; icone: NomIcone; garder: (facture: FactureResume) => boolean }[] = [
+  { vue: 'a_regler', nom: 'Anomalies à régler', icone: 'anomalie', garder: (facture) => aRegler(facture) },
+  { vue: 'echeances', nom: 'Échéance sous 7 jours', icone: 'horloge', garder: (facture) => echeanceProche(facture) },
+  { vue: 'attente', nom: 'En attente depuis 48 h', icone: 'utilisateur', garder: (facture) => attenteLongue(facture) },
+]
+const TITRES_VUES = {
+  a_traiter: ['À traiter', 'Les factures qui attendent une décision, les anomalies en premier.'],
+  toutes: ['Toutes les factures', 'Cliquez sur une facture pour l’ouvrir à côté de la liste.'],
+  a_regler: ['Anomalies à régler', 'Arrêtées aux contrôles ou illisibles : à corriger, ou à rejeter avec un motif.'],
+  echeances: ['Échéance sous 7 jours', 'À traiter en priorité : une facture payée en retard coûte des pénalités.'],
+  attente: ['En attente depuis plus de 48 h', 'Une approbation tarde. Une relance part toute seule ; un appel va parfois plus vite.'],
+} as const
 const FORMATS_ACCEPTES = /\.(pdf|jpe?g|png|webp)$/i
 const lire = (cle: string) => {
   try {
@@ -377,7 +390,18 @@ export function Application() {
   const numeros = useMemo(() => new Map(factures.filter((facture) => facture.numero_facture).map((facture) => [facture.numero_facture!, facture.id])), [factures])
 
   const listeAffichee = useMemo(() => {
-    const base = vue === 'a_traiter' ? aTraiter : vue === 'toutes' ? factures : factures.filter((facture) => facture.etat === vue)
+    const base =
+      vue === 'a_traiter'
+        ? aTraiter
+        : vue === 'toutes'
+          ? factures
+          : vue === 'a_regler'
+            ? factures.filter((facture) => aRegler(facture))
+            : vue === 'echeances'
+              ? factures.filter((facture) => echeanceProche(facture))
+              : vue === 'attente'
+                ? factures.filter((facture) => attenteLongue(facture))
+                : factures.filter((facture) => facture.etat === vue)
     const mots = recherche.trim().toLowerCase()
     const trouvees = mots
       ? base.filter((facture) =>
@@ -385,6 +409,8 @@ export function Application() {
         )
       : base
     // Même ordre que les groupes affichés : « Suivante » descend la liste telle qu'on la voit.
+    // Les échéances : la plus urgente d'abord. Sinon, même ordre que les groupes affichés.
+    if (vue === 'echeances') return [...trouvees].sort((a, b) => (a.date_echeance ?? '').localeCompare(b.date_echeance ?? ''))
     return [...trouvees].sort((a, b) => ORDRE_ETATS.indexOf(a.etat) - ORDRE_ETATS.indexOf(b.etat))
   }, [page, vue, factures, aTraiter, recherche])
 
@@ -624,6 +650,17 @@ export function Application() {
                 <span>À traiter</span>
                 <span className="laterale__compte">{aTraiter.length}</span>
               </button>
+              {AUTRES_FILTRES.map(({ vue: filtre, nom, icone, garder }) => {
+                const nombre = factures.filter(garder).length
+                if (nombre === 0 && vue !== filtre) return null
+                return (
+                  <button key={filtre} className="laterale__ligne" aria-current={(page === 'documents' && vue === filtre) || undefined} onClick={() => allerVue(filtre)} tabIndex={laterale ? 0 : -1}>
+                    <Icone nom={icone} />
+                    <span>{nom}</span>
+                    <span className="laterale__compte">{nombre}</span>
+                  </button>
+                )
+              })}
               <button className="laterale__ligne" aria-current={(page === 'documents' && vue === 'toutes') || undefined} onClick={() => allerVue('toutes')} tabIndex={laterale ? 0 : -1}>
                 <Icone nom="document" />
                 <span>Toutes</span>
@@ -699,6 +736,8 @@ export function Application() {
                     }}
                     surAssistant={versAssistant}
                     surDocuments={() => allerVue('toutes')}
+                    factures={factures}
+                    surVue={(filtre) => allerVue(filtre)}
                   />
                 ) : (
                   <p className="note">{enService === false ? 'Le moteur ne répond pas.' : 'Chargement…'}</p>
@@ -707,8 +746,8 @@ export function Application() {
                 <>
                   <header className="page__titre">
                     <div>
-                      <h1>{vue === 'a_traiter' ? 'À traiter' : vue === 'toutes' ? 'Toutes les factures' : LIBELLE_ETAT[vue]}</h1>
-                      <p>{vue === 'a_traiter' ? 'Les factures qui attendent une décision, les anomalies en premier.' : 'Cliquez sur une facture pour l’ouvrir à côté de la liste.'}</p>
+                      <h1>{TITRES_VUES[vue as keyof typeof TITRES_VUES]?.[0] ?? LIBELLE_ETAT[vue as Etat]}</h1>
+                      <p>{TITRES_VUES[vue as keyof typeof TITRES_VUES]?.[1] ?? 'Cliquez sur une facture pour l’ouvrir à côté de la liste.'}</p>
                     </div>
                   </header>
                   <Documents factures={listeAffichee} recherche={recherche} ouverte={detail?.id ?? null} surOuverture={ouvrir} surDepot={() => champFichier.current?.click()} />

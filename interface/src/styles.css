@@ -1336,6 +1336,7 @@ kbd {
 }
 
 .tableau > .indicateurs,
+.tableau > .a-faire,
 .tableau > .page__titre {
   grid-column: 1 / -1;
 }
@@ -4534,4 +4535,93 @@ kbd {
 
 .pourquoi__reponse--non {
   color: var(--rouge);
+}
+
+/* L'accueil : ce qui demande une action aujourd'hui, en trois cartes cliquables. */
+.a-faire {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.a-faire__carte {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border: var(--trait) solid var(--bordure);
+  border-radius: var(--rayon-panneau);
+  background: var(--carte);
+  color: var(--texte);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--duree) var(--courbe);
+  --ton: var(--texte-2);
+  --ton-pale: var(--gris-pale);
+}
+
+.a-faire__carte:hover:not(:disabled) {
+  border-color: var(--ton);
+}
+
+.a-faire__carte:disabled {
+  cursor: default;
+}
+
+.a-faire__carte--ambre {
+  --ton: var(--ambre);
+  --ton-pale: var(--ambre-pale);
+}
+
+.a-faire__carte--rouge {
+  --ton: var(--rouge);
+  --ton-pale: var(--rouge-pale);
+}
+
+.a-faire__carte--bleu {
+  --ton: var(--bleu);
+  --ton-pale: var(--bleu-pale);
+}
+
+.a-faire__carte--calme {
+  --ton: var(--vert-texte);
+  --ton-pale: var(--vert-pale);
+}
+
+.a-faire__icone {
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 0.625rem;
+  background: var(--ton-pale);
+  color: var(--ton);
+}
+
+.a-faire__texte {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.a-faire__texte strong {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.a-faire__texte small {
+  color: var(--texte-2);
+  font-size: 0.75rem;
+}
+
+.a-faire__carte > .icone {
+  color: var(--texte-3);
+}
+
+@media (max-width: 760px) {
+  .a-faire {
+    grid-template-columns: 1fr;
+  }
 }

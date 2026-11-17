@@ -1,4 +1,4 @@
-import type { Etat, Evenement } from './api'
+import type { Etat, FactureResume, Evenement } from './api'
 
 const EUROS = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' })
 const NOMBRE = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 4 })
@@ -164,4 +164,23 @@ export function urgence(iso: string | null | undefined, maintenant = new Date())
   if (!iso) return null
   const jours = Math.floor((new Date(iso).getTime() - maintenant.getTime()) / 86400000)
   return jours < 0 ? 'depassee' : jours <= 3 ? 'proche' : null
+}
+
+// ───────── Ce qui demande une action (cartes de l'accueil, filtres des factures) ─────────
+
+const HEURE_MS = 3600 * 1000
+
+/** Une anomalie à régler : la facture est arrêtée aux contrôles, ou n'a pas pu être lue. */
+export const aRegler = (facture: FactureResume) => facture.etat === 'en_anomalie' || facture.etat === 'echec'
+
+/** L'échéance tombe dans 7 jours ou moins (ou est passée), et la facture n'est ni envoyée en comptabilité ni rejetée. */
+export function echeanceProche(facture: FactureResume, maintenant = new Date()) {
+  if (!facture.date_echeance || facture.etat === 'exportee' || facture.etat === 'rejetee') return false
+  return new Date(facture.date_echeance).getTime() - maintenant.getTime() <= 7 * 24 * HEURE_MS
+}
+
+/** Une approbation attendue depuis plus de 48 heures. */
+export function attenteLongue(facture: FactureResume, maintenant = new Date()) {
+  if (facture.etat !== 'a_valider' && facture.etat !== 'en_approbation') return false
+  return maintenant.getTime() - new Date(facture.cree_le).getTime() > 48 * HEURE_MS
 }
