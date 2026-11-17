@@ -110,6 +110,7 @@ export function Application() {
   const [agentOuvert, setAgentOuvert] = useState(false)
   // null : on ne sait pas encore ; vrai : le code d'accès de la démonstration est demandé.
   const [verrouille, setVerrouille] = useState<boolean | null>(null)
+  const [parCode, setParCode] = useState(false) // entré avec le code d'accès de la démo (aucun compte en service)
   // Les comptes : undefined tant qu'on ne sait pas, null si personne n'est connecté.
   const [compte, setCompte] = useState<api.Compte | null | undefined>(undefined)
   const [avecComptes, setAvecComptes] = useState(false)
@@ -182,7 +183,10 @@ export function Application() {
   useEffect(() => {
     const parLeCode = () =>
       api.etatAcces().then(
-        (etat) => setVerrouille(etat.requis && !etat.ouvert),
+        (etat) => {
+          setParCode(etat.requis)
+          setVerrouille(etat.requis && !etat.ouvert)
+        },
         () => setVerrouille(false), // moteur injoignable : l'écran normal le dira
       )
     // Dès qu'un compte existe, la connexion par compte remplace le code d'accès.
@@ -644,6 +648,19 @@ export function Application() {
               </span>
               <input ref={champAuteur} value={auteurSaisi} onChange={(evenement) => setAuteur(evenement.target.value)} placeholder="Votre nom" maxLength={100} aria-label="Votre nom" />
             </label>
+          )}
+          {!compte && parCode && (
+            <button
+              className="bouton bouton--fantome bouton--icone"
+              onClick={async () => {
+                await api.sortir().catch(() => undefined)
+                setVerrouille(true)
+              }}
+              aria-label="Se déconnecter"
+              title="Se déconnecter : il faudra de nouveau le code d’accès"
+            >
+              <Icone nom="deconnexion" />
+            </button>
           )}
           <button className="bouton bouton--fantome bouton--icone" onClick={changerTheme} aria-label={theme === 'dark' ? 'Passer en thème clair' : 'Passer en thème sombre'} title="Changer de thème">
             <Icone nom={theme === 'dark' ? 'soleil' : 'lune'} />
