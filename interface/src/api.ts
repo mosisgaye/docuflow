@@ -361,6 +361,7 @@ export interface Graphe {
 export interface BrouillonCircuit {
   version_en_service: number | null
   graphe: Graphe
+  a_completer: string | null // ce qui manque pour publier ; null : le circuit est complet
   relances: Relances | null
   modifie: boolean
   modifie_par: string | null

@@ -29,7 +29,7 @@ from moteur.approbation import (
 )
 from moteur.base import BrouillonCircuit, Etat, Evenement, FactureEnBase, ReglesApprobation
 from moteur.catalogue_circuit import ANOMALIES, CHAMPS, COMPARAISONS
-from moteur.graphe_circuit import GrapheInvalide, depuis_regles, parcourir
+from moteur.graphe_circuit import GrapheInvalide, depuis_regles, parcourir, verifier_esquisse
 from moteur.graphe_circuit import verifier as verifier_graphe
 
 # Sans aucune version publiée, le moteur demande une seule validation, celle du comptable : l'éditeur part de là.
@@ -77,13 +77,20 @@ def _graphe_de_version(version: ReglesApprobation | None) -> dict:
 
 
 def verifier(graphe: dict, relances: dict | None) -> tuple[dict, dict | None]:
-    """Le graphe et les relances vérifiés, ou BrouillonInvalide avec un message clair."""
+    """Le graphe et les relances vérifiés, ou BrouillonInvalide avec un message clair.
+
+    Le graphe peut être incomplet (une étape pas encore reliée) : le brouillon le garde quand même,
+    comme n8n garde un workflow inachevé. Seule la publication exige un circuit complet.
+    """
     if not isinstance(graphe, dict):
         raise BrouillonInvalide("Le circuit est un graphe : des étapes et des liens.")
     try:
-        verifie = verifier_graphe(graphe).model_dump(mode="json", exclude_none=True)
+        esquisse, _ = verifier_esquisse(graphe)
     except GrapheInvalide as erreur:
         raise BrouillonInvalide(str(erreur)) from erreur
+    verifie = esquisse.model_dump(mode="json", exclude_none=True)
+    for lien in verifie["liens"]:
+        lien.setdefault("sortie", None)  # toujours présente : l'écran reconnaît chaque lien par (étape, sortie)
     if isinstance(relances, dict):
         for niveau, reglage in relances.items():
             if niveau in LIBELLES:
@@ -109,10 +116,12 @@ def lire(session: Session) -> dict:
     service = en_service(session)
     brouillon = session.get(BrouillonCircuit, 1)
     if brouillon is None:
-        return {**service, "version_en_service": service["version"], "modifie": False, "modifie_par": None, "modifie_le": None}
+        return {**service, "version_en_service": service["version"], "modifie": False, "modifie_par": None, "modifie_le": None, "a_completer": None}
+    graphe = brouillon.graphe or _graphe_de_regles(brouillon.regles)
     return {
         "version_en_service": service["version"],
-        "graphe": brouillon.graphe or _graphe_de_regles(brouillon.regles),
+        "graphe": graphe,
+        "a_completer": verifier_esquisse(graphe)[1],  # ce qui manque pour publier ; None : complet
         "relances": brouillon.relances,
         "modifie": True,
         "modifie_par": brouillon.modifie_par,
@@ -284,6 +293,9 @@ def publier_brouillon(session: Session, auteur: str) -> ReglesApprobation:
     if brouillon is None:
         raise PublicationImpossible("Aucune modification à publier.")
     graphe = brouillon.graphe or _graphe_de_regles(brouillon.regles)
+    manque = verifier_esquisse(graphe)[1]
+    if manque:
+        raise PublicationImpossible(f"Le circuit est incomplet : {manque}")
     changements = comparer(en_service(session), {"graphe": graphe, "relances": brouillon.relances})
     if not changements:
         raise PublicationImpossible("Le brouillon est identique à la version en service : rien à publier.")
@@ -318,6 +330,8 @@ def tester(session: Session, facture: FactureEnBase) -> dict:
     libelles = {a["code"]: a["libelle"] for a in ANOMALIES}
     arretee = any(a.get("gravite") == "bloquante" for a in anomalies)
 
+    if brouillon.get("a_completer"):
+        raise TestImpossible(f"Le circuit est incomplet : {brouillon['a_completer']}")
     graphe = verifier_graphe(brouillon["graphe"])
     parcours = parcourir(graphe, donnees, anomalies)
     service_version = version_en_vigueur(session)

@@ -4,7 +4,7 @@ import type { Catalogue, ChampCondition, Condition, LigneCondition, Niveau, Noeu
 import { Icone } from './Icones'
 import { ICONE_ETAPE, nomEtape } from './SchemaCircuit'
 
-export type Statut = { etat: 'repos' } | { etat: 'enregistrement' } | { etat: 'enregistre' } | { etat: 'erreur'; message: string }
+export type Statut = { etat: 'repos' } | { etat: 'enregistrement' } | { etat: 'enregistre' } | { etat: 'incomplet'; message: string } | { etat: 'erreur'; message: string }
 
 type Champ = Catalogue['champs'][number]
 
@@ -366,9 +366,14 @@ export function PanneauEtape({
             <Icone nom="coche" taille={14} /> Brouillon enregistré : aucune facture n’est touchée avant la publication.
           </>
         )}
+        {statut.etat === 'incomplet' && (
+          <>
+            <Icone nom="alerte" taille={14} /> Brouillon enregistré. À compléter avant de publier : {statut.message}
+          </>
+        )}
         {statut.etat === 'erreur' && (
           <>
-            <Icone nom="alerte" taille={14} /> À compléter : {statut.message}
+            <Icone nom="anomalie" taille={14} /> Non enregistré : {statut.message}
           </>
         )}
         {statut.etat === 'repos' && 'Chaque modification est enregistrée dans le brouillon.'}

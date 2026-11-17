@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from moteur import editeur_circuit
 from moteur.api import creer_application
 from moteur.approbation import REGLES_DEMO, publier
-from moteur.base import BrouillonCircuit
+from moteur.base import BrouillonCircuit, FactureEnBase
 from moteur.extraction_llm import ResultatExtraction
 from moteur.modeles import Facture
 
@@ -107,7 +107,6 @@ def montant_illisible() -> dict:
     ("graphe", "relances", "message"),
     [
         ("tout", None, "des étapes et des liens"),
-        (sans_sortie_non(), None, "sortie Oui et une sortie Non"),
         (montant_illisible(), None, "« mille » n'est pas un montant"),
         ({"noeuds": [], "liens": []}, None, ""),
         (circuit_simple(), {"comptable": {"delai_h": 24, "delai_urgent_h": 48, "maximum": 2}}, "ne peut pas dépasser le délai normal"),
@@ -175,7 +174,6 @@ def test_par_l_api_lire_enregistrer_annuler(client):
     [
         {"graphe": tout_au_gerant()},  # sans auteur
         {"auteur": "   ", "graphe": tout_au_gerant()},  # auteur vide
-        {"auteur": "Claire", "graphe": sans_sortie_non()},  # condition sans sortie Non
         {"auteur": "Claire", "graphe": "tout"},  # pas un graphe
         {"auteur": "Claire", "regles": REGLES_DEMO},  # l'ancienne forme
     ],
@@ -188,6 +186,57 @@ def test_par_l_api_un_brouillon_refuse_donne_un_422(client, corps):
 
 
 def test_par_l_api_le_message_d_erreur_est_lisible(client):
-    detail = client.put("/circuit/brouillon", json={"auteur": "Claire", "graphe": sans_sortie_non()}).json()["detail"]
+    detail = client.put("/circuit/brouillon", json={"auteur": "Claire", "graphe": montant_illisible()}).json()["detail"]
 
-    assert detail == "La condition « Plus de 1 000 € » doit avoir une sortie Oui et une sortie Non."
+    assert detail.endswith("« mille » n'est pas un montant.")
+
+
+# ───────── Un circuit en construction est gardé, mais ne se publie pas ─────────
+
+
+def avec_etape_seule() -> dict:
+    graphe = circuit_simple()
+    graphe["noeuds"].append({"id": "gerant", "type": "approbation", "x": 500, "y": 300, "niveau": "gerant"})  # pas encore reliée
+    return graphe
+
+
+@pytest.mark.parametrize(
+    ("graphe", "manque"),
+    [
+        (sans_sortie_non(), "La condition « Plus de 1 000 € » doit avoir une sortie Oui et une sortie Non."),
+        (avec_etape_seule(), "L'étape « Gérant » doit avoir une seule sortie, reliée à l'étape suivante."),
+    ],
+)
+def test_un_circuit_incomplet_est_garde_avec_ce_qui_manque(session, graphe, manque):
+    vue = editeur_circuit.enregistrer(session, graphe, None, "Claire")
+
+    assert vue["a_completer"] == manque
+    relu = editeur_circuit.lire(session)  # après un rechargement, rien n'est perdu
+    assert {n["id"] for n in relu["graphe"]["noeuds"]} == {n["id"] for n in graphe["noeuds"]}
+    assert relu["a_completer"] == manque
+
+
+def test_un_circuit_incomplet_ne_se_publie_pas_et_ne_se_teste_pas(session):
+    publier(session, [], "Moussa", graphe=circuit_simple())
+    editeur_circuit.enregistrer(session, avec_etape_seule(), None, "Claire")
+    facture = FactureEnBase(empreinte="x" * 64, nom_fichier="f.pdf", etat="a_valider", donnees={"total_ttc": "100"}, anomalies=[])
+    session.add(facture)
+    session.flush()
+
+    with pytest.raises(editeur_circuit.PublicationImpossible, match="incomplet : L.étape « Gérant » doit avoir une seule sortie"):
+        editeur_circuit.publier_brouillon(session, "Claire")
+    with pytest.raises(editeur_circuit.TestImpossible, match="incomplet"):
+        editeur_circuit.tester(session, facture)
+
+
+def test_un_circuit_complet_n_a_rien_a_completer(session):
+    assert editeur_circuit.enregistrer(session, circuit_simple(), None, "Claire")["a_completer"] is None
+    assert editeur_circuit.lire(session)["graphe"]["liens"][0]["sortie"] is None  # la sortie vide est toujours présente
+
+
+def test_par_l_api_incomplet_enregistre_mais_publication_refusee(client):
+    enregistre = client.put("/circuit/brouillon", json={"auteur": "Claire", "graphe": sans_sortie_non()})
+    assert enregistre.status_code == 200 and "sortie Oui et une sortie Non" in enregistre.json()["a_completer"]
+
+    publie = client.post("/circuit/publier", json={"auteur": "Claire"})
+    assert publie.status_code == 409 and "incomplet" in publie.json()["detail"]

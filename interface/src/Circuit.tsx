@@ -56,10 +56,11 @@ export function Circuit({
       const [cat, actuel, ecarts] = await Promise.all([api.catalogueCircuit(), api.brouillon(), api.differences()])
       setCatalogue(cat)
       setBrouillon(actuel)
-      setGraphe(actuel.graphe)
+      // Le moteur omet « sortie » quand elle est vide : on la remet à null, pour reconnaître chaque lien.
+      setGraphe({ ...actuel.graphe, liens: actuel.graphe.liens.map((lien) => ({ ...lien, sortie: lien.sortie ?? null })) })
       setRelances(actuel.relances)
       setChangements(ecarts.changements)
-      setStatut({ etat: 'repos' })
+      setStatut(actuel.a_completer ? { etat: 'incomplet', message: actuel.a_completer } : { etat: 'repos' })
       setErreur(null)
     } catch (probleme) {
       setErreur((probleme as Error).message)
@@ -75,7 +76,7 @@ export function Circuit({
     async (suite: Graphe, suiteRelances: Relances | null, numero: number) => {
       if (!auteur.trim()) {
         enAttenteDeNom.current = { graphe: suite, relances: suiteRelances }
-        setStatut({ etat: 'erreur', message: 'indiquez votre nom en haut à droite : chaque modification est inscrite à un nom.' })
+        setStatut({ etat: 'erreur', message: 'indiquez votre nom en haut à droite, chaque modification est inscrite à un nom.' })
         surSansAuteur()
         return
       }
@@ -83,9 +84,10 @@ export function Circuit({
         const enregistre = await api.enregistrerBrouillon(suite, suiteRelances, auteur.trim())
         if (numero !== compteur.current) return // une modification plus récente est partie après celle-ci
         setBrouillon(enregistre)
-        setStatut({ etat: 'enregistre' })
+        setStatut(enregistre.a_completer ? { etat: 'incomplet', message: enregistre.a_completer } : { etat: 'enregistre' })
         setChangements((await api.differences()).changements)
-        if (factureTest) await tester(factureTest)
+        if (factureTest && !enregistre.a_completer) await tester(factureTest)
+        else if (enregistre.a_completer) setTest(null) // un circuit incomplet ne se teste pas
       } catch (probleme) {
         if (numero === compteur.current) setStatut({ etat: 'erreur', message: (probleme as Error).message })
       }
@@ -134,7 +136,7 @@ export function Circuit({
   const etape = graphe.noeuds.find((noeud) => noeud.id === choisie) ?? null
   const enService = brouillon.version_en_service
   const prochaine = (enService ?? 0) + 1
-  const peutPublier = brouillon.modifie && changements.length > 0 && statut.etat !== 'enregistrement' && statut.etat !== 'erreur'
+  const peutPublier = brouillon.modifie && !brouillon.a_completer && changements.length > 0 && statut.etat !== 'enregistrement' && statut.etat !== 'erreur'
 
   const ajouter = (type: TypeEtape) => {
     // La nouvelle étape se pose sous le circuit, au milieu : on la déplace ensuite où l'on veut.
@@ -245,7 +247,7 @@ export function Circuit({
                     Annuler
                   </button>
                 )}
-                <button className="bouton bouton--plein" onClick={() => setConfirmation('publier')} disabled={!peutPublier || occupe} title={peutPublier ? undefined : 'Modifiez le circuit pour pouvoir publier'}>
+                <button className="bouton bouton--plein" onClick={() => setConfirmation('publier')} disabled={!peutPublier || occupe} title={peutPublier ? undefined : brouillon.a_completer ? `À compléter : ${brouillon.a_completer}` : 'Modifiez le circuit pour pouvoir publier'}>
                   Publier la version {prochaine}
                 </button>
               </>

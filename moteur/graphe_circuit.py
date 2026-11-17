@@ -144,17 +144,62 @@ class Graphe(BaseModel):
         return next(n for n in self.noeuds if n.id == identifiant)
 
 
+class Esquisse(BaseModel):
+    """Un graphe en cours de construction : chaque étape est bien réglée, mais tout n'est pas encore relié.
+
+    C'est ce que le brouillon accepte (comme n8n garde un workflow inachevé). La publication, elle,
+    exige un Graphe complet.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    noeuds: list[Noeud] = Field(min_length=2, max_length=NOEUDS_MAX)
+    liens: list[Lien] = Field(max_length=NOEUDS_MAX * 2)
+
+    @model_validator(mode="after")
+    def coherente(self):
+        ids = [n.id for n in self.noeuds]
+        if len(set(ids)) != len(ids):
+            raise ValueError("Deux étapes portent le même identifiant.")
+        for fixe in ("debut", "fin"):
+            if sum(n.type == fixe for n in self.noeuds) != 1:
+                raise ValueError(f"Le circuit a exactement une étape « {'Début' if fixe == 'debut' else 'Odoo'} ».")
+        if any(lien.de not in ids or lien.vers not in ids for lien in self.liens):
+            raise ValueError("Un lien relie une étape qui n'existe pas.")
+        return self
+
+
+def _message(erreur: ValidationError) -> str:
+    premiere = erreur.errors()[0]
+    message = premiere["msg"].removeprefix("Value error, ")
+    if premiere["type"] != "value_error":
+        chemin = " › ".join(str(p + 1) if isinstance(p, int) else str(p) for p in premiere["loc"])
+        message = f"{chemin} : {message}"
+    return message
+
+
+def verifier_esquisse(graphe: dict) -> tuple[Esquisse, str | None]:
+    """L'esquisse vérifiée, et ce qui reste à compléter pour la publier (None : le circuit est complet).
+
+    Une étape mal réglée (montant illisible, message vide…) est refusée tout de suite : GrapheInvalide.
+    """
+    try:
+        esquisse = Esquisse.model_validate(graphe)
+    except ValidationError as erreur:
+        raise GrapheInvalide(_message(erreur)) from erreur
+    try:
+        Graphe.model_validate(esquisse.model_dump(mode="json"))
+    except ValidationError as erreur:
+        return esquisse, _message(erreur)
+    return esquisse, None
+
+
 def verifier(graphe: dict) -> Graphe:
     """Le graphe vérifié, ou GrapheInvalide avec un message clair."""
     try:
         return Graphe.model_validate(graphe)
     except ValidationError as erreur:
-        premiere = erreur.errors()[0]
-        message = premiere["msg"].removeprefix("Value error, ")
-        if premiere["type"] != "value_error":
-            chemin = " › ".join(str(p + 1) if isinstance(p, int) else str(p) for p in premiere["loc"])
-            message = f"{chemin} : {message}"
-        raise GrapheInvalide(message) from erreur
+        raise GrapheInvalide(_message(erreur)) from erreur
 
 
 def parcourir(graphe: Graphe, donnees: dict, anomalies: list[dict]) -> dict:

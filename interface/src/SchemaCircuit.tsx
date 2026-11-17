@@ -144,7 +144,7 @@ export function SchemaCircuit({
   }, [calcules])
 
   const liens: Edge[] = graphe.liens.map((lien) => {
-    const pris = parcourues ? parcourues.has(lien.de) && parcourues.has(lien.vers) && (parcourues.get(lien.de) ?? null) === lien.sortie : false
+    const pris = parcourues ? parcourues.has(lien.de) && parcourues.has(lien.vers) && (parcourues.get(lien.de) ?? null) === (lien.sortie ?? null) : false
     return {
       id: idLien(lien),
       source: lien.de,
@@ -159,7 +159,7 @@ export function SchemaCircuit({
   const relier = (connexion: Connection) => {
     const sortie = connexion.sourceHandle === 'oui' || connexion.sourceHandle === 'non' ? connexion.sourceHandle : null
     // Une sortie ne mène qu'à une étape : relier de nouveau remplace l'ancien lien.
-    const autres = graphe.liens.filter((lien) => !(lien.de === connexion.source && lien.sortie === sortie))
+    const autres = graphe.liens.filter((lien) => !(lien.de === connexion.source && (lien.sortie ?? null) === sortie))
     surGraphe({ ...graphe, liens: [...autres, { de: connexion.source, vers: connexion.target, sortie }] })
   }
 

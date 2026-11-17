@@ -4091,10 +4091,16 @@ kbd {
   color: var(--vert-texte);
 }
 
-.reglage__statut--erreur {
-  /* Un circuit en cours de construction n'est pas une faute : on dit ce qui reste à compléter. */
+/* Un circuit en cours de construction n'est pas une faute : il est gardé, on dit ce qui reste à compléter. */
+.reglage__statut--incomplet {
   color: var(--ambre);
   background: var(--ambre-pale);
+}
+
+/* Une étape mal réglée (montant illisible…) : ce réglage-là n'est pas enregistré. */
+.reglage__statut--erreur {
+  color: var(--rouge);
+  background: var(--rouge-pale);
 }
 
 .differences {
