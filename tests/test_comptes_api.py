@@ -64,9 +64,11 @@ def test_un_compte_refuse_dit_pourquoi(monde, corps, message):
 def test_seul_l_administrateur_gere_les_comptes(monde):
     client, _ = monde
     claire = client("claire")
-    cible = ids(claire)["admin@exemple.fr"]["id"]
+    cible = ids(client("admin"))["admin@exemple.fr"]["id"]
 
-    assert claire.get("/comptes").status_code == 200  # voir l'équipe, oui
+    # La liste montre l'adresse de chacun : seul l'administrateur la voit (le cas légitime passe, lui).
+    assert claire.get("/comptes").status_code == 403
+    assert client("admin").get("/comptes").status_code == 200
     assert claire.post("/comptes", json={"nom": "X", "email": "x@exemple.fr", "role": "membre"}).status_code == 403
     assert claire.put(f"/comptes/{cible}", json={"actif": False}).status_code == 403
     assert claire.post(f"/comptes/{cible}/deconnexion").status_code == 403

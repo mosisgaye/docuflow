@@ -344,7 +344,8 @@ REGLES_ACCES = [
     ("POST", r"/agent", "agent"),
     ("GET", r"/connecteurs(/.*)?", "voir"),
     ("GET", r"/reglages/(equipe|reception)", "voir"),
-    ("GET", r"/comptes", "voir"),
+    # La liste des comptes montre l'adresse mail de chacun : réservée aux administrateurs.
+    ("GET", r"/comptes", "administrer"),
     ("GET", r"/console", "operer"),
     ("POST", r"/console/premier-administrateur", "operer"),
 ]

@@ -29,8 +29,10 @@ export function Comptes() {
 
   const recharger = useCallback(async () => setListe(await api.comptes()), [])
   useEffect(() => {
+    // La liste montre l'adresse de chacun : le moteur la réserve aux administrateurs.
+    if (!administrateur) return
     recharger().catch((erreur: Error) => setMessage({ texte: erreur.message, erreur: true }))
-  }, [recharger])
+  }, [recharger, administrateur])
 
   const agir = async (cle: string, action: () => Promise<string>) => {
     setEnCours(cle)
@@ -47,6 +49,15 @@ export function Comptes() {
   }
 
   const basculer = (liste: Niveau[], niveau: Niveau) => (liste.includes(niveau) ? liste.filter((n) => n !== niveau) : [...liste, niveau])
+
+  if (!administrateur) {
+    return (
+      <p className="note">
+        La liste de l’équipe est réservée aux administrateurs. Vous êtes connecté en tant que {moi?.libelle_role.toLowerCase() ?? 'membre'}
+        {moi && moi.niveaux.length > 0 ? `, et vous approuvez en tant que ${moi.niveaux.map((niveau) => niveau.replace('_', ' ')).join(', ')}` : ''}.
+      </p>
+    )
+  }
 
   if (!liste) return <p className="note">{message?.texte ?? 'Chargement de l’équipe…'}</p>
 
