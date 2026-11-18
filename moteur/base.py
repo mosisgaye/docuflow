@@ -457,3 +457,18 @@ class JetonOAuth(Base):
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (CheckConstraint("sorte IN ('acces', 'renouvellement')", name="ck_oauth_jetons_sorte"),)
+
+
+class DemandePilote(Base):
+    """Une entreprise qui demande une place dans le programme pilote, depuis le site vitrine."""
+
+    __tablename__ = "demandes_pilote"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    nom: Mapped[str] = mapped_column(String(100))
+    entreprise: Mapped[str] = mapped_column(String(150))
+    email: Mapped[str] = mapped_column(String(320))
+    volume: Mapped[str] = mapped_column(String(40))  # factures fournisseurs par mois, en tranche
+    logiciel: Mapped[str] = mapped_column(String(60))
+    message: Mapped[str | None] = mapped_column(Text)
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

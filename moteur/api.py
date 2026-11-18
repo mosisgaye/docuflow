@@ -73,7 +73,7 @@ from moteur import oauth
 from moteur.approbation import LIBELLES, approbations_valides, empreinte, niveau_attendu, publier, version_en_vigueur
 from moteur.catalogue_circuit import catalogue
 from moteur.controles import a_risque
-from moteur import acces, cles_api, demo, evenements_sortants, mcp_verifac, notifications
+from moteur import acces, cles_api, demo, evenements_sortants, mcp_verifac, notifications, pilote
 from moteur.base import Abonnement, CleApi, Livraison, MailRecu, MembreEquipe
 from moteur.approbation import NIVEAUX
 from moteur.connecteurs import CATALOGUE, ErreurConnecteur, Passerelle, adresse_serveur, fiche_catalogue
@@ -440,6 +440,35 @@ def creer_application(
     def moi(requete: Request, session: Session = Depends(session_de_requete, scope="function")) -> dict:
         compte = comptes.lire_session(session, requete.cookies.get(comptes.COOKIE))
         return {"compte": comptes.vue(compte) if compte else None, "comptes": demo.actif() or comptes.existe_un_compte(session), "demo": demo.actif()}
+
+    # ───────── Programme pilote : les demandes du site vitrine ─────────
+
+    demandes_pilote = acces.Tentatives(maximum=5)  # par adresse IP et par quart d'heure
+
+    @application.post("/pilote", status_code=status.HTTP_201_CREATED)
+    def demander_une_place(demande: pilote.NouvelleDemande, requete: Request, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        adresse = adresse_client(requete)
+        if demandes_pilote.bloquee(adresse):
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Trop de demandes depuis votre connexion. Réessayez dans un quart d’heure.")
+        demandes_pilote.noter_echec(adresse)
+        reponse = {"message": "Demande envoyée. Nous vous écrivons sous deux jours ouvrés."}
+        if pilote.est_un_robot(demande):
+            return reponse  # même réponse : le robot ne doit pas savoir qu'il est repéré
+        try:
+            ligne = pilote.enregistrer(session, demande)
+        except pilote.DemandeRefusee as erreur:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erreur)) from erreur
+        session.commit()  # la demande est gardée avant le mail : un mail perdu ne perd pas la demande
+        if destinataire := pilote.destinataire():
+            try:
+                (envoyeur_mail or notifications.envoyer_par_resend)(pilote.composer_mail(ligne, destinataire))
+            except Exception as erreur:  # noqa: BLE001 - la demande est en base, l'échec va au journal
+                logging.getLogger("moteur.api").warning("Mail du programme pilote non envoyé : %s", erreur)
+        return reponse
+
+    @application.get("/pilote/demandes")
+    def demandes_du_pilote(session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        return {"demandes": pilote.lister(session)}
 
     @application.post("/connexion/demo")
     def entrer_dans_la_demo(requete: Request, reponse: Response, session: Session = Depends(session_de_requete, scope="function")) -> dict:

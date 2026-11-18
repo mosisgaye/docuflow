@@ -69,5 +69,5 @@ def sans_odoo(monkeypatch, tmp_path_factory):
     """
     monkeypatch.setenv("ODOO_CLE_FICHIER", str(tmp_path_factory.getbasetemp() / "pas-de-cle-odoo"))
     # Aucun test n'envoie de vrai mail ni ne se connecte à un vrai compte, même si .env contient les réglages.
-    for nom in ("RESEND_API_KEY", "APPROBATION_SECRET", "APPROBATION_DESTINATAIRE", "HUBSPOT_CLIENT_ID", "HUBSPOT_CLIENT_SECRET", "CONNECTEURS_CLE_CHIFFREMENT", "CONNECTEURS_CLES_ANCIENNES", "DOCUFLOW_CODE_ACCES", "DEPOTS_PAR_JOUR", "VERIFAC_MODE_DEMO", "VERIFAC_DEMO_EMAIL", "AGENT_PAR_JOUR"):
+    for nom in ("RESEND_API_KEY", "APPROBATION_SECRET", "APPROBATION_DESTINATAIRE", "HUBSPOT_CLIENT_ID", "HUBSPOT_CLIENT_SECRET", "CONNECTEURS_CLE_CHIFFREMENT", "CONNECTEURS_CLES_ANCIENNES", "DOCUFLOW_CODE_ACCES", "DEPOTS_PAR_JOUR", "VERIFAC_MODE_DEMO", "VERIFAC_DEMO_EMAIL", "AGENT_PAR_JOUR", "PILOTE_DESTINATAIRE"):
         monkeypatch.setenv(nom, "")
