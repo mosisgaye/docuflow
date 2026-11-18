@@ -4,7 +4,7 @@ import { GUIDES } from "@/contenu/guides";
 import { SITE } from "@/contenu/site";
 import captureClaire from "@/public/captures/verifac-clair.jpg";
 import captureSombre from "@/public/captures/verifac-sombre.jpg";
-import { Controles } from "./composants/Controles";
+import { FactureExemple } from "./composants/FactureExemple";
 import { FormulairePilote } from "./composants/FormulairePilote";
 import { Coche, IconeDeGuide } from "./composants/Icones";
 import { DonneesStructurees } from "./composants/DonneesStructurees";
@@ -93,24 +93,30 @@ export default function Accueil() {
         />
       )}
       <section className="ouverture">
-        <div className="conteneur ouverture__texte">
-          <a className="annonce" href="#pilote">
-            <b>Programme pilote</b> 5 places, deux mois offerts
-          </a>
-          <h1>Vos factures fournisseurs, vérifiées avant d’être payées.</h1>
-          <p className="chapo">
-            Verifac lit chaque facture qui arrive, arrête les doublons et les erreurs de montant, retient les IBAN suspects, puis la fait approuver par les bonnes personnes.
-            Votre comptabilité ne reçoit que ce qui est juste.
-          </p>
-          <div className="ouverture__actions">
-            <a className="bouton bouton--plein" href={SITE.demo}>
-              Essayer la démo
-            </a>
-            <a className="bouton bouton--trait" href="#pilote">
-              Rejoindre le programme pilote
-            </a>
+        <div className="conteneur ouverture__grille">
+          <div className="ouverture__texte">
+            <p className="ouverture__pilote">
+              <i aria-hidden="true" />
+              <span>
+                <b>Programme pilote :</b> 5 places, deux mois offerts.
+              </span>{" "}
+              <a href="#pilote">Postuler</a>
+            </p>
+            <h1>Vos factures fournisseurs, vérifiées avant d’être payées.</h1>
+            <p className="chapo">
+              Verifac lit chaque facture qui arrive, arrête les doublons et les erreurs de montant, retient les IBAN suspects, puis la fait approuver par les bonnes personnes.
+            </p>
+            <div className="ouverture__actions">
+              <a className="bouton bouton--plein" href={SITE.demo}>
+                Essayer la démo
+              </a>
+              <a className="bouton bouton--trait" href="#pilote">
+                Rejoindre le programme pilote
+              </a>
+            </div>
+            <p className="ouverture__note">Démo en un clic, sans adresse à donner.</p>
           </div>
-          <p className="ouverture__note">Démo en un clic, sans adresse à donner.</p>
+          <FactureExemple />
         </div>
 
         <div className="conteneur scene">
@@ -123,7 +129,6 @@ export default function Accueil() {
             </div>
             <CaptureVerifac />
           </figure>
-          <Controles />
         </div>
       </section>
 
