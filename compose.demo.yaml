@@ -1,0 +1,105 @@
+# Démo publique de Verifac pour les prospects, sur le même serveur que la production mais séparée en tout :
+# son dossier (/opt/verifac-demo), sa base, ses fichiers, ses secrets (.env à part) et son tunnel.
+# L'interface est la même que la production (Vercel) : demo.verifac.company renvoie /api/… vers ce moteur.
+#
+# Le .env de la démo contient au moins :
+#   POSTGRES_PASSWORD, VERIFAC_SECRET_SESSION, OPENAI_API_KEY, TUNNEL_TOKEN
+#   VERIFAC_MODE_DEMO=1, VERIFAC_ADRESSE=https://demo.verifac.company, DEPOTS_PAR_JOUR=30
+# et SURTOUT PAS : RESEND_API_KEY, APPROBATION_SECRET, ni réglage d'Odoo ou de HubSpot.
+#
+#   docker compose -f compose.demo.yaml up -d --build
+#   docker compose -f compose.demo.yaml exec remise /scripts/photographier.sh   (une fois la démo prête)
+name: verifac-demo
+
+x-moteur: &moteur
+  build: .
+  image: verifac-demo-moteur
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://factures:${POSTGRES_PASSWORD:?à définir dans .env}@base:5432/factures
+    VERIFAC_MODE_DEMO: "1"
+  volumes:
+    - ./donnees:/app/donnees
+  networks: [interne]
+
+services:
+  base:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: factures
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?à définir dans .env}
+      POSTGRES_DB: factures
+    volumes:
+      - base:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U factures -d factures"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [interne]
+
+  migration:
+    <<: *moteur
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      base:
+        condition: service_healthy
+
+  api:
+    <<: *moteur
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/sante', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  travailleur:
+    <<: *moteur
+    command: ["python", "-m", "moteur.travailleur"]
+    stop_grace_period: 60s
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+
+  # Remise à zéro chaque nuit à partir de la photo de référence (deploiement/demo/).
+  remise:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    command: ["/scripts/remise.sh"]
+    environment:
+      PGHOST: base
+      PGUSER: factures
+      PGDATABASE: factures
+      PGPASSWORD: ${POSTGRES_PASSWORD:?à définir dans .env}
+      REMISE_HEURE: "0200"
+    volumes:
+      - ./deploiement/demo:/scripts:ro
+      - ./reference:/reference
+      - ./donnees:/donnees
+    depends_on:
+      base:
+        condition: service_healthy
+    networks: [interne]
+
+  # Tunnel Cloudflare propre à la démo, réglé dans le tableau de bord Cloudflare (jeton dans .env) :
+  # nom d'hôte de l'API de la démo → http://api:8010.
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.7
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?à définir dans .env}
+    depends_on: [api]
+    networks: [interne]
+
+volumes:
+  base:
+
+networks:
+  interne:

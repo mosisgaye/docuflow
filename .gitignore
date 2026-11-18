@@ -7,3 +7,4 @@ donnees/
 node_modules/
 dist/
 deploiement/tunnel/*.json
+reference/

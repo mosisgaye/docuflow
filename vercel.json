@@ -5,6 +5,8 @@
   "buildCommand": "npm run build --prefix interface",
   "outputDirectory": "interface/dist",
   "rewrites": [
+    { "source": "/api/:chemin*", "has": [{ "type": "host", "value": "demo.verifac.company" }], "destination": "https://api-demo-verifac.moussagaye.com/:chemin*" },
+    { "source": "/.well-known/:chemin*", "has": [{ "type": "host", "value": "demo.verifac.company" }], "destination": "https://api-demo-verifac.moussagaye.com/.well-known/:chemin*" },
     { "source": "/api/:chemin*", "destination": "https://api-docuflow.moussagaye.com/:chemin*" },
     { "source": "/.well-known/:chemin*", "destination": "https://api-docuflow.moussagaye.com/.well-known/:chemin*" },
     { "source": "/(.*)", "destination": "/index.html" }
