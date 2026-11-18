@@ -1,9 +1,6 @@
-import { getImageProps } from "next/image";
 import Link from "next/link";
 import { GUIDES } from "@/contenu/guides";
 import { SITE } from "@/contenu/site";
-import captureClaire from "@/public/captures/verifac-clair.jpg";
-import captureSombre from "@/public/captures/verifac-sombre.jpg";
 import { FactureExemple } from "./composants/FactureExemple";
 import { FormulairePilote } from "./composants/FormulairePilote";
 import { Coche, IconeDeGuide } from "./composants/Icones";
@@ -59,19 +56,6 @@ const QUESTIONS = [
   },
 ];
 
-/** La capture de Verifac, claire ou sombre selon le thème de l'ordinateur : une seule image téléchargée. */
-function CaptureVerifac() {
-  const commun = { alt: "L’accueil de Verifac : factures à approuver, anomalies à régler, échéances proches et parcours d’une facture.", sizes: "(max-width: 1440px) 100vw, 1376px", quality: 70 };
-  const sombre = getImageProps({ ...commun, src: captureSombre }).props;
-  const claire = getImageProps({ ...commun, src: captureClaire, priority: true }).props;
-  return (
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcSet={sombre.srcSet} sizes={sombre.sizes} />
-      <img {...claire} alt={commun.alt} />
-    </picture>
-  );
-}
-
 export default function Accueil() {
   return (
     <main>
@@ -117,18 +101,6 @@ export default function Accueil() {
             <p className="ouverture__note">Démo en un clic, sans adresse à donner.</p>
           </div>
           <FactureExemple />
-        </div>
-
-        <div className="conteneur scene">
-          <figure className="cadre">
-            <div className="cadre__barre" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-              <span>demo.verifac.company</span>
-            </div>
-            <CaptureVerifac />
-          </figure>
         </div>
       </section>
 
