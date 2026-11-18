@@ -15,9 +15,9 @@ Les routes OAuth et le transport MCP viennent du SDK officiel (mcp) ; ce module 
 (empreintes en base, jamais les jetons eux-mêmes), la page d'accord et les outils.
 
 Adresses publiques (VERIFAC_ADRESSE + /api, car Vercel renvoie /api/* au moteur) :
-- serveur MCP : https://verifac.company/api/mcp
-- émetteur OAuth : https://verifac.company/api (autorisation /api/authorize, jeton /api/token, enregistrement /api/register)
-- les adresses /.well-known/* à la racine de verifac.company sont renvoyées au moteur par vercel.json.
+- serveur MCP : https://app.verifac.company/api/mcp
+- émetteur OAuth : https://app.verifac.company/api (autorisation /api/authorize, jeton /api/token, enregistrement /api/register)
+- les adresses /.well-known/* à la racine de app.verifac.company sont renvoyées au moteur par vercel.json.
 """
 
 import base64
@@ -61,7 +61,7 @@ LECTURE = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempoten
 
 
 def adresse_api() -> str:
-    """L'adresse publique du moteur : https://verifac.company/api en production, http://localhost:5180/api en local."""
+    """L'adresse publique du moteur : https://app.verifac.company/api en production, http://localhost:5180/api en local."""
     return config.lire("VERIFAC_ADRESSE", "http://localhost:5180").rstrip("/") + "/api"
 
 
