@@ -1,0 +1,42 @@
+# Comprendre une anomalie
+
+Après la lecture, Verifac contrôle chaque facture. Ce qu’il trouve se range en deux familles.
+
+- **Bloquante** : la facture passe **En anomalie**. Elle n’entre pas dans le circuit tant que le problème n’est pas réglé.
+- **Avertissement** : la facture continue, mais le circuit peut demander une approbation de plus. Par exemple, celle du directeur financier quand l’IBAN a changé.
+
+## Les anomalies bloquantes
+
+| Anomalie | Ce que ça veut dire | Que faire |
+| --- | --- | --- |
+| Information obligatoire absente | Un champ légal manque : numéro, date, SIRET, total… | Vérifier sur la facture ; demander une facture conforme au fournisseur. |
+| Aucune ligne de facture | Aucune ligne de produit ou de service n’a été trouvée. | Vérifier que le bon fichier a été envoyé. |
+| Ligne mal calculée | Quantité × prix ne donne pas le montant de la ligne. | Demander une facture corrigée. |
+| Total HT, TVA ou TTC mal calculé | Les totaux ne tombent pas juste. | Demander une facture corrigée. |
+| SIRET invalide | Le numéro ne respecte pas sa clé de contrôle. | Vérifier le SIRET auprès du fournisseur. |
+| Numéro de TVA invalide, ou différent du SIRET | Le numéro de TVA intracommunautaire est faux, ou ne correspond pas à l’entreprise. | Vérifier avec le fournisseur. |
+| IBAN invalide | L’IBAN ne respecte pas sa clé de contrôle. | Ne rien payer ; demander l’IBAN au fournisseur par téléphone. |
+| Échéance antérieure à la facture | La date de paiement précède la date de la facture. | Faire corriger la facture. |
+| Facture déjà reçue | Même fournisseur, même numéro qu’une facture existante. | Rejeter le doublon. |
+
+## Les avertissements
+
+| Avertissement | Ce que ça veut dire |
+| --- | --- |
+| **IBAN jamais vu pour ce fournisseur** | Le fournisseur envoie un IBAN que Verifac ne lui connaît pas. |
+| **IBAN différent de celui connu** | Le fournisseur a déjà été payé sur un autre IBAN. |
+| Écart avec le bon de commande | Le prix ou la quantité facturés dépassent la commande dans Odoo. |
+| Achat sans bon de commande | Aucune commande Odoo ne correspond à la facture. |
+| Fournisseur inconnu dans Odoo | Le SIRET n’existe pas dans votre Odoo. |
+| Taux de TVA inhabituel | Un taux autre que ceux en vigueur en France. |
+| Facture datée dans le futur | La date de la facture est postérieure à aujourd’hui. |
+
+## L’IBAN changé : la règle d’or
+
+Un changement d’IBAN est la fraude la plus courante contre les PME. Un faux mail imite votre fournisseur et demande un paiement « urgent » sur de nouvelles coordonnées.
+
+> **Ne confirmez jamais un IBAN par mail ou au numéro écrit sur la facture.** Appelez le fournisseur au numéro que vous connaissez déjà.
+
+## Sur la fiche de la facture
+
+Chaque anomalie est expliquée en clair sur la fiche, avec le champ concerné. L’assistant de Verifac peut aussi vous dire quoi faire et préparer un mail au fournisseur.

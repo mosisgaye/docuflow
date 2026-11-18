@@ -1,0 +1,37 @@
+# Brancher Odoo et Claude
+
+## Odoo
+
+Avec Odoo, Verifac fait deux choses de plus :
+
+- **Il compare** chaque facture à vos données Odoo : le fournisseur existe-t-il ? Y a-t-il un bon de commande, et le prix correspond-il ?
+- **Il enregistre** la facture validée dans Odoo, comme facture fournisseur **en brouillon**, avec le PDF joint. Votre comptable n’a plus qu’à la vérifier et la comptabiliser.
+
+Le branchement se fait **pendant l’installation**. Il nous faut :
+
+1. l’adresse de votre Odoo ;
+2. une **clé API**, créée dans Odoo : votre profil › Préférences › Sécurité du compte › **Nouvelle clé API**.
+
+La clé reste sur le serveur de votre installation, jamais dans le navigateur. Vous pouvez la révoquer à tout moment depuis Odoo.
+
+Une fois branché, l’onglet **Connecteurs** montre l’état d’Odoo et ce que l’assistant peut y lire.
+
+## Claude
+
+Branchez Verifac à Claude, et posez vos questions sur vos factures directement dans Claude : « Qu’est-ce qui attend mon accord ? », « Combien avons-nous payé au garage Bertin cette année ? ».
+
+### Ajouter le connecteur
+
+1. Dans Claude : **Paramètres › Connecteurs › Ajouter un connecteur personnalisé**.
+2. Nom : `Verifac`. Adresse : `https://app.verifac.company/api/mcp`.
+3. Cliquez sur **Se connecter**. Une page Verifac s’ouvre : connectez-vous si besoin, puis **Autoriser Claude**.
+
+### Ce que Claude peut faire
+
+Claude **lit seulement** : lister les factures, en lire une avec son journal, voir celles qui attendent votre accord, faire un résumé. Il ne peut ni approuver, ni rejeter, ni modifier quoi que ce soit.
+
+Claude voit exactement ce que votre compte voit. Un approbateur ne voit, dans Claude aussi, que les factures où c’est son tour.
+
+### Retirer l’accès
+
+Supprimez le connecteur dans Claude. Côté Verifac, un administrateur peut aussi couper l’accès : le bouton **Déconnecter** d’un compte, sa désactivation ou un changement de rôle retirent l’accès de Claude.

@@ -1,0 +1,38 @@
+# Régler le circuit d’approbation
+
+Le circuit décide, pour chaque facture, **qui doit l’approuver** et **dans quel ordre**. Il se dessine dans l’écran **Workflow**, comme un schéma : des étapes reliées par des flèches.
+
+## Lire le schéma
+
+- **Début** : la facture vient d’être lue et contrôlée.
+- **Une condition** pose une question, par exemple « Montant TTC supérieur à 1 000 € ? » ou « IBAN changé ? ». Elle a deux sorties : **Oui** et **Non**.
+- **Une approbation** demande l’accord d’un niveau : comptable, directeur financier ou gérant.
+- **Odoo** : la fin du chemin. La facture validée part dans la comptabilité.
+
+Les conditions peuvent porter sur le montant TTC ou HT, le nom ou le SIRET du fournisseur, et les anomalies trouvées (IBAN différent, écart avec la commande, fournisseur inconnu…).
+
+## Modifier sans risque : le brouillon
+
+Vos changements s’enregistrent dans un **brouillon**. Le circuit en service ne bouge pas tant que vous n’avez pas publié.
+
+1. Ajoutez, déplacez ou reliez des étapes. Le bouton **Ranger** remet le schéma en ordre.
+2. **Tester sur une facture** : choisissez une facture existante. Verifac montre le chemin qu’elle suivrait avec le brouillon, sans rien changer.
+3. **Publier la version** : seul un administrateur peut publier. Verifac affiche la liste des changements avant de confirmer.
+
+## Les versions
+
+Chaque publication crée une version numérotée, signée de son auteur. **Versions publiées** les liste toutes. Chaque facture garde la version du circuit qui l’a traitée : on sait toujours pourquoi elle est passée par tel niveau.
+
+## Les relances
+
+Dans le circuit, réglez quand relancer une personne qui n’a pas répondu :
+
+| Réglage | Par défaut |
+| --- | --- |
+| Relancer après | 48 heures |
+| Si l’échéance approche, relancer après | 24 heures |
+| Relances au plus, par personne | 2 |
+
+## Demander à l’assistant
+
+L’assistant de Verifac sait modifier le brouillon pour vous : « Ajoute le gérant au-dessus de 10 000 € ». Il n’écrit que dans le brouillon : la publication reste votre décision.

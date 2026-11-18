@@ -1,0 +1,47 @@
+# Recevoir et déposer des factures
+
+Une facture entre dans Verifac de trois façons. Quelle que soit la porte, elle suit ensuite le même chemin : lecture, contrôles, approbation.
+
+## Par mail : la façon la plus simple
+
+Chaque installation a **sa propre adresse de réception**. Vous la trouvez dans **Réglages › Réception des factures**, avec un bouton pour la copier.
+
+Il suffit que les factures arrivent à cette adresse :
+
+- demandez à vos fournisseurs de l’ajouter en copie ;
+- ou créez un **transfert automatique** depuis votre boîte habituelle.
+
+### Avec Gmail
+
+1. Paramètres › Voir tous les paramètres › **Transfert et POP/IMAP**, puis « Ajouter une adresse de transfert ».
+2. Gmail envoie un code de confirmation à cette adresse. Il apparaît dans Verifac, sous « Derniers mails reçus » : recopiez-le dans Gmail.
+3. Créez un filtre (par exemple « contient une pièce jointe » et le mot « facture ») avec l’action **Transférer à** cette adresse.
+
+### Avec Outlook
+
+1. Paramètres › Courrier › **Règles**, puis « Ajouter une nouvelle règle ».
+2. Condition « contient des pièces jointes », action **Transférer à** l’adresse de Verifac.
+3. Si le transfert est refusé, l’administrateur Microsoft 365 doit autoriser le transfert vers l’extérieur.
+
+Chaque mail reçu apparaît dans **Derniers mails reçus**, avec le nombre de factures trouvées dans ses pièces jointes. Un mail sans facture est gardé, mais rien n’est lu.
+
+## Par dépôt
+
+Glissez vos fichiers n’importe où dans Verifac, ou utilisez le bouton de dépôt. Vous pouvez en déposer plusieurs à la fois.
+
+## Par l’API
+
+Votre logiciel peut envoyer les factures lui-même. Voir [API pour les développeurs](/documentation/api).
+
+## Les formats acceptés
+
+| Format | Ce que fait Verifac |
+| --- | --- |
+| **Factur-X** (PDF avec XML joint) | Lit le XML directement, **sans IA** : c’est le format de la facture électronique. |
+| **PDF** avec du texte | L’IA lit la facture en quelques secondes. |
+| **Scan** (PDF sans texte) | L’IA lit l’image de chaque page. |
+| **Photo** (JPEG, PNG, WebP) | Convertie en PDF, puis lue comme un scan. |
+
+## Une facture déjà reçue
+
+Verifac reconnaît un fichier déjà reçu, même sous un autre nom : il n’est pas traité deux fois. Une facture avec le même fournisseur et le même numéro qu’une facture existante est arrêtée comme **doublon**.

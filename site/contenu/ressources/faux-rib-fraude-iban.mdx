@@ -1,0 +1,55 @@
+« Bonjour, suite à un changement de banque, merci d’effectuer vos prochains règlements sur notre nouveau RIB ci-joint. » Ce mail, des milliers de PME le reçoivent chaque année. C’est la **fraude au faux RIB**, aussi appelée fraude à l’IBAN ou au changement de coordonnées bancaires. Voici comment la reconnaître, la procédure qui l’arrête, et que faire si vous avez déjà payé.
+
+## Comment fonctionne l’arnaque
+
+1. Le fraudeur **observe** : il a piraté la messagerie d’un fournisseur, ou la vôtre, ou il a simplement trouvé le nom de vos fournisseurs habituels.
+2. Il **imite** : un mail depuis une adresse presque identique (`compta@garage-bertin.fr` devient `compta@garage-bertln.fr`), parfois depuis la vraie boîte piratée, avec une facture qui ressemble trait pour trait aux vraies.
+3. Il **change un seul détail** : l’IBAN. Tout le reste est exact, le numéro de facture, le montant, la signature.
+4. Il **presse** : facture « urgente », relance pour « éviter une suspension de service ».
+
+L’IBAN donné est **parfaitement valide** : c’est celui du fraudeur. Un simple [vérificateur d’IBAN](/outils/verifier-iban) ne le détecte donc pas.
+
+## Les signes qui doivent alerter
+
+- Un **changement de coordonnées bancaires** annoncé par mail, surtout s’il accompagne une facture.
+- Un **IBAN étranger** pour un fournisseur français habituel.
+- Une **urgence** inhabituelle, une demande de discrétion.
+- Une **adresse d’expéditeur** légèrement différente, un nom de domaine récent.
+- Un **ton** ou une signature qui ne ressemblent pas aux échanges habituels.
+- Une demande de **ne pas appeler**, ou un numéro de téléphone nouveau dans le mail.
+
+## La procédure qui arrête la fraude
+
+Une règle simple, à écrire noir sur blanc et à appliquer sans exception :
+
+> **Tout changement d’IBAN se confirme par téléphone, au numéro que vous connaissez déjà.** Jamais au numéro donné dans le mail, jamais en répondant au mail.
+
+Complétez-la par :
+
+1. **Deux personnes** pour valider un changement de coordonnées : celle qui le reçoit et une autre.
+2. **Une trace écrite** : qui a appelé, qui a confirmé, quand.
+3. **Un premier virement de faible montant** quand c’est possible, confirmé par le fournisseur.
+4. **La vérification du bénéficiaire** de votre banque : depuis le 9 octobre 2025, les banques de la zone euro comparent le nom du bénéficiaire avec le titulaire du compte avant un virement. Si votre banque affiche « nom différent », **arrêtez-vous**.
+
+## Pourquoi la fraude passe quand même
+
+Parce que la vérification repose sur une personne, pressée, qui traite des dizaines de factures. Le contrôle doit donc être **automatique** : chaque facture qui arrive avec un IBAN différent de celui déjà connu pour ce fournisseur doit être **retenue**, et non simplement signalée.
+
+C’est ce que fait Verifac : il compare l’IBAN de chaque facture aux coordonnées bancaires enregistrées pour ce fournisseur dans votre comptabilité (Odoo), et retient toute facture qui arrive avec un IBAN différent ou jamais vu. Elle ne peut alors être payée qu’après l’accord d’une personne désignée, par exemple le directeur financier.
+
+## Vous avez payé sur un faux RIB : que faire ?
+
+Agissez **dans l’heure** si possible :
+
+1. **Appelez votre banque** immédiatement et demandez le rappel des fonds. Plus la demande est rapide, plus les chances de récupérer l’argent sont réelles.
+2. **Portez plainte** auprès de la police ou de la gendarmerie, avec le mail, la fausse facture et l’ordre de virement.
+3. **Prévenez le vrai fournisseur** : sa messagerie est peut-être piratée, et d’autres clients sont visés.
+4. **Changez les mots de passe** de vos messageries et vérifiez les règles de transfert automatique : les pirates en créent pour lire les échanges en silence.
+5. **Signalez l’escroquerie** sur cybermalveillance.gouv.fr, qui oriente vers les bons interlocuteurs.
+
+## En résumé
+
+- Le faux RIB repose sur un **IBAN valide**, celui du fraudeur.
+- La seule parade sûre : **confirmer par téléphone**, au numéro connu, tout changement de coordonnées.
+- Le contrôle doit être **automatique** : une facture avec un nouvel IBAN doit être retenue avant paiement.
+- En cas de paiement : **banque d’abord**, plainte ensuite.

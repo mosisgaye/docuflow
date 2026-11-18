@@ -1,0 +1,67 @@
+Avec la facture électronique, une facture n’est plus simplement « envoyée » : elle suit un **cycle de vie**, avec des statuts que les deux entreprises voient. Deux d’entre eux inquiètent : **rejetée** et **refusée**. Ils ne veulent pas dire la même chose, et ne se traitent pas de la même façon.
+
+## Rejet ou refus : deux choses différentes
+
+| | Facture **rejetée** | Facture **refusée** |
+| --- | --- | --- |
+| Qui la bloque | Une plateforme agréée (celle de l’émetteur ou du destinataire) | Le client, destinataire de la facture |
+| Pourquoi | Une raison **technique** : format, donnée obligatoire, incohérence | Une raison **commerciale** : prix, quantité, prestation, destinataire |
+| Ce qu’il faut faire | Corriger l’erreur et déposer de nouveau la facture | Lire le motif, corriger, ou émettre une nouvelle facture |
+
+## Les quatre statuts obligatoires
+
+Les plateformes agréées doivent suivre et transmettre au moins quatre statuts pour chaque facture :
+
+1. **Déposée** : la facture est entrée dans le circuit.
+2. **Rejetée** : une plateforme ne l’accepte pas.
+3. **Refusée** : le client ne l’accepte pas.
+4. **Encaissée** : le paiement est reçu (pour les prestations de services, ce statut sert à la TVA).
+
+D’autres statuts, facultatifs, existent selon les plateformes : reçue, mise à disposition, approuvée, en litige…
+
+## Les motifs fréquents de rejet
+
+Un rejet est presque toujours une erreur de forme, qu’on corrige vite :
+
+- un **format** non conforme (le fichier n’est ni en Factur-X, ni en UBL, ni en CII valides) ;
+- une **donnée obligatoire absente**, par exemple le SIREN du client ;
+- des **montants incohérents** : le hors-taxe, la TVA et le total ne tombent pas juste ;
+- un **destinataire** introuvable dans l’annuaire.
+
+La liste des données obligatoires est dans notre guide des [mentions obligatoires d’une facture](/ressources/mentions-obligatoires-facture).
+
+## Les motifs fréquents de refus
+
+Un refus vient du client. Les motifs légitimes sont, en général :
+
+- le **prix** ou la **quantité** ne correspondent pas à la commande ;
+- la **prestation** ou la livraison n’a pas eu lieu, ou pas entièrement ;
+- la facture a déjà été reçue (**doublon**) ;
+- la facture n’est **pas adressée à la bonne entité**.
+
+Un refus porte toujours un **motif** : c’est ce qui permet au fournisseur de corriger sans échanges inutiles.
+
+## Vous recevez une facture : refuser à bon escient
+
+Refuser une facture est un acte qui a des conséquences sur la relation avec le fournisseur. Trois règles :
+
+1. **Vérifier avant de refuser** : comparez la facture à la commande et à ce qui a été reçu.
+2. **Donner un motif précis**, pas « facture non conforme ».
+3. **Ne pas refuser pour gagner du temps** : une facture conforme reste due à son échéance, et les pénalités de retard courent dès le lendemain.
+
+## Vous émettez une facture : éviter les rejets
+
+- Vérifiez le **SIREN et le numéro de TVA** de votre client, avec notre [vérificateur de numéro de TVA](/outils/verifier-numero-tva-intracommunautaire).
+- Contrôlez que **les montants tombent juste**, ligne par ligne.
+- Ajoutez les **nouvelles mentions** de la facture électronique.
+- Suivez les statuts : une facture rejetée non corrigée est une facture qui ne sera pas payée.
+
+## Avec Verifac
+
+Verifac fait, sur chaque facture reçue, les contrôles qui justifient un refus : doublon, calculs, SIRET et TVA, écart avec le bon de commande, IBAN. Quand une facture doit être refusée, vous savez pourquoi, et le motif est inscrit au journal.
+
+## En résumé
+
+- **Rejetée** = blocage technique par une plateforme ; **refusée** = décision du client.
+- Quatre statuts obligatoires : **déposée, rejetée, refusée, encaissée**.
+- Un refus doit avoir un **motif précis**, et ne doit pas servir à retarder un paiement dû.

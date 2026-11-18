@@ -1,0 +1,43 @@
+# Approuver ou rejeter une facture
+
+Une facture lue et contrôlée passe à l’état **À valider**. Elle attend alors l’accord des personnes prévues par votre circuit, niveau après niveau.
+
+## Les niveaux d’approbation
+
+Il en existe trois : **comptable**, **directeur financier** et **gérant**. Votre circuit décide lesquels interviennent pour chaque facture, par exemple :
+
+- le comptable approuve toutes les factures, en premier ;
+- le directeur financier, en plus, au-dessus de 1 000 € ou quand l’IBAN a changé ;
+- le gérant, en plus, au-dessus de 5 000 €.
+
+Chaque niveau approuve **dans l’ordre**. Le suivant n’est sollicité qu’après l’accord du précédent.
+
+## Depuis le mail
+
+Chaque personne d’un niveau reçoit un mail avec la facture et deux boutons : **Approuver** et **Rejeter**. Le lien est personnel et signé. La première personne du niveau qui décide l’emporte.
+
+Le lien mène à une page de confirmation : c’est le clic sur le bouton qui décide, pas l’ouverture du lien. Les messageries d’entreprise qui ouvrent les liens pour les analyser ne peuvent donc rien approuver à votre place.
+
+## Dans Verifac
+
+Sur l’accueil, **Factures à approuver par vous** montre ce qui attend votre tour. Ouvrez la facture, vérifiez-la, puis **Valider** ou **Rejeter**. Un rejet demande un motif.
+
+Une personne au rôle **Approbateur** ne voit que les factures où c’est son tour, et celles qu’elle a déjà approuvées.
+
+## Les relances
+
+Sans réponse, Verifac relance la personne. Par défaut :
+
+- après **48 heures** ;
+- après **24 heures** si l’échéance de paiement approche ;
+- **2 relances** au plus par personne.
+
+Ces délais se règlent dans le circuit. Voir [Régler le circuit d’approbation](/documentation/circuit).
+
+## Si la facture change
+
+Si une facture est corrigée après une approbation, les accords déjà donnés ne valent plus : ils portaient sur l’ancienne version. Le journal garde tout, avec la version approuvée.
+
+## Le journal
+
+Chaque décision est inscrite au journal de la facture : qui, quand, à quel niveau, et sur quelle version. Le journal n’est jamais effacé.

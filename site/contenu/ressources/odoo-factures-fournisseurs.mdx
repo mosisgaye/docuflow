@@ -1,0 +1,39 @@
+Odoo gère très bien les factures fournisseurs une fois qu’elles sont **enregistrées**. Le point faible se trouve avant : comment une facture arrive, qui la vérifie, qui l’approuve. Voici comment organiser le traitement des factures fournisseurs autour d’Odoo, avec la facture électronique.
+
+## Les factures fournisseurs dans Odoo
+
+Dans le module **Comptabilité** (ou Facturation), une facture fournisseur est un document qui passe de **brouillon** à **comptabilisé**, puis à **payé**. Odoo sait :
+
+- relier la facture à un **bon de commande** du module Achats ;
+- contrôler les quantités facturées par rapport aux quantités **commandées** ou **reçues**, selon la politique de contrôle des factures choisie ;
+- garder les **coordonnées bancaires** de chaque fournisseur.
+
+## La facture électronique avec Odoo
+
+Les versions récentes d’Odoo savent produire et lire les formats structurés de la [facturation électronique](/ressources/facturation-electronique-2026), dont [Factur-X](/ressources/factur-x) et UBL. Reste à brancher Odoo sur une **plateforme agréée** pour recevoir vos factures par le circuit officiel : vérifiez ce que propose votre version et votre intégrateur.
+
+## Ce qui manque souvent : le contrôle avant l’enregistrement
+
+Une facture créée dans Odoo est déjà dans votre comptabilité. Or plusieurs vérifications devraient se faire **avant** :
+
+- la facture n’est-elle pas un **doublon** d’une facture déjà reçue par un autre canal ?
+- l’**IBAN** de la facture est-il celui enregistré pour ce fournisseur ? Sinon, c’est peut-être un [faux RIB](/ressources/faux-rib-fraude-iban) ;
+- le **SIRET** et le **numéro de TVA** sont-ils justes ?
+- **qui doit approuver** cette facture, selon son montant ou son risque ?
+
+## Un circuit qui s’appuie sur Odoo
+
+Verifac se place **avant** Odoo et s’appuie sur ses données :
+
+1. Il **lit** la facture reçue : Factur-X sans IA, PDF et scans avec.
+2. Il la **compare à Odoo** : le fournisseur existe-t-il ? Y a-t-il un bon de commande, et le prix correspond-il ? L’IBAN est-il celui enregistré pour ce fournisseur ?
+3. Il la fait **approuver** par les bonnes personnes, selon votre circuit.
+4. Il l’**enregistre dans Odoo**, comme facture fournisseur en **brouillon**, avec le PDF joint. Votre comptable n’a plus qu’à la comptabiliser.
+
+Le branchement se fait avec une clé API créée dans Odoo, que vous pouvez révoquer à tout moment. Le détail est dans notre guide [Brancher Odoo et Claude](/documentation/odoo-et-claude).
+
+## En résumé
+
+- Odoo gère la facture **une fois enregistrée** ; le contrôle doit se faire **avant**.
+- Comparez chaque facture aux **bons de commande** et aux **IBAN** enregistrés dans Odoo.
+- Faites-la **approuver** selon des règles écrites, puis envoyez-la en brouillon dans Odoo.

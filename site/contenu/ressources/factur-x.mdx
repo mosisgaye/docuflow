@@ -1,0 +1,56 @@
+Factur-X est le format de facture électronique que la plupart des PME françaises vont recevoir et envoyer. Sa force : c’est **un PDF ordinaire**, que tout le monde peut ouvrir, avec **les données de la facture cachées à l’intérieur**, lisibles sans erreur par les logiciels.
+
+## Factur-X en une phrase
+
+Un fichier Factur-X est un **PDF/A-3** (un PDF fait pour être archivé) qui contient en pièce jointe un fichier **XML** nommé `factur-x.xml`, où figurent les mêmes informations que sur la page : fournisseur, client, lignes, montants, TVA, échéance, IBAN.
+
+- **Une personne** lit le PDF, comme d’habitude.
+- **Un logiciel** lit le XML : aucune ressaisie, aucune erreur de lecture.
+
+Le format est franco-allemand : il est identique à la norme allemande **ZUGFeRD** depuis sa version 2.1.
+
+## Factur-X, UBL, CII : quelle différence ?
+
+Ce sont les trois formats acceptés par la [réforme de la facturation électronique](/ressources/facturation-electronique-2026).
+
+| Format | Ce que c’est | Lisible par une personne ? |
+| --- | --- | --- |
+| **Factur-X** | PDF avec XML à l’intérieur | Oui, c’est un PDF |
+| **UBL** | Fichier XML seul | Non, il faut un logiciel |
+| **CII** | Fichier XML seul | Non, il faut un logiciel |
+
+Factur-X est souvent le choix des PME : il passe la transition en douceur, car un client qui n’a pas encore de logiciel peut toujours lire la facture.
+
+## Les profils de Factur-X
+
+Un fichier Factur-X déclare un **profil**, qui dit jusqu’où vont les données dans le XML :
+
+| Profil | Ce qu’il contient |
+| --- | --- |
+| MINIMUM | Les informations d’en-tête et les totaux, sans les lignes |
+| BASIC WL | L’en-tête et les totaux, sans les lignes |
+| BASIC | La facture complète, lignes comprises |
+| EN 16931 | La facture complète, conforme à la norme européenne |
+| EXTENDED | La facture complète, avec des informations supplémentaires |
+
+Les profils **MINIMUM** et **BASIC WL** ne décrivent pas les lignes de la facture : pour la réforme, préférez **BASIC**, **EN 16931** ou **EXTENDED**.
+
+## Comment savoir si une facture est en Factur-X ?
+
+1. Ouvrez le PDF dans un lecteur qui montre les **pièces jointes** (Adobe Acrobat Reader, Firefox, la plupart des lecteurs récents).
+2. Ouvrez le volet des pièces jointes : un fichier `factur-x.xml` (ou `zugferd-invoice.xml` pour les anciennes versions) signale une facture Factur-X.
+
+Un PDF sans ce fichier joint est une facture « image » : il faut alors la lire, à la main ou avec une IA.
+
+## Ce que Factur-X change pour vos factures fournisseurs
+
+Les données arrivent **exactes** : plus d’erreur de lecture sur le montant, le SIRET ou l’IBAN. Mais une donnée exacte n’est pas forcément une donnée **juste** : une facture Factur-X peut tout de même être un doublon, dépasser le bon de commande, ou porter l’IBAN d’un fraudeur.
+
+Verifac lit directement le XML des factures Factur-X, **sans IA**, et lit les PDF et scans classiques avec une IA. Dans les deux cas, il fait ensuite les mêmes contrôles avant de faire approuver la facture.
+
+## En résumé
+
+- Factur-X = **un PDF + un XML** à l’intérieur.
+- Un des trois formats de la réforme, avec UBL et CII.
+- Préférez les profils **BASIC, EN 16931 ou EXTENDED**.
+- Les données sont exactes, mais la facture doit **toujours être contrôlée** avant paiement.

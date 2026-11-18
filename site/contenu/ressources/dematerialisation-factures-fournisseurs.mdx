@@ -1,0 +1,56 @@
+Dans une PME, une facture fournisseur passe souvent par cinq mains : elle arrive dans une boîte mail, quelqu’un l’imprime ou la recopie, un responsable la signe, la comptabilité la saisit, puis on la paie. **Dématérialiser**, ce n’est pas seulement scanner : c’est faire suivre ce chemin à chaque facture, sans papier, sans ressaisie, et sans laisser passer d’erreur.
+
+## Les cinq étapes du traitement d’une facture fournisseur
+
+| Étape | Avant | Dématérialisée |
+| --- | --- | --- |
+| **Réception** | Courrier, mails éparpillés | Une adresse unique, ou la plateforme agréée |
+| **Lecture** | Ressaisie à la main | Lecture automatique, Factur-X sans erreur |
+| **Contrôle** | À l’œil, quand on a le temps | Automatique, sur chaque facture |
+| **Validation** | Signature papier, relances orales | Circuit d’approbation, par mail, avec relances |
+| **Comptabilité** | Saisie manuelle | Facture envoyée dans le logiciel comptable |
+
+## 1. Recevoir au même endroit
+
+Première règle : **toutes les factures arrivent au même endroit**. Une adresse mail dédiée suffit souvent : les fournisseurs l’utilisent, et les factures reçues ailleurs y sont transférées automatiquement. Avec la [facturation électronique](/ressources/facturation-electronique-2026), une partie arrivera aussi par votre plateforme agréée.
+
+## 2. Lire sans ressaisir
+
+Une facture [Factur-X](/ressources/factur-x) se lit directement, sans erreur. Pour les PDF classiques, les scans et les photos, la lecture automatique (OCR et intelligence artificielle) relève le fournisseur, les montants, l’échéance et l’IBAN en quelques secondes. Ce qui compte : que chaque information lue reste **vérifiable**, à côté du document.
+
+## 3. Contrôler chaque facture
+
+C’est l’étape que la plupart des outils oublient, et celle qui évite les pertes :
+
+- **les calculs** : lignes, hors taxe, TVA, total ;
+- **l’identité du fournisseur** : SIRET et numéro de TVA justes, et cohérents ;
+- **les doublons** : la même facture reçue deux fois ;
+- **le bon de commande** : le prix facturé correspond-il à ce qui a été commandé ?
+- **l’IBAN** : est-il celui que vous connaissez ? C’est la parade contre le [faux RIB](/ressources/faux-rib-fraude-iban).
+
+## 4. Un circuit de validation clair
+
+Qui doit approuver une facture ? La réponse doit être **écrite** et appliquée automatiquement. Par exemple :
+
+- le **comptable** approuve toutes les factures ;
+- le **directeur financier**, en plus, au-dessus de 1 000 € ou quand l’IBAN a changé ;
+- le **gérant**, en plus, au-dessus de 5 000 €.
+
+Chaque personne approuve depuis un mail, sans se connecter à un énième logiciel. Sans réponse, elle est relancée. Et chaque décision est inscrite dans un **journal** : qui, quand, sur quelle version de la facture.
+
+## 5. Envoyer en comptabilité
+
+Une facture validée part dans le logiciel comptable, avec son PDF et son journal d’approbation. Plus de ressaisie, et un dossier complet en cas de contrôle.
+
+## Ce qu’il faut regarder avant de choisir un outil
+
+1. **Les contrôles** : l’outil arrête-t-il une facture en double, ou un IBAN changé, ou se contente-t-il de la lire ?
+2. **Le circuit** : pouvez-vous l’adapter à votre organisation, sans développeur ?
+3. **L’approbation par mail** : vos responsables pourront-ils valider sans nouveau compte ?
+4. **Le lien avec votre comptabilité** : Odoo, Pennylane, Sage, ou un simple export.
+5. **La traçabilité** : chaque décision est-elle gardée, et jamais effacée ?
+6. **La facture électronique** : l’outil lit-il Factur-X, UBL et CII ?
+
+## Ce que fait Verifac
+
+Verifac couvre les cinq étapes pour les PME : réception par mail, dépôt ou API ; lecture des PDF, scans, photos et Factur-X ; contrôles automatiques (calculs, SIRET, TVA, doublons, bon de commande, IBAN) ; circuit d’approbation à plusieurs niveaux par mail ; envoi dans Odoo. Vous pouvez [l’essayer en un clic](https://demo.verifac.company) sur de fausses factures, dont une fraude à l’IBAN.

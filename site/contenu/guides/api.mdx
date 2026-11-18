@@ -1,0 +1,67 @@
+# API pour les développeurs
+
+L’API publique permet à votre logiciel de **déposer des factures** et de **les suivre**. La référence complète et interactive est sur [app.verifac.company/api/v1/docs](https://app.verifac.company/api/v1/docs).
+
+## Les clés
+
+Un administrateur crée les clés dans **Connecteurs › Accès développeurs**. Chaque clé :
+
+- commence par `dfk_` et ne s’affiche **qu’une seule fois**, à la création ;
+- a des droits choisis : `factures:lire` (lire les factures, leur état et leur journal), `factures:deposer` (déposer une facture) ;
+- peut être révoquée à tout moment.
+
+Envoyez-la dans l’en-tête :
+
+```
+Authorization: Bearer dfk_…
+```
+
+## Déposer une facture
+
+```bash
+curl https://app.verifac.company/api/v1/factures \
+  -H "Authorization: Bearer $VERIFAC_CLE" \
+  -F fichier=@facture.pdf
+```
+
+La réponse arrive tout de suite (`202`) avec l’identifiant de la facture. La lecture et les contrôles se font ensuite. Un fichier déjà reçu n’est pas traité deux fois.
+
+## Lire les factures
+
+```bash
+curl https://app.verifac.company/api/v1/factures \
+  -H "Authorization: Bearer $VERIFAC_CLE"
+
+curl https://app.verifac.company/api/v1/factures/<identifiant> \
+  -H "Authorization: Bearer $VERIFAC_CLE"
+```
+
+## Être prévenu : les webhooks
+
+Plutôt que de demander sans cesse, votre logiciel peut **être prévenu**. Dans **Accès développeurs**, ajoutez une adresse et choisissez les événements :
+
+| Événement | Quand |
+| --- | --- |
+| `facture.recue` | Une facture est arrivée (dépôt, mail ou API). |
+| `facture.a_valider` | Lue et contrôlée, elle attend une décision. |
+| `facture.en_anomalie` | Un contrôle bloquant a échoué. |
+| `facture.validee` | Validée par tous les niveaux. |
+| `facture.rejetee` | Rejetée. |
+| `facture.exportee` | Envoyée au logiciel de comptabilité. |
+| `facture.echec` | Elle n’a pas pu être lue. |
+
+Un message qui échoue est réessayé plusieurs fois.
+
+### Vérifier qu’un message vient bien de Verifac
+
+Chaque message porte les en-têtes `X-Verifac-Horodatage` et `X-Verifac-Signature`. La signature est un HMAC-SHA256 de `horodatage + "." + corps`, avec le secret de l’abonnement. Refusez tout message de plus de 5 minutes.
+
+```python
+import hashlib, hmac, time
+
+def message_valide(secret: str, entetes: dict, corps: bytes) -> bool:
+    horodatage = entetes["X-Verifac-Horodatage"]
+    attendue = hmac.new(secret.encode(), horodatage.encode() + b"." + corps, hashlib.sha256).hexdigest()
+    recent = abs(time.time() - int(horodatage)) < 300
+    return recent and hmac.compare_digest(attendue, entetes["X-Verifac-Signature"])
+```

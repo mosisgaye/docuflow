@@ -1,0 +1,50 @@
+Depuis le **9 octobre 2025**, avant chaque virement en euros, votre banque compare le nom du bénéficiaire que vous avez saisi avec le titulaire réel de l’IBAN. C’est la **vérification du bénéficiaire** (en anglais, *Verification of Payee*). Elle arrête une partie des fraudes au faux RIB. Mais pas toutes : voici ce qu’elle vérifie, ce qu’elle ne vérifie pas, et comment la compléter.
+
+## Ce que fait la vérification
+
+- **Le texte** : le règlement européen 2024/886 sur les virements instantanés en euros.
+- **Depuis quand** : le 9 octobre 2025.
+- **Pour quels virements** : les virements SEPA, standards et instantanés.
+- **Comment** : une fois le virement saisi (montant, nom, IBAN), et avant que vous le validiez, votre banque interroge en temps réel la banque du bénéficiaire, qui compare le nom avec le titulaire du compte.
+
+## Les réponses possibles
+
+| Réponse | Ce que cela veut dire | Que faire |
+| --- | --- | --- |
+| **Concordance** | Le nom correspond au titulaire du compte | Continuer, si le reste est cohérent |
+| **Concordance proche** | Le nom ressemble ; la banque affiche le nom exact du titulaire | Comparer le nom affiché avec votre fournisseur |
+| **Pas de concordance** | Le nom ne correspond pas | S’arrêter et vérifier auprès du fournisseur, au numéro connu |
+| **Vérification impossible** | Compte introuvable, banque qui ne répond pas à temps… | Ne pas payer avant d’avoir vérifié |
+
+## Ce qu’elle ne vérifie pas
+
+La vérification répond à une seule question : **ce nom est-il bien celui du titulaire de ce compte ?** Elle ne dit rien sur le reste :
+
+- **Le compte est-il celui de votre fournisseur ?** Un fraudeur qui a ouvert un compte au nom d’une société au nom proche, ou qui vous fait saisir le nom qu’il veut, peut obtenir une concordance.
+- **La demande est-elle légitime ?** Le changement de RIB annoncé par mail, la facture « urgente » : la banque ne les voit pas.
+- **La facture est-elle juste ?** Un doublon ou un montant gonflé passent sans alerte.
+
+Elle crée aussi de **fausses alertes** : un fournisseur qui facture sous son nom commercial, alors que son compte est au nom de sa société, peut obtenir une « concordance proche » ou une « non-concordance », sans aucune fraude.
+
+## La décision vous reste
+
+En cas d’alerte, **vous pouvez toujours valider le virement**. La banque vous a prévenu : si vous passez outre, la responsabilité de ce choix vous revient, et un éventuel recours devient plus difficile. D’où l’importance d’une règle écrite : **une alerte sur un virement fournisseur ne se valide jamais sans vérification**.
+
+## La procédure qui complète la vérification
+
+1. **Comparer chaque facture à la fiche du fournisseur** : un IBAN différent de celui enregistré est un signal, même si la banque affiche une concordance.
+2. **Confirmer tout changement de coordonnées par téléphone**, au numéro que vous connaissez déjà, jamais à celui du mail.
+3. **Deux personnes** pour valider un changement de RIB.
+4. **Garder une trace** : qui a vérifié, comment, quand.
+
+Le détail des signes d’alerte est dans notre guide [Faux RIB : repérer la fraude à l’IBAN](/ressources/faux-rib-fraude-iban). Pour contrôler la forme d’un IBAN : notre [vérificateur d’IBAN](/outils/verifier-iban).
+
+## Avec Verifac
+
+Verifac fait le premier point automatiquement, **avant** que la facture n’arrive au paiement : il compare l’IBAN de chaque facture aux coordonnées bancaires enregistrées pour ce fournisseur dans votre comptabilité, et retient la facture au moindre écart. La vérification de la banque vient ensuite, comme un second filet.
+
+## En résumé
+
+- La banque vérifie que **le nom correspond au titulaire de l’IBAN**, depuis le 9 octobre 2025.
+- Elle ne vérifie pas que **ce compte est celui de votre fournisseur**, ni que la facture est juste.
+- **Une alerte ne se valide jamais sans vérification** ; et un changement d’IBAN se confirme toujours par téléphone.
