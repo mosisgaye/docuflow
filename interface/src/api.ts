@@ -299,7 +299,8 @@ export interface Compte {
   droits: Droit[]
 }
 
-export const moi = () => appeler<{ compte: Compte | null; comptes: boolean }>('/moi')
+export const moi = () => appeler<{ compte: Compte | null; comptes: boolean; demo?: boolean }>('/moi')
+export const entrerDansLaDemo = () => appeler<{ compte: Compte }>('/connexion/demo', { method: 'POST' })
 export const demanderConnexion = (email: string) => appeler<{ message: string }>('/connexion/demande', enJson({ email }))
 export const connexionParLien = (jeton: string) => appeler<{ compte: Compte }>('/connexion/lien', enJson({ jeton }))
 export const connexionParCode = (email: string, code: string) => appeler<{ compte: Compte }>('/connexion/code', enJson({ email, code }))

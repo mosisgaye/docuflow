@@ -7,7 +7,7 @@ type Etape = { type: 'adresse' } | { type: 'code'; email: string } | { type: 'li
 /** La connexion sans mot de passe : l'adresse, puis le lien reçu par mail ou le code à 6 chiffres.
  *  Le lien du mail ouvre cet écran avec un bouton : c'est le clic qui connecte, pas l'ouverture du lien
  *  (les messageries d'entreprise ouvrent les liens pour les analyser). */
-export function EcranConnexion({ jeton, surConnexion }: { jeton: string | null; surConnexion: (compte: api.Compte) => void }) {
+export function EcranConnexion({ jeton, demo = false, surConnexion }: { jeton: string | null; demo?: boolean; surConnexion: (compte: api.Compte) => void }) {
   const [etape, setEtape] = useState<Etape>(jeton ? { type: 'lien', jeton } : { type: 'adresse' })
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
@@ -73,6 +73,29 @@ export function EcranConnexion({ jeton, surConnexion }: { jeton: string | null; 
         </span>
         <h1>Verifac</h1>
 
+        {etape.type === 'adresse' && demo && (
+          <div className="acces-ecran__demo">
+            <p>
+              Essayez Verifac sur de fausses factures : une fraude à l’IBAN, des doublons, un circuit d’approbation à trois niveaux. Rien à installer, aucune adresse à
+              donner. Vos essais sont effacés chaque nuit.
+            </p>
+            <button
+              type="button"
+              className="bouton bouton--plein acces-ecran__bouton"
+              disabled={occupe}
+              onClick={() =>
+                agir(async () => {
+                  const { compte } = await api.entrerDansLaDemo()
+                  surConnexion(compte)
+                })
+              }
+            >
+              Entrer dans la démo
+            </button>
+            <p className="acces-ecran__separation">Vous avez déjà un compte ?</p>
+          </div>
+        )}
+
         {etape.type === 'adresse' && (
           <>
             <p>Saisissez votre adresse professionnelle. Vous recevrez un lien et un code pour vous connecter, sans mot de passe.</p>
@@ -122,7 +145,7 @@ export function EcranConnexion({ jeton, surConnexion }: { jeton: string | null; 
         )}
 
         <button
-          className="bouton bouton--plein acces-ecran__bouton"
+          className={`bouton ${demo && etape.type === 'adresse' ? 'bouton--fantome' : 'bouton--plein'} acces-ecran__bouton`}
           disabled={occupe || (etape.type === 'adresse' && !email.trim()) || (etape.type === 'code' && code.replace(/\s/g, '').length !== 6)}
         >
           {occupe ? 'Un instant…' : etape.type === 'adresse' ? 'Recevoir un lien de connexion' : 'Se connecter'}

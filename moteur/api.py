@@ -73,7 +73,7 @@ from moteur import oauth
 from moteur.approbation import LIBELLES, approbations_valides, empreinte, niveau_attendu, publier, version_en_vigueur
 from moteur.catalogue_circuit import catalogue
 from moteur.controles import a_risque
-from moteur import acces, cles_api, evenements_sortants, mcp_verifac, notifications
+from moteur import acces, cles_api, demo, evenements_sortants, mcp_verifac, notifications
 from moteur.base import Abonnement, CleApi, Livraison, MailRecu, MembreEquipe
 from moteur.approbation import NIVEAUX
 from moteur.connecteurs import CATALOGUE, ErreurConnecteur, Passerelle, adresse_serveur, fiche_catalogue
@@ -305,7 +305,8 @@ def creer_application(
         if acces.chemin_libre(chemin) or requete.method in ("OPTIONS", "HEAD"):
             return
         with fabrique_session() as session:
-            if not comptes.existe_un_compte(session):
+            # En démo, la session est exigée même avant le premier compte : sinon tout serait ouvert sans connexion.
+            if not demo.actif() and not comptes.existe_un_compte(session):
                 return
             compte = comptes.lire_session(session, requete.cookies.get(comptes.COOKIE))
             if compte is None:
@@ -313,6 +314,8 @@ def creer_application(
             droit = comptes.droit_requis(requete.method, chemin)
             if not comptes.peut(compte, droit):
                 raise HTTPException(status.HTTP_403_FORBIDDEN, f"Votre rôle ({comptes.LIBELLES_ROLES[compte.role]}) ne permet pas cette action.")
+            if refus := demo.refus(requete.method, chemin):
+                raise HTTPException(status.HTTP_403_FORBIDDEN, refus)
             CONNECTE.set({"id": str(compte.id), "nom": compte.nom, "role": compte.role, "niveaux": list(compte.niveaux or [])})
 
     # Pas de documentation complète en ligne : elle montrerait toutes les adresses internes (comptes, console…).
@@ -436,7 +439,17 @@ def creer_application(
     @application.get("/moi")
     def moi(requete: Request, session: Session = Depends(session_de_requete, scope="function")) -> dict:
         compte = comptes.lire_session(session, requete.cookies.get(comptes.COOKIE))
-        return {"compte": comptes.vue(compte) if compte else None, "comptes": comptes.existe_un_compte(session)}
+        return {"compte": comptes.vue(compte) if compte else None, "comptes": demo.actif() or comptes.existe_un_compte(session), "demo": demo.actif()}
+
+    @application.post("/connexion/demo")
+    def entrer_dans_la_demo(requete: Request, reponse: Response, session: Session = Depends(session_de_requete, scope="function")) -> dict:
+        # Fermée hors du mode démo : en production, cette adresse n'existe pas.
+        if not demo.actif():
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not Found")
+        compte = demo.compte(session)
+        session.commit()
+        poser_session(requete, reponse, compte)
+        return {"compte": comptes.vue(compte)}
 
     @application.post("/connexion/demande")
     def demander_connexion(demande: DemandeConnexion, requete: Request, session: Session = Depends(session_de_requete, scope="function")) -> dict:
@@ -1254,8 +1267,12 @@ form{{margin-top:16px;display:grid;gap:8px}} dl{{display:grid;grid-template-colu
         session.flush()
         return {"id": str(abonnement.id), "actif": False}
 
+    reponses_agent = demo.CompteurJour()
+
     @application.post("/agent")
     def parler_a_l_agent(demande: DemandeAgent) -> StreamingResponse:
+        if demo.actif() and not reponses_agent.prendre(demo.agent_par_jour()):
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "L'assistant de la démo a assez parlé pour aujourd'hui. Il revient demain.")
         def flux() -> Iterator[str]:
             # La session vit le temps de la réponse. L'agent lit ; ses compétences « circuit » écrivent
             # seulement le brouillon, et l'enregistrent elles-mêmes (la fin de la réponse annule le reste).

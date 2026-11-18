@@ -114,6 +114,7 @@ export function Application() {
   // Les comptes : undefined tant qu'on ne sait pas, null si personne n'est connecté.
   const [compte, setCompte] = useState<api.Compte | null | undefined>(undefined)
   const [avecComptes, setAvecComptes] = useState(false)
+  const [enDemo, setEnDemo] = useState(false) // installation de démonstration : entrée en un clic, données remises à zéro chaque nuit
   const [menuCompte, setMenuCompte] = useState(false)
   // Le lien du mail de connexion arrive avec ?connexion=… : il ouvre l'écran avec le bouton « Se connecter ».
   const [jetonLien, setJetonLien] = useState(() => new URLSearchParams(window.location.search).get('connexion'))
@@ -197,6 +198,7 @@ export function Application() {
       (reponse) => {
         setCompte(reponse.compte)
         setAvecComptes(reponse.comptes)
+        setEnDemo(Boolean(reponse.demo))
         if (reponse.comptes) setVerrouille(false)
         else parLeCode()
       },
@@ -557,7 +559,7 @@ export function Application() {
 
   if (verrouille === null || compte === undefined) return null
   if (jetonLien && !compte) return <EcranConnexion jeton={jetonLien} surConnexion={connecte} />
-  if (avecComptes && !compte) return <EcranConnexion jeton={null} surConnexion={connecte} />
+  if (avecComptes && !compte) return <EcranConnexion jeton={null} demo={enDemo} surConnexion={connecte} />
   if (verrouille) return <EcranAcces surOuverture={() => setVerrouille(false)} />
   const enSaisieNom = !auteur.trim()
 
@@ -582,6 +584,11 @@ export function Application() {
             <Icone nom="facture" taille={14} />
           </span>
           <span className="haut__nom">Verifac</span> <small>Factures fournisseurs</small>
+          {enDemo && (
+            <span className="haut__demo" title="Les données sont fictives. Vos essais sont effacés chaque nuit.">
+              Démo
+            </span>
+          )}
         </div>
 
         <label className="recherche">

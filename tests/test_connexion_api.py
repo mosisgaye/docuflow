@@ -55,7 +55,7 @@ def test_le_lien_connecte_et_pose_la_session(client, mails):
     client.post("/connexion/demande", json={"email": "claire@exemple.fr"})
     jeton, _ = lien_et_code(mails[0])
 
-    assert client.get("/moi").json() == {"compte": None, "comptes": True}
+    assert client.get("/moi").json() == {"compte": None, "comptes": True, "demo": False}
     reponse = client.post("/connexion/lien", json={"jeton": jeton})
 
     assert reponse.status_code == 200 and comptes.COOKIE in reponse.cookies
