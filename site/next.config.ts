@@ -4,11 +4,10 @@ import type { NextConfig } from "next";
 // Le site vitrine prend verifac.company ; le tableau de bord est sur app.verifac.company (projet Vercel « docuflow »).
 // Les adresses d'avant restent valables :
 // - /api/… et /.well-known/… vont toujours au moteur (anciens liens d'approbation, formulaire du pilote, API) ;
-// - un lien de connexion reçu par mail (/?connexion=…), /connexion, ou une personne déjà connectée
-//   sont redirigés vers le tableau de bord.
+// - un lien de connexion reçu par mail (/?connexion=…) et /connexion
+//   sont redirigés vers le tableau de bord. Une ancienne session ne redirige plus : le site s'affiche toujours.
 const MOTEUR = process.env.VERIFAC_MOTEUR ?? "https://api-docuflow.moussagaye.com";
 const APPLICATION = process.env.VERIFAC_APPLICATION ?? "https://app.verifac.company";
-const COOKIE_SESSION = "verifac_session"; // moteur/comptes.py
 
 const nextConfig: NextConfig = {
   pageExtensions: ["ts", "tsx", "mdx"],
@@ -27,7 +26,6 @@ const nextConfig: NextConfig = {
       })),
       // Le jeton du lien suit la redirection (la requête est conservée).
       { source: "/", has: [{ type: "query", key: "connexion" }], destination: `${APPLICATION}/`, permanent: false },
-      { source: "/", has: [{ type: "cookie", key: COOKIE_SESSION }], destination: `${APPLICATION}/`, permanent: false },
       { source: "/connexion", destination: `${APPLICATION}/`, permanent: true },
     ];
   },
