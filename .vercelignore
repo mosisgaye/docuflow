@@ -1,18 +1,19 @@
 # Vercel ne sert que l'interface : le moteur Python tourne sur le serveur.
-moteur
-migrations
-tests
-outils
-factures
-odoo
-reception-mail
-deploiement
-donnees
-Dockerfile
-compose.yaml
-compose.prod.yaml
-pyproject.toml
-uv.lock
-alembic.ini
-interface/node_modules
-interface/dist
+# Chemins ancrés à la racine (« / ») : sans cela, « outils » retirait aussi site/app/outils du site vitrine.
+/moteur
+/migrations
+/tests
+/outils
+/factures
+/odoo
+/reception-mail
+/deploiement
+/donnees
+/Dockerfile
+/compose.yaml
+/compose.prod.yaml
+/pyproject.toml
+/uv.lock
+/alembic.ini
+/interface/node_modules
+/interface/dist
