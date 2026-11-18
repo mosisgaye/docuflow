@@ -1,0 +1,52 @@
+mot_cle,recherches_par_mois,difficulte_0_100,intention,page_visee
+facturation électronique 2026,12100,28,informationnelle,/ressources/facturation-electronique-2026
+facture électronique 2026,12100,28,informationnelle,/ressources/facturation-electronique-2026
+numéro tva intracommunautaire,9900,15,informationnelle,/outils/verifier-numero-tva-intracommunautaire
+plateforme agréée facture électronique,8100,28,navigationnelle,/ressources/choisir-plateforme-agreee
+facture électronique obligatoire,6600,55,informationnelle,/ressources/facturation-electronique-2026
+réforme facturation électronique,2900,54,informationnelle,/ressources/facturation-electronique-2026
+vérifier numéro tva intracommunautaire,2400,21,informationnelle,/outils/verifier-numero-tva-intracommunautaire
+mentions obligatoires facture,1900,13,informationnelle,/ressources/mentions-obligatoires-facture
+vérifier iban,1600,13,navigationnelle,/outils/verifier-iban
+vérifier un iban,1600,22,informationnelle,/outils/verifier-iban
+factur-x,1600,0,informationnelle,/ressources/factur-x
+dématérialisation des factures,1600,46,commerciale,/ressources/dematerialisation-factures-fournisseurs
+pdp facture électronique,1300,13,informationnelle,/glossaire/plateforme-agreee
+vérifier siret,1000,59,informationnelle,/outils/verifier-numero-tva-intracommunautaire
+calendrier facturation électronique,720,17,informationnelle,/ressources/facturation-electronique-2026
+fraude au président,720,0,informationnelle,(à faire : article)
+faux iban,480,0,informationnelle,/ressources/faux-rib-fraude-iban
+facturation électronique tpe,480,15,commerciale,/ressources/facturation-electronique-2026
+facture électronique septembre 2026,480,,transactionnelle,/ressources/facture-electronique-bilan-fin-2026
+procure to pay,480,0,transactionnelle,/fonctionnalites
+facture fournisseur,390,0,commerciale,/fonctionnalites
+faux rib,390,0,informationnelle,/ressources/faux-rib-fraude-iban
+facturation électronique 2027,390,31,informationnelle,/ressources/facturation-electronique-2026
+ia comptabilité,390,0,informationnelle,(à faire : article)
+intelligence artificielle comptabilité,390,0,commerciale,(à faire : article)
+facture électronique pme,390,66,informationnelle,/ressources/facturation-electronique-2026
+comptes fournisseurs,320,0,commerciale,/fonctionnalites
+dématérialisation factures fournisseurs,320,38,commerciale,/ressources/dematerialisation-factures-fournisseurs
+facture électronique odoo,320,0,informationnelle,/ressources/odoo-factures-fournisseurs
+plateforme de dématérialisation partenaire,320,20,navigationnelle,/glossaire/plateforme-agreee
+format factur-x,260,0,informationnelle,/ressources/factur-x
+arnaque rib,210,0,informationnelle,/ressources/faux-rib-fraude-iban
+tva intracommunautaire vérification,210,21,informationnelle,/outils/verifier-numero-tva-intracommunautaire
+logiciel dématérialisation factures,170,10,commerciale,/ressources/dematerialisation-factures-fournisseurs
+gestion factures fournisseurs,140,0,commerciale,/ressources/dematerialisation-factures-fournisseurs
+ocr facture,140,0,informationnelle,/glossaire/ocr-facture
+délai de paiement fournisseur,90,10,informationnelle,/glossaire/delai-de-paiement
+facture électronique format,70,0,informationnelle,/ressources/factur-x
+relance fournisseur,50,35,commerciale,(à faire : article)
+facture sans siret,50,0,informationnelle,/ressources/mentions-obligatoires-facture
+logiciel ocr facture,50,0,commerciale,/glossaire/ocr-facture
+fraude iban,40,11,informationnelle,/ressources/faux-rib-fraude-iban
+traitement factures fournisseurs,40,48,commerciale,/fonctionnalites
+circuit de validation des factures,30,0,informationnelle,/glossaire/circuit-de-validation
+automatisation factures fournisseurs,30,,commerciale,/fonctionnalites
+workflow validation factures,20,0,commerciale,/glossaire/circuit-de-validation
+logiciel factures fournisseurs,10,,commerciale,/fonctionnalites
+rapprochement facture bon de commande,10,,commerciale,/glossaire/rapprochement-trois-voies
+facture électronique rejetée,,,informationnelle,/ressources/facture-electronique-rejetee-refusee
+vérification du bénéficiaire virement,,,informationnelle,/ressources/verification-beneficiaire-virement
+fraude au faux fournisseur,10,,informationnelle,/ressources/fraude-faux-fournisseur-fin-annee
