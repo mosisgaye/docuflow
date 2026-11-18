@@ -300,6 +300,17 @@ export interface Compte {
 }
 
 export const moi = () => appeler<{ compte: Compte | null; comptes: boolean; demo?: boolean }>('/moi')
+export type DemandePilote = {
+  id: string
+  nom: string
+  entreprise: string
+  email: string
+  volume: string
+  logiciel: string
+  message: string | null
+  cree_le: string
+}
+export const demandesPilote = () => appeler<{ demandes: DemandePilote[] }>('/pilote/demandes')
 export const entrerDansLaDemo = () => appeler<{ compte: Compte }>('/connexion/demo', { method: 'POST' })
 export const demanderConnexion = (email: string) => appeler<{ message: string }>('/connexion/demande', enJson({ email }))
 export const connexionParLien = (jeton: string) => appeler<{ compte: Compte }>('/connexion/lien', enJson({ jeton }))

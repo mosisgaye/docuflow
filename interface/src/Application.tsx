@@ -5,7 +5,7 @@ import type { Etat, FactureDetail, FactureResume, Statistiques } from './api'
 import { Conversation, type Tour } from './Conversation'
 import { Fiche, Journal, Tampon } from './Fiche'
 import { A_TRAITER, LIBELLE_ETAT, ORDRE_ETATS, aRegler, attenteLongue, echeanceProche, euros, initiales, raconter, risqueDabord, teinte } from './format'
-import { Icone, type NomIcone } from './Icones'
+import { Icone, type NomIcone, LogoVerifac } from './Icones'
 import { IconeAgent } from './IconeAgent'
 import { Connecteurs, type OngletConnecteurs } from './Connecteurs'
 import { Documents } from './Pages'
@@ -581,7 +581,7 @@ export function Application() {
       <header className="haut">
         <div className="haut__marque">
           <span className="marque" aria-hidden="true">
-            <Icone nom="facture" taille={14} />
+            <LogoVerifac taille={15} />
           </span>
           <span className="haut__nom">Verifac</span> <small>Factures fournisseurs</small>
           {enDemo && (
@@ -746,6 +746,12 @@ export function Application() {
                 <Icone nom="mail" />
                 <span>Réception des factures</span>
               </button>
+              {compte?.droits.includes('administrer') && !enDemo && (
+                <button className="laterale__ligne" aria-current={ongletReglages === 'pilote' || undefined} onClick={() => setOngletReglages('pilote')} tabIndex={laterale ? 0 : -1}>
+                  <Icone nom="entreprise" />
+                  <span>Programme pilote</span>
+                </button>
+              )}
             </div>
             <p className="laterale__pied">Ce que vous réglez ici s’applique à toute l’entreprise.</p>
           </>

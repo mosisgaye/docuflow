@@ -6,7 +6,7 @@ import type { MailRecu, MembreEquipe, Niveau } from './api'
 import { initiales, jourEtHeure, teinte } from './format'
 import { Icone } from './Icones'
 
-export type OngletReglages = 'equipe' | 'reception'
+export type OngletReglages = 'equipe' | 'reception' | 'pilote'
 
 const ROLE: Record<Niveau, string> = {
   comptable: 'Approuve toutes les factures, en premier.',
@@ -238,6 +238,65 @@ function Reception() {
   )
 }
 
+/** Les entreprises qui ont demandé une place dans le programme pilote, depuis le site vitrine. */
+function Pilote() {
+  const [demandes, setDemandes] = useState<api.DemandePilote[] | null>(null)
+  const [erreur, setErreur] = useState<string | null>(null)
+  const recharger = useCallback(() => {
+    api.demandesPilote().then(
+      (reponse) => setDemandes(reponse.demandes),
+      (probleme: Error) => setErreur(probleme.message),
+    )
+  }, [])
+  useEffect(recharger, [recharger])
+
+  if (erreur) return <p className="connecteurs__message">{erreur}</p>
+  if (!demandes) return <p className="note">Chargement…</p>
+  return (
+    <div className="reglages">
+      <section className="bloc reglages__mails">
+        <header>
+          <h2>Demandes reçues ({demandes.length})</h2>
+          <button className="bouton bouton--fantome bouton--petit" onClick={recharger}>
+            Actualiser
+          </button>
+        </header>
+        {demandes.length === 0 ? (
+          <p className="reglages__vide">Aucune demande pour l’instant. Elles arrivent du formulaire « Demander une place » de verifac.company.</p>
+        ) : (
+          <ul>
+            {demandes.map((demande) => (
+              <li key={demande.id}>
+                <div className="reglages__mail">
+                  <span>
+                    <strong>
+                      {demande.entreprise}, {demande.nom}
+                    </strong>
+                    <small>
+                      <a href={`mailto:${demande.email}`}>{demande.email}</a>, le {jourEtHeure(demande.cree_le)}
+                    </small>
+                  </span>
+                  <span className="etat etat--recue">
+                    {demande.volume} par mois, {demande.logiciel}
+                  </span>
+                </div>
+                {demande.message && (
+                  <details className="reglages__texte">
+                    <summary>Lire son message</summary>
+                    <p>{demande.message}</p>
+                  </details>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  )
+}
+
+const TITRES: Record<OngletReglages, string> = { equipe: 'Mon équipe', reception: 'Réception des factures', pilote: 'Programme pilote' }
+
 export function Reglages({ onglet, auteur, surSansAuteur }: { onglet: OngletReglages; auteur: string; surSansAuteur: () => void }) {
   // Avec des comptes, l'équipe, ce sont les comptes ; sans comptes (démonstration), la liste des approbateurs par mail.
   const avecComptes = useContext(CompteConnecte) !== null
@@ -245,17 +304,19 @@ export function Reglages({ onglet, auteur, surSansAuteur }: { onglet: OngletRegl
     <div className="page">
       <header className="page__titre">
         <div>
-          <h1>{onglet === 'equipe' ? 'Mon équipe' : 'Réception des factures'}</h1>
+          <h1>{TITRES[onglet]}</h1>
           <p>
             {onglet === 'equipe'
               ? avecComptes
                 ? 'Qui a accès à Verifac, et ce que chacun peut faire. Chaque personne reçoit par mail les demandes d’approbation de ses niveaux.'
                 : 'Les personnes qui approuvent les factures. Chacune reçoit par mail les demandes de son rôle.'
-              : 'Comment vos factures arrivent dans Verifac.'}
+              : onglet === 'pilote'
+                ? 'Les entreprises qui demandent une place dans le programme pilote, depuis verifac.company.'
+                : 'Comment vos factures arrivent dans Verifac.'}
           </p>
         </div>
       </header>
-      {onglet === 'equipe' ? avecComptes ? <Comptes /> : <Equipe auteur={auteur} surSansAuteur={surSansAuteur} /> : <Reception />}
+      {onglet === 'equipe' ? avecComptes ? <Comptes /> : <Equipe auteur={auteur} surSansAuteur={surSansAuteur} /> : onglet === 'pilote' ? <Pilote /> : <Reception />}
     </div>
   )
 }

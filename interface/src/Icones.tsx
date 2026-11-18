@@ -132,3 +132,24 @@ export function Icone({ nom, taille = 16 }: { nom: NomIcone; taille?: number }) 
     />
   )
 }
+
+/** Le symbole Verifac (document au coin plié et coche), le même que sur le site (site/lib/logo.ts).
+ *  Blanc par défaut : il se pose sur le carré vert de la marque. */
+export function LogoVerifac({ taille = 16 }: { taille?: number }) {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={4.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ width: `${taille / 16}rem`, height: `${taille / 16}rem` }}
+    >
+      <path d="M12 5h16l11 11v22a5 5 0 0 1-5 5H12a5 5 0 0 1-5-5V10a5 5 0 0 1 5-5z" />
+      <path d="M28 5v8a3 3 0 0 0 3 3h8" />
+      <path d="M14.5 28.5l5.5 5.5 11-11.5" strokeWidth={5.4} />
+    </svg>
+  )
+}

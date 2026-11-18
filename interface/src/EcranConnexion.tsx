@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as api from './api'
-import { Icone } from './Icones'
+import { Icone, LogoVerifac } from './Icones'
 
 type Etape = { type: 'adresse' } | { type: 'code'; email: string } | { type: 'lien'; jeton: string }
 
@@ -69,7 +69,7 @@ export function EcranConnexion({ jeton, demo = false, surConnexion }: { jeton: s
         }}
       >
         <span className="marque acces-ecran__marque" aria-hidden="true">
-          <Icone nom="facture" taille={20} />
+          <LogoVerifac taille={22} />
         </span>
         <h1>Verifac</h1>
 

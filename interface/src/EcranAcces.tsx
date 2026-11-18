@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import * as api from './api'
-import { Icone } from './Icones'
+import { Icone, LogoVerifac } from './Icones'
 
 /** L'entrée de la démonstration en ligne : un code d'accès, demandé une fois par navigateur. */
 export function EcranAcces({ surOuverture }: { surOuverture: () => void }) {
@@ -28,7 +28,7 @@ export function EcranAcces({ surOuverture }: { surOuverture: () => void }) {
         }}
       >
         <span className="marque acces-ecran__marque" aria-hidden="true">
-          <Icone nom="facture" taille={20} />
+          <LogoVerifac taille={22} />
         </span>
         <h1>Verifac</h1>
         <p>Démonstration privée du traitement des factures fournisseurs. Entrez le code d’accès qui vous a été transmis.</p>
